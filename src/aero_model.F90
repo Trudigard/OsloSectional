@@ -69,7 +69,7 @@ contains
     character(len=*), intent(in) :: nlfile
 
     ! Local variables
-    integer :: unitn, ierr
+    integer :: unitn, ierr, ind
     character(len=*), parameter :: subname = 'aero_model_readnl'
 
     ! Namelist variables
@@ -126,8 +126,14 @@ contains
     ! Report
     if (masterproc) then
        write(iulog ,*) 'Aerosol namelist:'
-       write(iulog ,*) '   Wet deposition = ', wetdep_list(:)
-       write(iulog ,*) '   Dry deposition = ', drydep_list(:)
+       write(iulog ,*) '   Wet deposition species:'
+       do ind = 1, pcnst, 5
+         write(iulog, '(" ",5a)') wetdep_list(ind:min(ind+4,pcnst))
+       end do
+       write(iulog ,*) '   Dry deposition species:'
+       do ind = 1, pcnst, 5
+         write(iulog, '(" ",5a)') drydep_list(ind:min(ind+4,pcnst))
+       end do
        write(iulog ,*) '   aer_sol_facti = ', aer_sol_facti
        write(iulog ,*) '   aer_sol_factb = ', aer_sol_factb
        write(iulog ,*) '   aer_scav_coef = ', aer_scav_coef
