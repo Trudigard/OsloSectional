@@ -101,23 +101,23 @@ contains
     ! Broadcast namelist variables and check for errors
     call MPI_Bcast(aer_wetdep_list, len(aer_wetdep_list(1))*pcnst, mpi_character, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//"Error "//int2str(ierr)//"broadcasting 'aer_wetdep_list'")
+       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_wetdep_list'")
     end if
     call MPI_Bcast(aer_drydep_list, len(aer_drydep_list(1))*pcnst, mpi_character, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//"Error "//int2str(ierr)//"broadcasting 'aer_drydep_list'")
+       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_drydep_list'")
     end if
     call MPI_Bcast(aer_sol_facti, pcnst, mpi_real8, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//"Error "//int2str(ierr)//"broadcasting 'aer_sol_facti'")
+       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_sol_facti'")
     end if
     call MPI_Bcast(aer_sol_factb, pcnst, mpi_real8, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//"Error "//int2str(ierr)//"broadcasting 'aer_sol_factb'")
+       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_sol_factb'")
     end if
     call MPI_Bcast(aer_scav_coef, pcnst, mpi_real8, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//"Error "//int2str(ierr)//"broadcasting 'aer_scav_coef'")
+       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_scav_coef'")
     end if
 
     wetdep_list = aer_wetdep_list
