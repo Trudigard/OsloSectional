@@ -39,8 +39,8 @@ module aero_model
   integer :: soa_ndx, soai_ndx, soam_ndx, soab_ndx, soat_ndx, soax_ndx
 
   ! Namelist variables
-  character(len=16) :: wetdep_list(pcnst) = ' '
-  character(len=16) :: drydep_list(pcnst) = ' '
+  character(len=16), allocatable :: wetdep_list(:)
+  character(len=16), allocatable :: drydep_list(:)
 
   integer :: ndrydep = 0
   integer,allocatable :: drydep_indices(:)
@@ -120,19 +120,37 @@ contains
        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_scav_coef'")
     end if
 
-    wetdep_list = aer_wetdep_list
-    drydep_list = aer_drydep_list
+    ! Allocate and initialize wetdep list and drydep list
+    do ind = 1, 1000
+      if (len_trim(aer_wetdep_list(ind)) > 0) then
+         nwetdep = nwetdep + 1
+      else
+         exit
+      end if
+    end do
+    allocate(wetdep_list(nwetdep))
+    wetdep_list(1:nwetdep) = aer_wetdep_list(1:nwetdep)
+
+    do ind = 1, 1000
+       if (len_trim(aer_drydep_list(ind)) > 0) then
+         ndrydep = ndrydep + 1
+       else
+         exit
+       end if
+    end do
+    allocate(drydep_list(ndrydep))
+    drydep_list(1:ndrydep) = aer_drydep_list(1:ndrydep)
 
     ! Report
     if (masterproc) then
        write(iulog ,*) 'Aerosol namelist:'
        write(iulog ,*) '   Wet deposition species:'
-       do ind = 1, pcnst, 5
-         write(iulog, '(" ",5a)') wetdep_list(ind:min(ind+4,pcnst))
+       do ind = 1, nwetdep, 5
+         write(iulog, '(" ",5a)') wetdep_list(ind:min(ind+4,nwetdep))
        end do
        write(iulog ,*) '   Dry deposition species:'
-       do ind = 1, pcnst, 5
-         write(iulog, '(" ",5a)') drydep_list(ind:min(ind+4,pcnst))
+       do ind = 1, ndrydep, 5
+         write(iulog, '(" ",5a)') drydep_list(ind:min(ind+4,ndrydep))
        end do
        write(iulog ,*) '   aer_sol_facti = ', aer_sol_facti
        write(iulog ,*) '   aer_sol_factb = ', aer_sol_factb
@@ -183,18 +201,6 @@ contains
     call wetdep_init()
 
     fracis_idx = pbuf_get_index('FRACIS')
-
-    nwetdep = 0
-    ndrydep = 0
-
-    count_species: do m = 1,pcnst
-       if ( len_trim(wetdep_list(m)) /= 0 ) then
-          nwetdep = nwetdep+1
-       endif
-       if ( len_trim(drydep_list(m)) /= 0 ) then
-          ndrydep = ndrydep+1
-       endif
-    enddo count_species
 
     if (nwetdep>0) &
          allocate(wetdep_indices(nwetdep))
@@ -404,6 +410,10 @@ contains
     cb2_ndx    = get_spc_ndx( 'CB2' )
     oc2_ndx    = get_spc_ndx( 'OC2' )
     nit_ndx    = get_spc_ndx( 'NH4NO3' )
+
+    ! deallocate wetdep list and drydep list
+    deallocate(wetdep_list)
+    deallocate(drydep_list)
 
   end subroutine aero_model_init
 
