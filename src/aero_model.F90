@@ -61,7 +61,7 @@ contains
   ! reads aerosol namelist options
   !=============================================================================
   subroutine aero_model_readnl(nlfile)
-    use mpi,             only: mpi_character, mpi_real8
+    use mpi,             only: mpi_character, mpi_real8, MPI_SUCCESS
     use spmd_utils,      only: mstrid=>masterprocid, mpicon
     use namelist_utils,  only: find_group_name
 
@@ -121,6 +121,9 @@ contains
     end if
 
     ! Allocate and initialize wetdep list and drydep list
+    nwetdep = 0
+    ndrydep = 0
+
     do ind = 1, 1000
       if (len_trim(aer_wetdep_list(ind)) > 0) then
          nwetdep = nwetdep + 1
