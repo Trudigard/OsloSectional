@@ -73,8 +73,8 @@ contains
     character(len=*), parameter :: subname = 'aero_model_readnl'
 
     ! Namelist variables
-    character(len=16) :: aer_wetdep_list(pcnst) = ' '
-    character(len=16) :: aer_drydep_list(pcnst) = ' '
+    character(len=16) :: aer_wetdep_list(1000) = ' '
+    character(len=16) :: aer_drydep_list(1000) = ' '
 
     ! Define namelist
     namelist /aerosol_nl/ aer_wetdep_list, aer_drydep_list
