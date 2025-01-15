@@ -1,4 +1,4 @@
-module modal_aerosol_properties_mod
+module sectional_aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
   use physconst, only: pi
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
@@ -8,9 +8,9 @@ module modal_aerosol_properties_mod
 
   private
 
-  public :: modal_aerosol_properties
+  public :: sectional_aerosol_properties
 
-  type, extends(aerosol_properties) :: modal_aerosol_properties
+  type, extends(aerosol_properties) :: sectional_aerosol_properties
      private
      real(r8), allocatable :: exp45logsig_(:)
      real(r8), allocatable :: voltonumblo_(:)
@@ -54,11 +54,11 @@ module modal_aerosol_properties_mod
      procedure :: hydrophilic
 
      final :: destructor
-  end type modal_aerosol_properties
+  end type sectional_aerosol_properties
 
-  interface modal_aerosol_properties
+  interface sectional_aerosol_properties
      procedure :: constructor
-  end interface modal_aerosol_properties
+  end interface sectional_aerosol_properties
 
   logical, parameter :: debug = .false.
 
@@ -68,7 +68,7 @@ contains
   !------------------------------------------------------------------------------
   function constructor() result(newobj)
 
-    type(modal_aerosol_properties), pointer :: newobj
+    type(sectional_aerosol_properties), pointer :: newobj
 
     integer :: l, m, nmodes, ncnst_tot, mm
     real(r8) :: dgnumlo
@@ -291,7 +291,7 @@ contains
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   subroutine destructor(self)
-    type(modal_aerosol_properties), intent(inout) :: self
+    type(sectional_aerosol_properties), intent(inout) :: self
 
     if (allocated(self%exp45logsig_)) then
        deallocate(self%exp45logsig_)
@@ -339,7 +339,7 @@ contains
   ! returns number of transported aerosol constituents
   !------------------------------------------------------------------------------
   integer function number_transported(self)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     ! to be implemented later
     number_transported = -1
   end function number_transported
@@ -357,7 +357,7 @@ contains
   subroutine get(self, bin_ndx, species_ndx, list_ndx, density, hygro, &
                  spectype, specname, specmorph, refindex_sw, refindex_lw)
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx             ! bin index
     integer, intent(in) :: species_ndx         ! species index
     integer, optional, intent(in) :: list_ndx  ! climate or a diagnostic list number
@@ -400,7 +400,7 @@ contains
        sw_hygro_coreshell_ext, sw_hygro_coreshell_ssa, sw_hygro_coreshell_asm, lw_hygro_coreshell_ext, &
        corefrac, bcdust, kap, relh, nfrac, nbcdust, nkap, nrelh )
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx             ! bin index
     integer, intent(in) :: list_ndx            ! rad climate/diags list
 
@@ -521,7 +521,7 @@ contains
   !------------------------------------------------------------------------------
   pure elemental real(r8) function amcube(self, bin_ndx, volconc, numconc)
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx  ! bin number
     real(r8), intent(in) :: volconc ! volume conc (m3/m3)
     real(r8), intent(in) :: numconc ! number conc (1/m3)
@@ -535,7 +535,7 @@ contains
   !------------------------------------------------------------------------------
   subroutine actfracs(self, bin_ndx, smc, smax, fn, fm )
     use shr_spfn_mod, only: erf => shr_spfn_erf
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx   ! bin index
     real(r8),intent(in) :: smc       ! critical supersaturation for particles of bin radius
     real(r8),intent(in) :: smax      ! maximum supersaturation for multiple competing aerosols
@@ -558,7 +558,7 @@ contains
   ! returns constituents names of aerosol number mixing ratios
   !------------------------------------------------------------------------
   subroutine num_names(self, bin_ndx, name_a, name_c)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     character(len=*), intent(out) :: name_a ! constituent name of ambient aerosol number dens
     character(len=*), intent(out) :: name_c ! constituent name of cloud-borne aerosol number dens
@@ -570,7 +570,7 @@ contains
   ! returns constituents names of aerosol mass mixing ratios
   !------------------------------------------------------------------------
   subroutine mmr_names(self, bin_ndx, species_ndx, name_a, name_c)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
     character(len=*), intent(out) :: name_a ! constituent name of ambient aerosol MMR
@@ -583,7 +583,7 @@ contains
   ! returns constituent name of ambient aerosol number mixing ratios
   !------------------------------------------------------------------------
   subroutine amb_num_name(self, bin_ndx, name)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     character(len=*), intent(out) :: name   ! constituent name of ambient aerosol number dens
 
@@ -595,7 +595,7 @@ contains
   ! returns constituent name of ambient aerosol mass mixing ratios
   !------------------------------------------------------------------------
   subroutine amb_mmr_name(self, bin_ndx, species_ndx, name)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
     character(len=*), intent(out) :: name   ! constituent name of ambient aerosol MMR
@@ -608,7 +608,7 @@ contains
   ! returns species type
   !------------------------------------------------------------------------
   subroutine species_type(self, bin_ndx, species_ndx, spectype)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
     character(len=*), intent(out) :: spectype ! species type
@@ -621,7 +621,7 @@ contains
   ! returns TRUE if Ice Nucleation tendencies are applied to given aerosol bin number
   !------------------------------------------------------------------------------
   function icenuc_updates_num(self, bin_ndx) result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
 
     logical :: res
@@ -648,7 +648,7 @@ contains
   ! returns TRUE if Ice Nucleation tendencies are applied to a given species within a bin
   !------------------------------------------------------------------------------
   function icenuc_updates_mmr(self, bin_ndx, species_ndx) result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
 
@@ -676,7 +676,7 @@ contains
   ! apply max / min to number concentration
   !------------------------------------------------------------------------------
   subroutine apply_number_limits( self, naerosol, vaerosol, istart, istop, m )
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     real(r8), intent(inout) :: naerosol(:)  ! number conc (1/m3)
     real(r8), intent(in)    :: vaerosol(:)  ! volume conc (m3/m3)
     integer,  intent(in) :: istart          ! start column index (1 <= istart <= istop <= pcols)
@@ -700,7 +700,7 @@ contains
   ! the particles' ability to act as heterogeneous freezing nuclei
   !------------------------------------------------------------------------------
   function hetfrz_species(self, bin_ndx, spc_ndx) result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx  ! bin number
     integer, intent(in) :: spc_ndx  ! species number
 
@@ -730,7 +730,7 @@ contains
   ! returns TRUE if soluble
   !------------------------------------------------------------------------------
   logical function soluble(self,bin_ndx)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
 
     character(len=aero_name_len) :: mode_name
@@ -745,7 +745,7 @@ contains
   ! returns minimum mass mean radius (meters)
   !------------------------------------------------------------------------------
   function min_mass_mean_rad(self,bin_ndx,species_ndx) result(minrad)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
 
@@ -783,7 +783,7 @@ contains
   ! returns the total number of bins for a given radiation list index
   !------------------------------------------------------------------------------
   function nbins_rlist(self, list_ndx)  result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: list_ndx  ! radiation list number
 
     integer :: res
@@ -796,7 +796,7 @@ contains
   ! returns number of species in a bin for a given radiation list index
   !------------------------------------------------------------------------------
   function nspecies_per_bin_rlist(self, list_ndx,  bin_ndx)  result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: list_ndx ! radiation list number
     integer, intent(in) :: bin_ndx  ! bin number
 
@@ -811,7 +811,7 @@ contains
   ! distribution for radiation list number and aerosol bin
   !------------------------------------------------------------------------------
   function alogsig_rlist(self, list_ndx,  bin_ndx)  result(res)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: list_ndx ! radiation list number
     integer, intent(in) :: bin_ndx  ! bin number
 
@@ -828,7 +828,7 @@ contains
   ! returns name for a given radiation list number and aerosol bin
   !------------------------------------------------------------------------------
   function bin_name(self, list_ndx,  bin_ndx) result(name)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: list_ndx ! radiation list number
     integer, intent(in) :: bin_ndx  ! bin number
 
@@ -844,7 +844,7 @@ contains
   function scav_diam(self, bin_ndx) result(diam)
     use modal_aero_data, only: dgnum_amode
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx  ! bin number
 
     real(r8) :: diam
@@ -861,7 +861,7 @@ contains
 
     use modal_aero_data, only:  mode_size_order
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     real(r8), intent(inout) :: dcondt(:)
 
     integer :: i
@@ -939,7 +939,7 @@ contains
                                error_code, error_string)
     use infnan, only: nan, assignment(=)
 
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     character(len=*),intent(in) :: bulk_type       ! aerosol type to rebin
     real(r8), intent(in) :: dep_fluxes(:)          ! kg/m2
     real(r8), intent(in) :: diam_edges(:)          ! meters
@@ -1030,7 +1030,7 @@ contains
   ! Returns TRUE if bin is hydrophilic, otherwise FALSE
   !------------------------------------------------------------------------------
   logical function hydrophilic(self, bin_ndx)
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx ! bin number
 
     character(len=aero_name_len) :: modetype
@@ -1041,4 +1041,4 @@ contains
 
   end function hydrophilic
 
-end module modal_aerosol_properties_mod
+end module sectional_aerosol_properties_mod
