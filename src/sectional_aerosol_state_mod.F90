@@ -119,15 +119,6 @@ contains
     integer, intent(in) :: lyr_ndx      ! vertical layer index
 
     real(r8) :: mmr_tot                 ! mass mixing ratios totaled for all species
-    real(r8),pointer :: mmrptr(:,:)
-    integer :: spec_ndx
-
-    mmr_tot = 0._r8
-
-    do spec_ndx=1,aero_props%nspecies(bin_ndx)
-       call rad_cnst_get_aer_mmr(0, bin_ndx, spec_ndx, 'a', self%state, self%pbuf, mmrptr)
-       mmr_tot = mmr_tot + mmrptr(col_ndx,lyr_ndx)
-    end do
 
   end function ambient_total_bin_mmr
 
@@ -140,7 +131,6 @@ contains
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
 
-    call rad_cnst_get_aer_mmr(0, bin_ndx, species_ndx, 'a', self%state, self%pbuf, mmr)
   end subroutine get_ambient_mmr_0list
 
   !------------------------------------------------------------------------------
@@ -154,7 +144,6 @@ contains
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
 
-    call rad_cnst_get_aer_mmr(list_ndx, bin_ndx, species_ndx, 'a', self%state, self%pbuf, mmr)
   end subroutine get_ambient_mmr_rlist
 
   !------------------------------------------------------------------------------
@@ -166,7 +155,6 @@ contains
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
 
-    call rad_cnst_get_aer_mmr(0, bin_ndx, species_ndx, 'c', self%state, self%pbuf, mmr)
   end subroutine get_cldbrne_mmr
 
   !------------------------------------------------------------------------------
@@ -177,7 +165,6 @@ contains
     integer, intent(in) :: bin_ndx     ! bin index
     real(r8), pointer   :: num(:,:)    ! number densities
 
-    call rad_cnst_get_mode_num(0, bin_ndx, 'a', self%state, self%pbuf, num)
   end subroutine get_ambient_num
 
   !------------------------------------------------------------------------------
@@ -188,7 +175,6 @@ contains
     integer, intent(in) :: bin_ndx             ! bin index
     real(r8), pointer :: num(:,:)
 
-    call rad_cnst_get_mode_num(0, bin_ndx, 'c', self%state, self%pbuf, num)
   end subroutine get_cldbrne_num
 
   !------------------------------------------------------------------------------
@@ -202,16 +188,6 @@ contains
 
     integer :: ibin,ispc, indx
 
-    do ibin = 1, aero_props%nbins()
-       indx = aero_props%indexer(ibin, 0)
-       call self%get_ambient_num(ibin, raer(indx)%fld)
-       call self%get_cldbrne_num(ibin, qqcw(indx)%fld)
-       do ispc = 1, aero_props%nspecies(ibin)
-          indx = aero_props%indexer(ibin, ispc)
-          call self%get_ambient_mmr(ispc,ibin, raer(indx)%fld)
-          call self%get_cldbrne_mmr(ispc,ibin, qqcw(indx)%fld)
-       end do
-    end do
 
   end subroutine get_states
 
@@ -227,49 +203,6 @@ contains
     logical, intent(in) :: use_preexisting_ice ! pre-existing ice flag
     real(r8), intent(out) :: wght(:,:)
 
-    character(len=aero_name_len) :: modetype
-    real(r8), pointer :: dgnum(:,:,:)    ! mode dry radius
-    real(r8) :: sigmag_aitken
-    integer :: i,k
-
-    call rad_cnst_get_info(0, bin_ndx, mode_type=modetype)
-
-    wght = 0._r8
-
-    select case ( trim(species_type) )
-    case('dust')
-       if (modetype=='coarse' .or. modetype=='coarse_dust') then
-          wght(:ncol,:) = 1._r8
-       end if
-    case('sulfate')
-       if (modetype=='aitken') then
-          if ( use_preexisting_ice ) then
-             wght(:ncol,:) = 1._r8
-          else
-             call rad_cnst_get_mode_props(0, bin_ndx, sigmag=sigmag_aitken)
-             call pbuf_get_field(self%pbuf, pbuf_get_index('DGNUM' ), dgnum)
-             do k = 1,nlev
-                do i = 1,ncol
-                   if (dgnum(i,k,bin_ndx) > 0._r8) then
-                      ! only allow so4 with D>0.1 um in ice nucleation
-                      wght(i,k) = max(0._r8,(0.5_r8 - 0.5_r8* &
-                           erf(log(0.1e-6_r8/dgnum(i,k,bin_ndx))/ &
-                           (2._r8**0.5_r8*log(sigmag_aitken)))  ))
-                   end if
-                end do
-             end do
-          endif
-       endif
-    case('black-c')
-       if (modetype=='accum') then
-          wght(:ncol,:) = 1._r8
-       endif
-    case('sulfate_strat')
-       if (modetype=='accum' .or. modetype=='coarse' .or. modetype=='coarse_strat') then
-          wght(:ncol,:) = 1._r8
-       endif
-    end select
-
   end subroutine icenuc_size_wght_arr
 
   !------------------------------------------------------------------------------
@@ -283,46 +216,6 @@ contains
     character(len=*), intent(in) :: species_type  ! species type
     logical, intent(in) :: use_preexisting_ice    ! pre-existing ice flag
     real(r8), intent(out) :: wght
-
-    character(len=aero_name_len) :: modetype
-    real(r8), pointer :: dgnum(:,:,:)    ! mode dry radius
-    real(r8) :: sigmag_aitken
-
-    wght = 0._r8
-
-    call rad_cnst_get_info(0, bin_ndx, mode_type=modetype)
-
-    select case ( trim(species_type) )
-    case('dust')
-       if (modetype=='coarse' .or. modetype=='coarse_dust') then
-          wght = 1._r8
-       end if
-    case('sulfate')
-       if (modetype=='aitken') then
-          if ( use_preexisting_ice ) then
-             wght = 1._r8
-          else
-             call rad_cnst_get_mode_props(0, bin_ndx, sigmag=sigmag_aitken)
-             call pbuf_get_field(self%pbuf, pbuf_get_index('DGNUM' ), dgnum)
-
-             if (dgnum(col_ndx,lyr_ndx,bin_ndx) > 0._r8) then
-                ! only allow so4 with D>0.1 um in ice nucleation
-                wght = max(0._r8,(0.5_r8 - 0.5_r8* &
-                     erf(log(0.1e-6_r8/dgnum(col_ndx,lyr_ndx,bin_ndx))/ &
-                     (2._r8**0.5_r8*log(sigmag_aitken)))  ))
-
-             end if
-          endif
-       endif
-    case('black-c')
-       if (modetype=='accum') then
-          wght = 1._r8
-       endif
-    case('sulfate_strat')
-       if (modetype=='accum' .or. modetype=='coarse' .or. modetype=='coarse_strat') then
-          wght = 1._r8
-       endif
-    end select
 
   end subroutine icenuc_size_wght_val
 
@@ -344,27 +237,6 @@ contains
     logical, optional, intent(in) :: cloud_borne  ! if TRUE cloud-borne aerosols are used
                                                   ! otherwise ambient aerosols are used
 
-    character(len=aero_name_len) :: modetype
-
-    call rad_cnst_get_info(0, bin_ndx, mode_type=modetype)
-
-    wght = 0._r8
-
-    if (species_type == 'dust') then
-       if (modetype=='coarse_dust') then
-          wght(:ncol,:) = 1._r8
-       else
-          call self%icenuc_type_wght_base(bin_ndx, ncol, nlev, species_type, aero_props, rho, wght, cloud_borne)
-       end if
-    else if (species_type == 'sulfate_strat') then
-       if (modetype=='accum') then
-          wght(:ncol,:) = 1._r8
-       elseif ( modetype=='coarse' .or. modetype=='coarse_strat') then
-          call self%icenuc_type_wght_base(bin_ndx, ncol, nlev, species_type, aero_props, rho, wght, cloud_borne)
-       endif
-    else
-       wght(:ncol,:) = 1._r8
-    end if
 
   end subroutine icenuc_type_wght
 
@@ -381,23 +253,6 @@ contains
     real(r8),intent(in) :: dtime                  ! time step size (sec)
     real(r8),intent(inout) :: tend(:,:,:)         ! tendency
 
-    real(r8), pointer :: amb_num(:,:)
-    real(r8), pointer :: cld_num(:,:)
-
-    call self%get_ambient_num(bin_ndx, amb_num)
-    call self%get_cldbrne_num(bin_ndx, cld_num)
-
-    ! if there is no bin mass compute updates/tendencies for bin number
-    ! -- apply the total number change to bin number
-    if (tnd_ndx>0) then
-       tend(col_ndx,lyr_ndx,tnd_ndx) = -delnum_sum/dtime
-    else
-       amb_num(col_ndx,lyr_ndx) = amb_num(col_ndx,lyr_ndx) - delnum_sum
-    end if
-
-    ! apply the total number change to bin number
-    cld_num(col_ndx,lyr_ndx) = cld_num(col_ndx,lyr_ndx) + delnum_sum
-
   end subroutine update_bin
 
   !------------------------------------------------------------------------------
@@ -410,18 +265,6 @@ contains
     integer, intent(in) :: ncol                ! number of columns
     integer, intent(in) :: nlev                ! number of vertical levels
 
-    real(r8) :: wght(ncol,nlev)
-
-    character(len=aero_name_len) :: modetype
-
-    wght(:,:) = 1._r8
-
-    call rad_cnst_get_info(0, bin_ndx, mode_type=modetype)
-
-    if (trim(modetype) == 'aitken') then
-       wght(:,:) = 0._r8
-    end if
-
   end function hetfrz_size_wght
 
   !------------------------------------------------------------------------------
@@ -432,10 +275,6 @@ contains
     class(modal_aerosol_state), intent(in) :: self
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
-
-    real(r8), pointer :: kappa(:,:)        ! hygroscopicity (ncol,nlev)
-
-    nullify(kappa)
 
   end function hygroscopicity
 
@@ -455,63 +294,6 @@ contains
     integer, intent(in) :: nlev                 ! number of levels
     real(r8),intent(out) :: dgnumwet(ncol,nlev) ! aerosol wet diameter (m)
     real(r8),intent(out) :: qaerwat(ncol,nlev)  ! aerosol water concentration (g/g)
-
-    integer :: istat, nmodes
-    real(r8), pointer :: dgnumdry_m(:,:,:) ! number mode dry diameter for all modes
-    real(r8), pointer :: dgnumwet_m(:,:,:) ! number mode wet diameter for all modes
-    real(r8), pointer :: qaerwat_m(:,:,:)  ! aerosol water (g/g) for all modes
-    real(r8), pointer :: wetdens_m(:,:,:)  !
-    real(r8), pointer :: hygro_m(:,:,:)  !
-    real(r8), pointer :: dryvol_m(:,:,:)  !
-    real(r8), pointer :: dryrad_m(:,:,:)  !
-    real(r8), pointer :: drymass_m(:,:,:)  !
-    real(r8), pointer :: so4dryvol_m(:,:,:)  !
-    real(r8), pointer :: naer_m(:,:,:)  !
-
-    nmodes = aero_props%nbins()
-
-    if (list_idx == 0) then
-       ! water uptake and wet radius for the climate list has already been calculated
-       call pbuf_get_field(self%pbuf, pbuf_get_index('DGNUMWET'), dgnumwet_m)
-       call pbuf_get_field(self%pbuf, pbuf_get_index('QAERWAT'),  qaerwat_m)
-
-       dgnumwet(:ncol,:nlev) = dgnumwet_m(:ncol,:nlev,bin_idx)
-       qaerwat (:ncol,:nlev) =  qaerwat_m(:ncol,:nlev,bin_idx)
-
-    else
-       ! If doing a diagnostic calculation then need to calculate the wet radius
-       ! and water uptake for the diagnostic modes
-       allocate(dgnumdry_m(ncol,nlev,nmodes),  dgnumwet_m(ncol,nlev,nmodes), &
-                qaerwat_m(ncol,nlev,nmodes),   wetdens_m(ncol,nlev,nmodes), &
-                hygro_m(ncol,nlev,nmodes),     dryvol_m(ncol,nlev,nmodes), &
-                dryrad_m(ncol,nlev,nmodes),    drymass_m(ncol,nlev,nmodes),  &
-                so4dryvol_m(ncol,nlev,nmodes), naer_m(ncol,nlev,nmodes), stat=istat)
-       if (istat > 0) then
-          dgnumwet = -huge(1._r8)
-          qaerwat = -huge(1._r8)
-          return
-       end if
-       call modal_aero_calcsize_diag(self%state, self%pbuf, list_idx, dgnumdry_m, hygro_m, &
-                                     dryvol_m, dryrad_m, drymass_m, so4dryvol_m, naer_m)
-       call modal_aero_wateruptake_dr(self%state, self%pbuf, list_idx, dgnumdry_m, dgnumwet_m, &
-                                      qaerwat_m, wetdens_m,  hygro_m, dryvol_m, dryrad_m, &
-                                      drymass_m, so4dryvol_m, naer_m)
-
-       dgnumwet(:ncol,:nlev) = dgnumwet_m(:ncol,:nlev,bin_idx)
-       qaerwat (:ncol,:nlev) =  qaerwat_m(:ncol,:nlev,bin_idx)
-
-       deallocate(dgnumdry_m)
-       deallocate(dgnumwet_m)
-       deallocate(qaerwat_m)
-       deallocate(wetdens_m)
-       deallocate(hygro_m)
-       deallocate(dryvol_m)
-       deallocate(dryrad_m)
-       deallocate(drymass_m)
-       deallocate(so4dryvol_m)
-       deallocate(naer_m)
-    endif
-
 
   end subroutine water_uptake
 
@@ -535,14 +317,6 @@ contains
 
     integer :: ispec
 
-    vol(:,:) = 0._r8
-
-    do ispec = 1, aero_props%nspecies(list_idx,bin_idx)
-       call self%get_ambient_mmr(list_idx, ispec, bin_idx, mmr)
-       call aero_props%get(bin_idx, ispec, list_ndx=list_idx, density=specdens)
-       vol(:ncol,:) = vol(:ncol,:) + mmr(:ncol,:)/specdens
-    end do
-
   end function dry_volume
 
   !------------------------------------------------------------------------------
@@ -562,11 +336,6 @@ contains
 
     real(r8) :: dryvol(ncol,nlev)
     real(r8) :: watervol(ncol,nlev)
-
-    dryvol = self%dry_volume(aero_props, list_idx, bin_idx, ncol, nlev)
-    watervol = self%water_volume(aero_props, list_idx, bin_idx, ncol, nlev)
-
-    vol = watervol + dryvol
 
   end function wet_volume
 
@@ -588,13 +357,6 @@ contains
     real(r8) :: dgnumwet(ncol,nlev)
     real(r8) :: qaerwat(ncol,nlev)
 
-    call self%water_uptake(aero_props, list_idx, bin_idx, ncol, nlev, dgnumwet, qaerwat)
-
-    vol(:ncol,:nlev) = qaerwat(:ncol,:nlev)*rh2odens
-    where (vol<0._r8)
-       vol = 0._r8
-    end where
-
   end function water_volume
 
   !------------------------------------------------------------------------------
@@ -609,10 +371,6 @@ contains
     real(r8) :: diam(ncol,nlev)
 
     real(r8), pointer :: dgnumwet(:,:,:)
-
-    call pbuf_get_field(self%pbuf, pbuf_get_index('DGNUMWET'), dgnumwet)
-
-    diam(:ncol,:nlev) = dgnumwet(:ncol,:nlev,bin_idx)
 
   end function wet_diameter
 
@@ -630,57 +388,6 @@ contains
     integer, intent(in) :: nlev   ! number of vertical levels
 
     real(r8) :: frac(ncol,nlev)
-
-    real(r8) :: f_act_conv_coarse(ncol,nlev)
-    real(r8) :: f_act_conv_coarse_dust, f_act_conv_coarse_nacl
-    real(r8) :: tmpdust, tmpnacl
-    integer :: lcoardust, lcoarnacl
-    integer :: i,k
-
-    f_act_conv_coarse(:,:) = 0.60_r8
-    f_act_conv_coarse_dust = 0.40_r8
-    f_act_conv_coarse_nacl = 0.80_r8
-    if (modeptr_coarse > 0) then
-       lcoardust = lptr_dust_a_amode(modeptr_coarse)
-       lcoarnacl = lptr_nacl_a_amode(modeptr_coarse)
-       if ((lcoardust > 0) .and. (lcoarnacl > 0)) then
-          do k = 1, nlev
-             do i = 1, ncol
-                tmpdust = max( 0.0_r8, self%state%q(i,k,lcoardust) )
-                tmpnacl = max( 0.0_r8, self%state%q(i,k,lcoarnacl) )
-                if ((tmpdust+tmpnacl) > 1.0e-30_r8) then
-                   f_act_conv_coarse(i,k) = (f_act_conv_coarse_dust*tmpdust &
-                        + f_act_conv_coarse_nacl*tmpnacl)/(tmpdust+tmpnacl)
-                end if
-             end do
-          end do
-       end if
-    end if
-
-    if (ibin == modeptr_pcarbon) then
-       frac = 0.0_r8
-    else if ((ibin == modeptr_finedust) .or. (ibin == modeptr_coardust)) then
-       frac = 0.4_r8
-    else
-       frac = 0.8_r8
-    end if
-
-    ! set f_act_conv for interstitial (lphase=1) coarse mode species
-    ! for the convective in-cloud, we conceptually treat the coarse dust and seasalt
-    ! as being externally mixed, and apply f_act_conv = f_act_conv_coarse_dust/nacl to dust/seasalt
-    ! number and sulfate are conceptually partitioned to the dust and seasalt
-    ! on a mass basis, so the f_act_conv for number and sulfate are
-    ! mass-weighted averages of the values used for dust/seasalt
-    if (ibin == modeptr_coarse) then
-       frac = f_act_conv_coarse
-       if (ispc>0) then
-          if (lmassptr_amode(ispc,ibin) == lptr_dust_a_amode(ibin)) then
-             frac = f_act_conv_coarse_dust
-          else if (lmassptr_amode(ispc,ibin) == lptr_nacl_a_amode(ibin)) then
-             frac = f_act_conv_coarse_nacl
-          end if
-       end if
-    end if
 
   end function convcld_actfrac
 
