@@ -1,4 +1,4 @@
-module modal_aerosol_state_mod
+module sectional_aerosol_state_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
   use shr_spfn_mod, only: erf => shr_spfn_erf
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
