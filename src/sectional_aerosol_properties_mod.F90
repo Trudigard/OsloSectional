@@ -2,7 +2,6 @@ module sectional_aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
   use physconst, only: pi
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
-  use rad_constituents, only: rad_cnst_get_info, rad_cnst_get_mode_props, rad_cnst_get_aer_props
 
   implicit none
 

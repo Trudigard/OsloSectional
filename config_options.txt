@@ -1,0 +1,70 @@
+# bins: size, nr conc
+# groups/ranges: volume fractions, density, hygroscopicity, refractive index, ...
+
+[SecGroup "G1" nucleation]
+bins=10,20,50,100 # this is a list of bin boundaries, this list defines 3 bins
+species=OA,SO4 # list of species -> e.g. OA_G1
+# properties... one number: same for the whole group. one number per bin: different for each bin
+# per bin:
+size_param=...
+surface_area=...
+# per range:
+solubility=... # or solubility=20,20,20 per bin or per group? or for each species
+refractive_index=...
+hygroscopicity=...
+
+surface properties (for condensation)
+water content - size # is it inside or outside of the bins?
+
+[SecGroup "G2" nucleation is]
+bins=10,20,50,100 # this is a list of bin boundaries, this list defines 3 bins
+species=BC # list of species -> e.g. OA_G1
+# properties... one number: same for the whole group. one number per bin: different for each bin
+# per bin:
+size_param=...
+surface_area=...
+# per range:
+solubility=... # or solubility=20,20,20 per bin or per group? or for each species
+refractive_index=...
+hygroscopicity=...
+
+surface properties (for condensation)
+water content - size # is it inside or outside of the bins?
+
+[SecGroup "G3" aitken]
+bins=100,150,200
+species=...
+solubility=...
+
+[tracers] # all bins are one tracer, all species in each group are one tracer
+mix_B1
+mix_B2
+mix_B3
+...
+
+SO4_G1
+SO4_G2
+...
+BC_G1
+BC_G2
+...
+
+size_param_B1
+...
+refrac_ind_G1
+...
+dens_G1
+...
+
+[processes]
+condensation
+coagulation
+evaporation
+dissolution
+activation
+
+emission
+wetdep
+drydep
+nucleation
+hygroscopic growth

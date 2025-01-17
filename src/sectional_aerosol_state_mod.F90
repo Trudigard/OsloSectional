@@ -2,9 +2,6 @@ module sectional_aerosol_state_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
   use shr_spfn_mod, only: erf => shr_spfn_erf
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
-  use rad_constituents, only: rad_cnst_get_aer_mmr, rad_cnst_get_mode_num, rad_cnst_get_info
-  use rad_constituents, only: rad_cnst_get_mode_props
-  use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
   use physics_types, only: physics_state
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
   use physconst,  only: rhoh2o
