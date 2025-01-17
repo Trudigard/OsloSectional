@@ -13,7 +13,7 @@ module sectional_aerosol_state_mod
 
   private
 
-  public :: modal_aerosol_state
+  public :: sectional_aerosol_state
 
   type, extends(aerosol_state) :: modal_aerosol_state
      private
