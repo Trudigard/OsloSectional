@@ -6,6 +6,10 @@ module sectional_aerosol_state_mod
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
   use physconst,  only: rhoh2o
 
+  use spmd_utils,     only: masterproc
+  use cam_abortutils, only: endrun
+  use cam_logfile,    only: iulog
+
   implicit none
 
   private
@@ -62,6 +66,10 @@ contains
 
     integer :: ierr
 
+    character(len=*), parameter :: subname = 'constructor'
+
+    call endrun(subname//' is not yet implemented')
+
     allocate(newobj,stat=ierr)
     if( ierr /= 0 ) then
        nullify(newobj)
@@ -78,6 +86,10 @@ contains
   subroutine destructor(self)
     type(sectional_aerosol_state), intent(inout) :: self
 
+    character(len=*), parameter :: subname = 'destructor'
+
+    call endrun(subname//' is not yet implemented')
+
     nullify(self%state)
     nullify(self%pbuf)
 
@@ -91,7 +103,11 @@ contains
   subroutine set_transported( self, transported_array )
     class(sectional_aerosol_state), intent(inout) :: self
     real(r8), intent(in) :: transported_array(:,:,:)
-    ! to be implemented later
+
+    character(len=*), parameter :: subname = 'set_transported'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -102,7 +118,10 @@ contains
   subroutine get_transported( self, transported_array )
     class(sectional_aerosol_state), intent(in) :: self
     real(r8), intent(out) :: transported_array(:,:,:)
-    ! to be implemented later
+
+    character(len=*), parameter :: subname = 'get_transported'
+
+    call endrun(subname//' is not yet implemented')
   end subroutine get_transported
 
   !------------------------------------------------------------------------
@@ -117,6 +136,10 @@ contains
 
     real(r8) :: mmr_tot                 ! mass mixing ratios totaled for all species
 
+    character(len=*), parameter :: subname = 'ambient_total_bin_mmr'
+
+    call endrun(subname//' is not yet implemented')
+
   end function ambient_total_bin_mmr
 
   !------------------------------------------------------------------------------
@@ -127,6 +150,10 @@ contains
     integer, intent(in) :: species_ndx  ! species index
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
+
+    character(len=*), parameter :: subname = 'get_ambient_mmr_0list'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine get_ambient_mmr_0list
 
@@ -141,6 +168,10 @@ contains
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
 
+    character(len=*), parameter :: subname = 'get_ambient_mmr_rlist'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine get_ambient_mmr_rlist
 
   !------------------------------------------------------------------------------
@@ -152,6 +183,10 @@ contains
     integer, intent(in) :: bin_ndx      ! bin index
     real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
 
+    character(len=*), parameter :: subname = 'get_cldbrne_mmr'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine get_cldbrne_mmr
 
   !------------------------------------------------------------------------------
@@ -162,6 +197,10 @@ contains
     integer, intent(in) :: bin_ndx     ! bin index
     real(r8), pointer   :: num(:,:)    ! number densities
 
+    character(len=*), parameter :: subname = 'get_ambient_num'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine get_ambient_num
 
   !------------------------------------------------------------------------------
@@ -171,6 +210,10 @@ contains
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: bin_ndx             ! bin index
     real(r8), pointer :: num(:,:)
+
+    character(len=*), parameter :: subname = 'get_cldbrne_num'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine get_cldbrne_num
 
@@ -184,6 +227,10 @@ contains
     type(ptr2d_t), intent(out) :: qqcw(:)
 
     integer :: ibin,ispc, indx
+
+    character(len=*), parameter :: subname = 'get_states'
+
+    call endrun(subname//' is not yet implemented')
 
 
   end subroutine get_states
@@ -200,6 +247,10 @@ contains
     logical, intent(in) :: use_preexisting_ice ! pre-existing ice flag
     real(r8), intent(out) :: wght(:,:)
 
+    character(len=*), parameter :: subname = 'icenuc_size_wght_arr'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine icenuc_size_wght_arr
 
   !------------------------------------------------------------------------------
@@ -213,6 +264,10 @@ contains
     character(len=*), intent(in) :: species_type  ! species type
     logical, intent(in) :: use_preexisting_ice    ! pre-existing ice flag
     real(r8), intent(out) :: wght
+
+    character(len=*), parameter :: subname = 'icenuc_size_wght_val'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine icenuc_size_wght_val
 
@@ -234,6 +289,9 @@ contains
     logical, optional, intent(in) :: cloud_borne  ! if TRUE cloud-borne aerosols are used
                                                   ! otherwise ambient aerosols are used
 
+    character(len=*), parameter :: subname = 'icenuc_type_wght'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine icenuc_type_wght
 
@@ -250,6 +308,10 @@ contains
     real(r8),intent(in) :: dtime                  ! time step size (sec)
     real(r8),intent(inout) :: tend(:,:,:)         ! tendency
 
+    character(len=*), parameter :: subname = 'update_bin'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine update_bin
 
   !------------------------------------------------------------------------------
@@ -262,6 +324,10 @@ contains
     integer, intent(in) :: ncol                ! number of columns
     integer, intent(in) :: nlev                ! number of vertical levels
 
+    character(len=*), parameter :: subname = 'hetfrz_size_wght'
+
+    call endrun(subname//' is not yet implemented')
+
   end function hetfrz_size_wght
 
   !------------------------------------------------------------------------------
@@ -272,6 +338,10 @@ contains
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
+
+    character(len=*), parameter :: subname = 'hygroscopicity'
+
+    call endrun(subname//' is not yet implemented')
 
   end function hygroscopicity
 
@@ -289,6 +359,10 @@ contains
     integer, intent(in) :: nlev                 ! number of levels
     real(r8),intent(out) :: dgnumwet(ncol,nlev) ! aerosol wet diameter (m)
     real(r8),intent(out) :: qaerwat(ncol,nlev)  ! aerosol water concentration (g/g)
+
+    character(len=*), parameter :: subname = 'water_uptake'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine water_uptake
 
@@ -312,6 +386,10 @@ contains
 
     integer :: ispec
 
+    character(len=*), parameter :: subname = 'dry_volume'
+
+    call endrun(subname//' is not yet implemented')
+
   end function dry_volume
 
   !------------------------------------------------------------------------------
@@ -331,6 +409,10 @@ contains
 
     real(r8) :: dryvol(ncol,nlev)
     real(r8) :: watervol(ncol,nlev)
+
+    character(len=*), parameter :: subname = 'wet_volume'
+
+    call endrun(subname//' is not yet implemented')
 
   end function wet_volume
 
@@ -352,6 +434,10 @@ contains
     real(r8) :: dgnumwet(ncol,nlev)
     real(r8) :: qaerwat(ncol,nlev)
 
+    character(len=*), parameter :: subname = 'water_volume'
+
+    call endrun(subname//' is not yet implemented')
+
   end function water_volume
 
   !------------------------------------------------------------------------------
@@ -367,6 +453,10 @@ contains
 
     real(r8), pointer :: dgnumwet(:,:,:)
 
+    character(len=*), parameter :: subname = 'wet_diameter'
+
+    call endrun(subname//' is not yet implemented')
+
   end function wet_diameter
 
   !------------------------------------------------------------------------------
@@ -381,6 +471,10 @@ contains
     integer, intent(in) :: nlev   ! number of vertical levels
 
     real(r8) :: frac(ncol,nlev)
+
+    character(len=*), parameter :: subname = 'convcld_actfrac'
+
+    call endrun(subname//' is not yet implemented')
 
   end function convcld_actfrac
 
