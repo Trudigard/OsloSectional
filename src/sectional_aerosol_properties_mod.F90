@@ -3,6 +3,10 @@ module sectional_aerosol_properties_mod
   use physconst, only: pi
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
 
+  use spmd_utils,     only: masterproc
+  use cam_abortutils, only: endrun
+  use cam_logfile,    only: iulog
+
   implicit none
 
   private
@@ -79,7 +83,9 @@ contains
     character(len=aero_name_len) :: spectype
 
     integer :: npoa, nsoa, nbc
+    character(len=*), parameter :: subname = 'constructor'
 
+    call endrun(subname//' is not yet implemented')
 
   end function constructor
 
@@ -88,6 +94,10 @@ contains
   subroutine destructor(self)
     type(sectional_aerosol_properties), intent(inout) :: self
 
+    character(len=*), parameter :: subname = 'destructor'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine destructor
 
   !------------------------------------------------------------------------------
@@ -95,8 +105,10 @@ contains
   !------------------------------------------------------------------------------
   integer function number_transported(self)
     class(sectional_aerosol_properties), intent(in) :: self
-    ! to be implemented later
-    number_transported = -1
+    character(len=*), parameter :: subname = 'number_transported'
+
+    call endrun(subname//' is not yet implemented')
+
   end function number_transported
 
   !------------------------------------------------------------------------
@@ -125,6 +137,9 @@ contains
     complex(r8), pointer, optional, intent(out) :: refindex_lw(:) ! long wave species refractive indices
 
     integer :: ilist
+    character(len=*), parameter :: subname = 'get'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine get
 
@@ -178,6 +193,9 @@ contains
     integer,   optional, intent(out) :: nkap        ! hygroscopicity dimension size
     integer,   optional, intent(out) :: nrelh       ! relative humidity dimension size
 
+    character(len=*), parameter :: subname = 'optics_params'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine optics_params
 
@@ -191,6 +209,9 @@ contains
     real(r8), intent(in) :: volconc ! volume conc (m3/m3)
     real(r8), intent(in) :: numconc ! number conc (1/m3)
 
+    character(len=*), parameter :: subname = 'amcube'
+
+    call endrun(subname//' is not yet implemented')
 
   end function amcube
 
@@ -206,6 +227,10 @@ contains
     real(r8),intent(out) :: fn       ! activation fraction for aerosol number
     real(r8),intent(out) :: fm       ! activation fraction for aerosol mass
 
+    character(len=*), parameter :: subname = 'actfracs'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine actfracs
 
   !------------------------------------------------------------------------
@@ -216,6 +241,10 @@ contains
     integer, intent(in) :: bin_ndx           ! bin number
     character(len=*), intent(out) :: name_a ! constituent name of ambient aerosol number dens
     character(len=*), intent(out) :: name_c ! constituent name of cloud-borne aerosol number dens
+
+    character(len=*), parameter :: subname = 'num_names'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine num_names
 
@@ -229,6 +258,10 @@ contains
     character(len=*), intent(out) :: name_a ! constituent name of ambient aerosol MMR
     character(len=*), intent(out) :: name_c ! constituent name of cloud-borne aerosol MMR
 
+    character(len=*), parameter :: subname = 'mmr_names'
+
+    call endrun(subname//' is not yet implemented')
+
   end subroutine mmr_names
 
   !------------------------------------------------------------------------
@@ -238,6 +271,9 @@ contains
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
     character(len=*), intent(out) :: name   ! constituent name of ambient aerosol number dens
+    character(len=*), parameter :: subname = 'amb_num_name'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine amb_num_name
 
@@ -249,6 +285,9 @@ contains
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
     character(len=*), intent(out) :: name   ! constituent name of ambient aerosol MMR
+    character(len=*), parameter :: subname = 'amb_mmr_name'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine amb_mmr_name
 
@@ -260,6 +299,9 @@ contains
     integer, intent(in) :: bin_ndx           ! bin number
     integer, intent(in) :: species_ndx       ! species number
     character(len=*), intent(out) :: spectype ! species type
+    character(len=*), parameter :: subname = 'species_type'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine species_type
 
@@ -275,9 +317,11 @@ contains
     character(len=aero_name_len) :: spectype
     character(len=aero_name_len) :: modetype
     integer :: spc_ndx
+    character(len=*), parameter :: subname = 'icenuc_updates_num'
 
     res = .false.
 
+    call endrun(subname//' is not yet implemented')
 
   end function icenuc_updates_num
 
@@ -293,9 +337,11 @@ contains
 
     character(len=32) :: spectype
     character(len=32) :: modetype
+    character(len=*), parameter :: subname = 'icenuc_updates_mmr'
 
     res = .false.
 
+    call endrun(subname//' is not yet implemented')
 
   end function icenuc_updates_mmr
 
@@ -309,6 +355,9 @@ contains
     integer,  intent(in) :: istart          ! start column index (1 <= istart <= istop <= pcols)
     integer,  intent(in) :: istop           ! stop column index
     integer,  intent(in) :: m               ! mode or bin index
+    character(len=*), parameter :: subname = 'apply_number_limits'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine apply_number_limits
 
@@ -322,9 +371,9 @@ contains
     integer, intent(in) :: spc_ndx  ! species number
 
     logical :: res
+    character(len=*), parameter :: subname = 'hetfrz_species'
 
-
-    end if
+    call endrun(subname//' is not yet implemented')
 
   end function hetfrz_species
 
@@ -334,6 +383,9 @@ contains
   logical function soluble(self,bin_ndx)
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: bin_ndx           ! bin number
+    character(len=*), parameter :: subname = 'soluble'
+
+    call endrun(subname//' is not yet implemented')
 
   end function soluble
 
@@ -348,6 +400,9 @@ contains
     real(r8) :: minrad  ! meters
 
     integer :: nbins
+    character(len=*), parameter :: subname = 'min_mass_mean_rad'
+
+    call endrun(subname//' is not yet implemented')
 
   end function min_mass_mean_rad
 
@@ -359,6 +414,9 @@ contains
     integer, intent(in) :: list_ndx  ! radiation list number
 
     integer :: res
+    character(len=*), parameter :: subname = 'nbins_rlist'
+
+    call endrun(subname//' is not yet implemented')
 
   end function nbins_rlist
 
@@ -371,6 +429,9 @@ contains
     integer, intent(in) :: bin_ndx  ! bin number
 
     integer :: res
+    character(len=*), parameter :: subname = 'nspecies_per_bin_rlist'
+
+    call endrun(subname//' is not yet implemented')
 
   end function nspecies_per_bin_rlist
 
@@ -384,6 +445,9 @@ contains
     integer, intent(in) :: bin_ndx  ! bin number
 
     real(r8) :: res
+    character(len=*), parameter :: subname = 'alogsig_rlist'
+
+    call endrun(subname//' is not yet implemented')
 
   end function alogsig_rlist
 
@@ -396,6 +460,9 @@ contains
     integer, intent(in) :: bin_ndx  ! bin number
 
     character(len=32) name
+    character(len=*), parameter :: subname = 'bin_name'
+
+    call endrun(subname//' is not yet implemented')
 
   end function bin_name
 
@@ -409,6 +476,9 @@ contains
     integer, intent(in) :: bin_ndx  ! bin number
 
     real(r8) :: diam
+    character(len=*), parameter :: subname = 'scav_diam'
+
+    call endrun(subname//' is not yet implemented')
 
   end function scav_diam
 
@@ -422,6 +492,9 @@ contains
 
     class(sectional_aerosol_properties), intent(in) :: self
     real(r8), intent(inout) :: dcondt(:)
+    character(len=*), parameter :: subname = 'resuspension_resize'
+
+    call endrun(subname//' is not yet implemented')
 
   end subroutine resuspension_resize
 
@@ -440,7 +513,9 @@ contains
     real(r8), intent(out) :: bulk_fluxes(:)        ! kg/m2
     integer,  intent(out) :: error_code            ! error code (0 if no error)
     character(len=*), intent(out) :: error_string  ! error string
+    character(len=*), parameter :: subname = 'rebin_bulk_fluxes'
 
+    call endrun(subname//' is not yet implemented')
 
   end subroutine rebin_bulk_fluxes
 
@@ -452,7 +527,9 @@ contains
     integer, intent(in) :: bin_ndx ! bin number
 
     character(len=aero_name_len) :: modetype
+    character(len=*), parameter :: subname = 'hydrophilic'
 
+    call endrun(subname//' is not yet implemented')
 
   end function hydrophilic
 
