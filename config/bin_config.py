@@ -78,7 +78,7 @@ species_info = {
 		'short_name': 'SS',
 		'long_name': 'Seasalt aerosol',
 		'range_bounds': (0,0),
-      	'range_idx': [],
+		'range_idx': [],
 		'composition': 'NaCl',
 		'enabled': False,
   		'soluble': True
@@ -87,7 +87,7 @@ species_info = {
 		'short_name': 'NO3',
 		'long_name': 'Nitrate aerosol',
 		'range_bounds': (0,0),
-       	'range_idx': [],
+		'range_idx': [],
 		'composition': 'NO3',
 		'enabled': False,
   		'soluble': True
