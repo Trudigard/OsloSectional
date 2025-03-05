@@ -6,30 +6,6 @@ import numpy as np
 import configparser
 import sys
 
-def check_species_bounds(species_bounds):
-	''' Check if species bounds are equal to any range bounds'''
-	if any(i not in range_bnds for i in species_bounds):
-		sys.exit('ERROR: Species range bound not equal to range bounds')
-
-def find_spec_bnds(range_bnds, spec_bnds):
-	''' Set species bounds to the closest range bound'''
-	range_bnds = np.asarray(range_bnds)
-	idx0 = (np.abs(range_bnds - spec_bnds[0])).argmin()
-	idx1 = (np.abs(range_bnds - spec_bnds[1])).argmin()
-	spec_bnds[0] = range_bnds[idx0]
-	spec_bnds[1] = range_bnds[idx1]
-
-def get_spec_array(spec_range, spec_name):
-	''' Add species name to array of species names.
-	Each Species is named as speciesname_i where i is the index
-	of the range it belongs to'''
-	spec_list = [
-		f"{spec_name}_R{i}"
-		for i in range(1, len(range_bnds))
-		if range_bnds[i] > spec_range[0] and range_bnds[i] <= spec_range[1]
-	]
-	return spec_list
-
 def parse_range(config, section, option):
 	''' Parse a range from the config file'''
 	range_str = config.get(section, option).split(',')
@@ -52,26 +28,91 @@ ranges = config.getboolean('RANGE SPECS', 'ranges')
 
 # Dictionary for species information
 # If species are added, add them here
-# Species keys and their corresponding range keys
+# "range_bounds", "range_idx", and "enabled" are read from the config.ini file
+# everything else is set here
 species_info = {
-	'organic': ('organic_range', 'OA'),
-	'dust': ('dust_range', 'DU'),
-	'sulfate': ('sulfate_range', 'SO4'),
-	'blackcarbon': ('blackcarbon_range', 'BC'),
-	'blackcarbon_insoluble': ('blackcarbon_insoluble_range', 'BC_is'),
-	'seasalt': ('seasalt_range', 'SS'),
-	'nitrate': ('nitrate_range', 'NO3')
+	'organic': {
+    	'short_name': 'OA',
+		'long_name': 'Organic aerosol',
+		'range_bounds': (0,0),
+		'range_idx': [],
+		'composition': 'C',
+		'enabled': False,
+  		'soluble': True
+	},
+	'dust': {
+    	'short_name': 'DU',
+		'long_name': 'Dust aerosol',
+		'range_bounds': (0,0),
+		'range_idx': [],
+		'composition': 'AlSiO5',
+		'enabled': False,
+  		'soluble': True
+	},
+	'sulfate': {
+		'short_name': 'SO4',
+		'long_name': 'Sulfate aerosol',
+		'range_bounds': (0,0),
+		'range_idx': [],
+		'composition': 'NH4SO4',
+		'enabled': False,
+  		'soluble': True
+	},
+	'blackcarbon': {
+		'short_name': 'BC',
+		'long_name': 'Black Carbon aerosol',
+		'range_bounds': (0,0),
+		'range_idx': [],
+		'composition': 'C',
+		'enabled': False,
+  		'soluble': True
+	},
+	'blackcarbon_insoluble': {
+		'short_name': 'BC_is',
+		'long_name': 'Insoluble Black Carbon aerosol',
+		'range_bounds': (0,0),
+		'range_idx': [],
+		'composition': 'C',
+		'enabled': False,
+  		'soluble': False
+	},
+	'seasalt': {
+		'short_name': 'SS',
+		'long_name': 'Seasalt aerosol',
+		'range_bounds': (0,0),
+      	'range_idx': [],
+		'composition': 'NaCl',
+		'enabled': False,
+  		'soluble': True
+	},
+	'nitrate': {
+		'short_name': 'NO3',
+		'long_name': 'Nitrate aerosol',
+		'range_bounds': (0,0),
+       	'range_idx': [],
+		'composition': 'NO3',
+		'enabled': False,
+  		'soluble': True
+	}
 }
 
-# Check what species are enabled
-enabled_species = {species: config.getboolean('SPECIES', species) for species in species_info.keys()}
-# get the range bounds for each species
-range_bnds = parse_range(config, 'RANGE SPECS', 'range_bounds')
+# get the range bounds
+range_bnds = np.asarray(parse_range(config, 'RANGE SPECS', 'range_bounds'))
 
-species_ranges = {species: parse_range(config, 'RANGE SPECS', range_key) for species, (range_key, _) in species_info.items()}
+for species in species_info.keys():
+	''' Check if species are enabled.
+	This will get the 'enabled' and 'range_bounds' keys for each species
+	from the config file. If species are not found, they are set to False'''
+	# read from file
+	enabled = config.getboolean('SPECIES', species, fallback=False)
+	species_range = parse_range(config, 'RANGE SPECS', str(species + '_range'))
 
-for species, bounds in species_ranges.items():
-	if any(i not in range_bnds for i in bounds):
+	# set values in dictionary
+	species_info[species]['enabled'] = enabled
+	species_info[species]['range_bounds'] = species_range
+
+	# check if species bounds are == range bounds
+	if any(i not in range_bnds for i in species_range):
 		sys.exit('ERROR: Species range bound not equal to range bounds')
 
 
@@ -124,14 +165,23 @@ else:
 	range_bnds = r_bnds
 
 # set species bounds equal to range bounds
-for species, spec_bnds in species_ranges.items():
-	find_spec_bnds(range_bnds, spec_bnds)
+for species in species_info.keys():
+	''' The species bounds are adjusted to the range bounds'''
+	idx0 = (np.abs(range_bnds - species_info[species]['range_bounds'][0])).argmin()
+	idx1 = (np.abs(range_bnds - species_info[species]['range_bounds'][1])).argmin()
+	species_info[species]['range_bounds'] = np.asarray([range_bnds[idx0], range_bnds[idx1]])
 
 spec_list = []
-for species, enabled in enabled_species.items():
-	if enabled:
-		range_key, spec_name = species_info[species]
-		spec_list.extend(get_spec_array(species_ranges[species], spec_name))
+for species in species_info.keys():
+	if species_info[species]['enabled']:
+		spec_list.extend([f"{species_info[species]['short_name']}_R{i}"
+					for i in range(1, len(range_bnds))
+					if range_bnds[i] > species_info[species]['range_bounds'][0]
+					and range_bnds[i] <= species_info[species]['range_bounds'][1]])
+		species_info[species]['range_idx'].extend([i
+					for i in range(1, len(range_bnds))
+					if range_bnds[i] > species_info[species]['range_bounds'][0]
+					and range_bnds[i] <= species_info[species]['range_bounds'][1]])
 
 spec_array = np.array(spec_list)
 nspec = len(spec_array)
@@ -144,7 +194,7 @@ ntrac = nspec + N
 #
 # =====================================================================
 
-f = open("bin_nl", "w") # change to "a" later!!!
+f = open("bin_nl", "w") # change to "a" later!!! -> atm_in?
 f.write("&oslo_sectional_nl\n")
 f.write("nbin = " + str(N) + "\n")
 f.write("nrange = " + str(len(range_bnds)-1) + "\n")
@@ -162,16 +212,9 @@ f.write("range_bnd_list = ")
 for i in range(len(range_bnds)):
 	f.write(str(range_bnds[i]) + ",")
 f.write("\n")
-#f.write("OA_active = ." + str(organic) + ". \n")
-#f.write("DU_active = ." + str(dust) + ". \n")
-#f.write("SO4_active = ." + str(sulfate) + ". \n")
-#f.write("BC_active = ." + str(blackcarbon) + ". \n")
-#f.write("BC_is_active = ." + str(blackcarbon_insoluble) + ". \n")
-#f.write("SS_active = ." + str(seasalt) + ". \n")
-#f.write("NO3_active = ." + str(nitrate) + ". \n")
 f.write("bin_name_list = ")
 for i in range(1, len(r)+1):
-	f.write("'aer_" + str(i) + "',")
+	f.write("'num_" + str(i) + "',")
 f.write("\n")
 f.write("species_name_list = ")
 for i in range(len(spec_array)):
@@ -179,13 +222,65 @@ for i in range(len(spec_array)):
 f.write("\n")
 f.write("/\n")
 f.close()
-'''
-f.write("species_names = 'OA', 'DU', 'SO4', 'BC', 'BC_is', 'SS', 'NO3'\n")
 
-f.write("OA_range = " + str(OA_range[0]) + ", " + str(OA_range[1]) + "\n")
-f.write("DU_range = " + str(DU_range[0]) + ", " + str(DU_range[1]) + "\n")
-f.write("SO4_range = " + str(SO4_range[0]) + ", " + str(SO4_range[1]) + "\n")
-f.write("BC_range = " + str(BC_range[0]) + ", " + str(BC_range[1]) + "\n")
-f.write("BC_is_range = " + str(BC_is_range[0]) + ", " + str(BC_is_range[1]) + "\n")
-f.write("SS_range = " + str(SS_range[0]) + ", " + str(SS_range[1]) + "\n")
-f.write("NO3_range = " + str(NO3_range[0]) + ", " + str(NO3_range[1]) + "\n")'''
+# ==============================================================================
+# Prepare output for chem_mech.in file
+# The filenames and file dirs will need to be changed
+# e.g. the directory where the chem_mech file comes from. Probably can be retrieved
+# somehow from the compset.
+# Also the output, currently 'my_chem_mech.in' needs to go to the casedir
+# The code below reads the chem_mech.in file line by line and looks for keywords
+# "Solution" and "Implicit". Below these, the composition of the tracers and the
+# names of the tracers are added. The file is then written out to my_chem_mech.in
+# ==============================================================================
+
+# write composition
+composition_list = []
+implicit_list = []
+
+for species in species_info.keys():
+   for i in range(len(species_info[species]['range_idx'])):
+      composition_list.append(
+         species_info[species]['short_name'] +
+         '_R' +
+         str(species_info[species]['range_idx'][i]) +
+         ' -> ' +
+         species_info[species]['composition']
+	  )
+      implicit_list.append(
+         species_info[species]['short_name'] +
+         '_R' +
+         str(species_info[species]['range_idx'][i])
+	  )
+
+for i in range(1,N+1):
+   composition_list.append(
+      'num_' + str(i) + ' -> H'
+    )
+   implicit_list.append(
+      'num_' + str(i)
+   )
+
+
+# read chem_mech.in
+
+with open('chem_mech.in', 'r') as chem_file:
+   lines = chem_file.readlines()
+
+modified_chem = []
+
+for line in lines:
+    # write lines from the old file for the new file
+	modified_chem.append(line)
+    # add species composition
+	if 'Solution' in line and not 'End' in line and not 'Classes' in line:
+		for i in range(len(composition_list)):
+			modified_chem.append(composition_list[i] + '\n')
+    # add species for advection
+	if 'Implicit' in line and not 'End' in line:
+		for i in range(len(implicit_list)):
+			modified_chem.append(implicit_list[i] + '\n')
+#      modified_lines.append()
+# write out to my_chem_mech.in
+with open('my_chem_mech.in', 'w') as file:
+      file.writelines(modified_chem)
