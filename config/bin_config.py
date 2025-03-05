@@ -1,6 +1,10 @@
+# ==============================================================================
 # Python script that reads config.ini with parameter settings
-# for the sectional aerosol model and writes a namelist file for
-# NorESM
+# for the sectional aerosol model in NorESM
+# Output:
+# namelist oslo_sectional_nl with settings for NorESM
+# my_chem_mech.in: edited to contain aerosol tracers
+# ==============================================================================
 
 import numpy as np
 import configparser
@@ -14,22 +18,16 @@ def parse_range(config, section, option):
 
 pi = np.pi
 
-# INPUT
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-# bin settings
-N = config.getint('BIN SPECS', 'nbin')
-r_1 = config.getfloat('BIN SPECS', 'radius_1')
-r_N = config.getfloat('BIN SPECS', 'radius_N')
-
-# Booleans for ranges, species
-ranges = config.getboolean('RANGE SPECS', 'ranges')
-
+# ==============================================================================
 # Dictionary for species information
 # If species are added, add them here
 # "range_bounds", "range_idx", and "enabled" are read from the config.ini file
 # everything else is set here
+# ==============================================================================
+
 species_info = {
 	'organic': {
     	'short_name': 'OA',
@@ -96,6 +94,18 @@ species_info = {
 	}
 }
 
+# ==============================================================================
+# Read input from config file
+# ==============================================================================
+
+# bin settings
+N = config.getint('BIN SPECS', 'nbin')
+r_1 = config.getfloat('BIN SPECS', 'radius_1')
+r_N = config.getfloat('BIN SPECS', 'radius_N')
+
+# Booleans for ranges, species
+ranges = config.getboolean('RANGE SPECS', 'ranges')
+
 # get the range bounds
 range_bnds = np.asarray(parse_range(config, 'RANGE SPECS', 'range_bounds'))
 
@@ -115,6 +125,9 @@ for species in species_info.keys():
 	if any(i not in range_bnds for i in species_range):
 		sys.exit('ERROR: Species range bound not equal to range bounds')
 
+# ==============================================================================
+# Calculate bins with Volume ratio approach
+# ==============================================================================´
 
 # Bin calculations
 # calculate volume ratio
@@ -144,6 +157,9 @@ v_bnds = np.append(v_lo, v_hi)
 # calculate radii from volume
 r_bnds = (v_bnds*4/(3*pi))**(1/3)
 
+# ==============================================================================
+# Set range bounds to the closest bin bounds to avoid a messy overlap
+# ==============================================================================
 
 # find bin bounds closest to range_bnds
 if ranges:
@@ -164,7 +180,11 @@ else:
 	# If no ranges (classic sectional scheme), set range bounds equal to bin bounds
 	range_bnds = r_bnds
 
+# ==============================================================================
 # set species bounds equal to range bounds
+# also the keys for what range indices each species has are set
+# ==============================================================================
+
 for species in species_info.keys():
 	''' The species bounds are adjusted to the range bounds'''
 	idx0 = (np.abs(range_bnds - species_info[species]['range_bounds'][0])).argmin()
@@ -191,7 +211,6 @@ ntrac = nspec + N
 # Write to namelist
 # Change to write to e.g. atm_in namelist?
 # Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
-#
 # =====================================================================
 
 f = open("bin_nl", "w") # change to "a" later!!! -> atm_in?
@@ -234,7 +253,6 @@ f.close()
 # names of the tracers are added. The file is then written out to my_chem_mech.in
 # ==============================================================================
 
-# write composition
 composition_list = []
 implicit_list = []
 
