@@ -81,7 +81,7 @@ class RangeSpecs:
 # Read input from config file
 # ==============================================================================
 # INPUT
-filepath = 'config_new.ini' # os.path.join(config)
+filepath = 'dust_oslo_sectional.ini' # os.path.join(config)
 config = configparser.ConfigParser()
 config.read(filepath)
 
