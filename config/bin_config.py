@@ -8,7 +8,8 @@
 
 import numpy as np
 import configparser
-import sys
+import sys, os
+import argparse
 
 def parse_range(config, section, option):
 	''' Parse a range from the config file'''
@@ -77,137 +78,129 @@ class RangeSpecs:
 			# If no ranges (classic sectional scheme), set range bounds equal to bin bounds
 			self.range_bnds = r_bnds
 
-# ==============================================================================
-# Read input from config file
-# ==============================================================================
-# INPUT
-filepath = 'dust_oslo_sectional.ini' # os.path.join(config)
-config = configparser.ConfigParser()
-config.read(filepath)
+def bin_config(aerconf_file, chem_mech_file):
+	# ==============================================================================
+	# Read input from config file
+	# ==============================================================================
+	# INPUT
+	config = configparser.ConfigParser()
+	config.read(aerconf_file)
 
-# ==============================================================================
-# Initialize
-# ==============================================================================´
+	# ==============================================================================
+	# Initialize
+	# ==============================================================================´
 
-# initialize bins
-bin_specs = BinSpecs(config)
-bin_specs.calc_bins()
+	# initialize bins
+	bin_specs = BinSpecs(config)
+	bin_specs.calc_bins()
 
-# initialize ranges
-range_specs = RangeSpecs(config)
+	# initialize ranges
+	range_specs = RangeSpecs(config)
 
-# initialize aerosol species
-species_obj_list = []
-for section in config.sections():
-    if section not in ['BIN SPECS', 'RANGE SPECS']:
-        species_obj_list.append(AerosolSpecies(config, section))
+	# initialize aerosol species
+	species_obj_list = []
+	for section in config.sections():
+   	if section not in ['BIN SPECS', 'RANGE SPECS']:
+      	species_obj_list.append(AerosolSpecies(config, section))
 
-[species_obj.check_range_bnds for species_obj in species_obj_list]  # check species range bnds
+	[species_obj.check_range_bnds for species_obj in species_obj_list]  # check species range bnds
 
-# adjust range range_bnds
-range_specs.adjust_range_bnds(bin_specs.r_bnds)
+	# adjust range range_bnds
+	range_specs.adjust_range_bnds(bin_specs.r_bnds)
 
-# get species range indices
-[species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
+	# get species range indices
+	[species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
 
-# =====================================================================
-# Write to namelist
-# Change to write to e.g. atm_in namelist?
-# Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
-# =====================================================================
+	# =====================================================================
+	# Write to namelist
+	# Change to write to e.g. atm_in namelist?
+	# Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
+	# =====================================================================
 
-# XXX ADD ADDITIONAL AEROSOL INFO
+	# TODO: Find out where to write out
+	# edit output variables
 
-f = open("bin_nl", "w") # change to "a" later!!!
-f.write("&oslo_sectional_nl\n")
-f.write("nbin = " + str(bin_specs.N) + "\n")
-f.write("nrange = " + str(len(range_specs.range_bnds)-1) + "\n")
-f.write("nspec = " + str(nspec) + "\n")
-f.write("bin_list = ")
-for i in range(len(bin_specs.r)):
-	f.write(str(bin_specs.r[i]) + ",")
-f.write("\n")
-f.write("bin_bnd_list = ")
-for i in range(len(bin_specs.r_bnds)):
-	f.write(str(bin_specs.r_bnds[i]) + ",")
-f.write("\n")
-f.write("range_bnd_list = ")
-for i in range(len(range_specs.range_bnds)):
-	f.write(str(range_specs.range_bnds[i]) + ",")
-f.write("\n")
-f.write("bin_name_list = ")
-for i in range(1, len(bin_specs.r)+1):
-	f.write("'aer_" + str(i) + "',")
-f.write("\n")
-f.write("species_name_list = ")
-for i in range(len(spec_array)):
-	f.write("'" + str(spec_array[i]) + "',")
-f.write("\n")
-f.write("/\n")
-f.close()
+	f = open("bin_nl", "w") # change to "a" later!!!
+	f.write("&oslo_sectional_nl\n")
+	f.write("nbin = " + str(bin_specs.N) + "\n")
+	f.write("nrange = " + str(len(range_specs.range_bnds)-1) + "\n")
+	f.write("bin_list = ")
+	for i in range(len(bin_specs.r)):
+		f.write(str(bin_specs.r[i]) + ",")
+	f.write("\n")
+	f.write("bin_bnd_list = ")
+	for i in range(len(bin_specs.r_bnds)):
+		f.write(str(bin_specs.r_bnds[i]) + ",")
+	f.write("\n")
+	f.write("range_bnd_list = ")
+	for i in range(len(range_specs.range_bnds)):
+		f.write(str(range_specs.range_bnds[i]) + ",")
+	f.write("\n")
+	f.write("bin_name_list = ")
+	for i in range(1, len(bin_specs.r)+1):
+		f.write("'aer_" + str(i) + "',")
+	f.write("\n")
+	f.write("\n")
+	f.write("/\n")
+	f.close()
 
-# ==============================================================================
-# Prepare output for chem_mech.in file
-# The filenames and file dirs will need to be changed
-# e.g. the directory where the chem_mech file comes from. Probably can be retrieved
-# somehow from the compset.
-# Also the output, currently 'my_chem_mech.in' needs to go to the casedir
-# The code below reads the chem_mech.in file line by line and looks for keywords
-# "Solution" and "Implicit". Below these, the composition of the tracers and the
-# names of the tracers are added. The file is then written out to my_chem_mech.in
-# ==============================================================================
-# write my_chem_mech.in
+	# ==============================================================================
+	# Prepare output for chem_mech.in file
+	# The filenames and file dirs will need to be changed
+	# e.g. the directory where the chem_mech file comes from. Probably can be retrieved
+	# somehow from the compset.
+	# Also the output, currently 'my_chem_mech.in' needs to go to the casedir
+	# The code below reads the chem_mech.in file line by line and looks for keywords
+	# "Solution" and "Implicit". Below these, the composition of the tracers and the
+	# names of the tracers are added. The file is then written out to my_chem_mech.in
+	# ==============================================================================
 
-# write composition
-composition_list = []
-implicit_list = []
+	composition_list = []
+	implicit_list = []
 
-for species in species_obj_list:
-	if species.active:
-		for i in range(len(species.range_idx)):
-			composition_list.append(
-				species.short_name +
-				'_R' +
-				str(species.range_idx[i]) +
-				' -> ' +
-				species.composition
-				)
-			implicit_list.append(
-				species.short_name +
-				'_R' +
-				str(species.range_idx[i])
-				)
+	for species in species_obj_list:
+		if species.active:
+			for i in range(len(species.range_idx)):
+				composition_list.append(
+					species.short_name +
+					'_R' +
+					str(species.range_idx[i]) +
+					' -> ' +
+					species.composition
+					)
+				implicit_list.append(
+					species.short_name +
+					'_R' +
+					str(species.range_idx[i])
+					)
 
-for i in range(1,bin_specs.N+1):
-   composition_list.append(
-      'num_' + str(i) + ' -> H'
-    )
-   implicit_list.append(
-      'num_' + str(i)
-   )
+	for i in range(1,bin_specs.N+1):
+		composition_list.append(
+			'num_' + str(i) + ' -> H'
+			)
+   	implicit_list.append(
+      	'num_' + str(i)
+   	)
 
 
+	with open(chem_mech_file, 'r') as chem_file:
+   	lines = chem_file.readlines()
 
-# read chem_mech.in
+	modified_chem = []
 
-with open('chem_mech.in', 'r') as chem_file:
-   lines = chem_file.readlines()
+	modified_chem = []
 
-modified_chem = []
-
-modified_chem = []
-
-for line in lines:
-    # write lines from the old file for the new file
-	modified_chem.append(line)
-    # add species composition
-	if 'Solution' in line and not 'End' in line and not 'Classes' in line:
-		for i in range(len(composition_list)):
-			modified_chem.append(composition_list[i] + '\n')
-    # add species for advection
-	if 'Implicit' in line and not 'End' in line:
-		for i in range(len(implicit_list)):
-			modified_chem.append(implicit_list[i] + '\n')
-# write out to my_chem_mech.in
-with open('my_chem_mech.in', 'w') as file:
-      file.writelines(modified_chem)
+	for line in lines:
+   	# write lines from the old file for the new file
+		modified_chem.append(line)
+   	# add species composition
+		if 'Solution' in line and not 'End' in line and not 'Classes' in line:
+			for i in range(len(composition_list)):
+				modified_chem.append(composition_list[i] + '\n')
+   	# add species for advection
+		if 'Implicit' in line and not 'End' in line:
+			for i in range(len(implicit_list)):
+				modified_chem.append(implicit_list[i] + '\n')
+	# write out to my_chem_mech.in
+	with open('my_chem_mech.in', 'w') as file:
+		file.writelines(modified_chem)

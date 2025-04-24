@@ -164,9 +164,11 @@ contains
   !=============================================================================
   !=============================================================================
   subroutine aero_model_register()
-    use mo_setsoa, only : soa_register
+   ! nbin
+   ! nrange
+   ! spec_name
+   ! idx
 
-    call soa_register()
   end subroutine aero_model_register
 
   !=============================================================================
