@@ -204,3 +204,21 @@ def bin_config(aerconf_file, chem_mech_file):
 	# write out to my_chem_mech.in
 	with open('my_chem_mech.in', 'w') as file:
 		file.writelines(modified_chem)
+
+def _main_func():
+	parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
+	"sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
+	parser.add_argument('--aerconf', required=True, help='Path to the aerosol configuration file')
+	parser.add_argument('--chem_mech', required=True, help='Path to the chem_mech.in file')
+
+	args = parser.parse_args()
+
+	if not os.path.isfile(args.aerconf):
+		sys.exit('Error: Specified aerosol configuration file does not exist')
+	if not os.path.isfile(args.aerconf):
+		sys.exit('Error: Specified chem_mech.in file does not exist')
+
+	bin_config(args.aerconf, args.chem_mech)
+
+if __name__ == "__main__":
+	_main_func()
