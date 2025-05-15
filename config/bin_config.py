@@ -11,6 +11,18 @@ import configparser
 import sys, os
 import argparse
 
+_CIMEROOT = os.environ.get("CIMEROOT")
+if _CIMEROOT is None:
+    raise SystemExit("ERROR: must set CIMEROOT environment variable")
+
+_LIBDIR = os.path.join(_CIMEROOT, "scripts", "Tools")
+sys.path.append(_LIBDIR)
+
+from standard_script_setup          import *
+from CIME.XML.standard_module_setup import *
+from CIME.case                      import Case
+
+
 def parse_range(config, section, option):
 	''' Parse a range from the config file'''
 	range_str = config.get(section, option).split(',')
@@ -79,6 +91,8 @@ class RangeSpecs:
 			self.range_bnds = r_bnds
 
 def bin_config(aerconf_file, chem_mech_file):
+	CAM_CONFIG_OPTS     = case.get_value("CAM_CONFIG_OPTS")
+
 	# ==============================================================================
 	# Read input from config file
 	# ==============================================================================
@@ -204,6 +218,11 @@ def bin_config(aerconf_file, chem_mech_file):
 	# write out to my_chem_mech.in
 	with open('my_chem_mech.in', 'w') as file:
 		file.writelines(modified_chem)
+	# cam_config_opts = case.get_value("CAM_CONFIG_OPTS") # append -usr_mech_infile path/to/chem_mech
+	# get -chem option from cam_config_opts -> to get chem_mech.in
+	# case.set_value("CAM_CONFIG_OPTS","-phys cam7 -microphys mg3")
+
+
 
 def _main_func():
 	parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
