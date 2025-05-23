@@ -98,8 +98,7 @@ class _RangeSpecs:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
             self.range_bnds = r_bnds
 
-def bin_config(aerconf_file, chem_mech_file):
-    CAM_CONFIG_OPTS     = case.get_value("CAM_CONFIG_OPTS")
+def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
 
     # ==============================================================================
     # Read input from config file
@@ -142,7 +141,7 @@ def bin_config(aerconf_file, chem_mech_file):
 
 	# TODO: Find out where to write out
 
-    f = open(os.path.join(caseroot, "oslo_sectional_in"), "w")
+    f = open(oslo_sectional_in), "w")
     f.write("&oslo_sectional_properties_nl\n")
     f.write(" oslo_sectional_nspecies		=  ")
     f.write(f"{nspecies} \n")
@@ -167,6 +166,7 @@ def bin_config(aerconf_file, chem_mech_file):
         if i != len(range_specs.range_bnds)-2:
             f.write(', ')
     f.write("\n")
+    f.write("/\n")
 
     for species in species_obj_list:
         if species.active:
@@ -175,8 +175,7 @@ def bin_config(aerconf_file, chem_mech_file):
             f.write(" oslo_sectional_aerosol_range		=  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
             f.write(f" oslo_sectional_aerosol_soluble		=  .{species.soluble}. \n")
-
-    f.write("/\n")
+            f.write("/\n")
     f.close()
 
     # ==============================================================================
@@ -191,15 +190,6 @@ def bin_config(aerconf_file, chem_mech_file):
     # ==============================================================================
 
     # TODO: write output to a sensible place -> casefolder?
-
-    config_opts = CAM_CONFIG_OPTS.split(' ')
-    chem_index = config_opts.index('-chem')
-    CHEM_OPT = config_opts[chem_index + 1]
-    chemconf = os.path.join(srcroot, "src", "chemistry", "pp_" + CHEM_OPT, "chem_mech.in")
-    chem_outfile = os.path.join(caseroot, 'my_chem_mech.in') # caseroot/...
-    config_opts += ['-usr_mech_infile', chem_outfile]
-    # TODO: Long-term find a better way to reference this chem_mech file than usr_mech_infile
-    case.set_value("CAM_CONFIG_OPTS", config_opts)
 
     composition_list = []
     implicit_list = []
