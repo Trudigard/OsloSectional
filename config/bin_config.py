@@ -8,7 +8,6 @@
 
 # TODO: Christina Brodowsky: Add documentation
 # TODO: double underscores to make all members private
-# TODO: Use only spaces, NO TABS!!
 
 import numpy as np
 import configparser
@@ -24,7 +23,7 @@ import argparse
 
 #from standard_script_setup          import * # TODO find out if we need these..
 #from CIME.XML.standard_module_setup import *
-from CIME.case                      import Case
+#from CIME.case                      import Case
 
 
 def _parse_range(config, section, option):
@@ -92,7 +91,7 @@ class _RangeSpecs:
                 idx = (np.abs(r_bnds - self.range_bnds[i])).argmin()
                 self.range_bnds[i] = r_bnds[idx]
                 self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, idx+1) # account for 1-indexing in Fortran
-   			self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, len(r_bnds)) # account for 1-indexing in Fortran
+            self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, len(r_bnds)) # account for 1-indexing in Fortran
 
         else:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
@@ -133,13 +132,13 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
     [species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
 
     nspecies = len(species_obj_list)
-	# =====================================================================
-	# Write to namelist
-	# Change to write to e.g. atm_in namelist?
-	# Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
-	# =====================================================================
+    # =====================================================================
+    # Write to namelist
+    # Change to write to e.g. atm_in namelist?
+    # Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
+    # =====================================================================
 
-	# TODO: Find out where to write out
+    # TODO: Find out where to write out
 
     f = open(oslo_sectional_in), "w")
     f.write("&oslo_sectional_properties_nl\n")
