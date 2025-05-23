@@ -14,20 +14,21 @@ import numpy as np
 import configparser
 import sys, os
 import argparse
+import xml.etree.ElementTree as ET
 
-_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
-if _CIMEROOT is None:
-    raise SystemExit("ERROR: must set CIMEROOT environment variable")
+#_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
+#if _CIMEROOT is None:
+#    raise SystemExit("ERROR: must set CIMEROOT environment variable")
 
-_LIBDIR = os.path.join(_CIMEROOT, "scripts", "Tools")
-sys.path.append(_LIBDIR)
+#_LIBDIR = os.path.join(_CIMEROOT, "scripts", "Tools")
+#sys.path.append(_LIBDIR)
 
 #from standard_script_setup          import *
 #from CIME.XML.standard_module_setup import *
 from CIME.case                      import Case
 
 
-def parse_range(config, section, option):
+def _parse_range(config, section, option):
     ''' Parse a range from the config file'''
     range_str = config.get(section, option).split(',')
     parsed_range = [float(i) for i in range_str]
@@ -36,14 +37,14 @@ def parse_range(config, section, option):
 # ==============================================================================
 # Types for bin, range and species information
 # ==============================================================================
-class AerosolSpecies:
+class _AerosolSpecies:
     def __init__(self, config, species):
         self.active = config.getboolean(species, 'active', fallback=False)
         self.short_name = config.get(species, 'short_name')
         self.long_name = config.get(species, 'long_name')
         self.composition = config.get(species, 'composition')
         self.soluble = config.getboolean(species, 'soluble')
-        self.range_bnds = parse_range(config, species, 'range_bounds')
+        self.range_bnds = _parse_range(config, species, 'range_bounds')
         self.range_idx = []
     def check_range_bnds(self, range_bnds):
         if any(i not in range_bnds for i in self.range_bnds):
@@ -60,7 +61,7 @@ class AerosolSpecies:
 
 # bin settings, maybe add 'method' to allow for other than
 # volume ratio. e.g. 'custom' -> user defined bin bounds
-class BinSpecs:
+class _BinSpecs:
     def __init__(self, config):
         self.N = config.getint('BIN SPECS', 'nbin')
         self.r_1 = config.getfloat('BIN SPECS', 'radius_1')
@@ -79,10 +80,10 @@ class BinSpecs:
         self.r = (v*4/(3*np.pi))**(1/3) # calculate radii
         self.r_bnds = (v_bnds*4/(3*np.pi))**(1/3) # calculate radius bounds from volume
 
-class RangeSpecs:
+class _RangeSpecs:
     def __init__(self, config):
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
-        self.range_bnds = np.asarray(parse_range(config, 'RANGE SPECS', 'range_bounds'))
+        self.range_bnds = np.asarray(_parse_range(config, 'RANGE SPECS', 'range_bounds'))
     def adjust_range_bnds(self, r_bnds):
         if self.ranges: # TODO: add explanation on what this computation is doing
             self.range_bnds[0] = r_bnds[0]
@@ -109,17 +110,17 @@ def bin_config(aerconf_file, chem_mech_file):
     # ==============================================================================´
 
     # initialize bins
-    bin_specs = BinSpecs(config)
+    bin_specs = _BinSpecs(config)
     bin_specs.calc_bins()
 
     # initialize ranges
-    range_specs = RangeSpecs(config)
+    range_specs = _RangeSpecs(config)
 
     # initialize aerosol species
     species_obj_list = []
     for section in config.sections():
     if section not in ['BIN SPECS', 'RANGE SPECS']:
-        species_obj_list.append(AerosolSpecies(config, section))
+        species_obj_list.append(_AerosolSpecies(config, section))
 
     [species_obj.check_range_bnds for species_obj in species_obj_list]  # check species range bnds
 
@@ -141,29 +142,6 @@ def bin_config(aerconf_file, chem_mech_file):
     # look for ET. stuff
     # TODO: define output variables
 
-    f = open("bin_nl", "w") # change to "a" later!!!
-    f.write("&oslo_sectional_nl\n")
-    f.write("nbin = " + str(bin_specs.N) + "\n")
-    f.write("nrange = " + str(len(range_specs.range_bnds)-1) + "\n")
-    f.write("bin_list = ")
-    for i in range(len(bin_specs.r)):
-        f.write(str(bin_specs.r[i]) + ",")
-    f.write("\n")
-    f.write("bin_bnd_list = ")
-    for i in range(len(bin_specs.r_bnds)):
-        f.write(str(bin_specs.r_bnds[i]) + ",")
-    f.write("\n")
-    f.write("range_bnd_list = ")
-    for i in range(len(range_specs.range_bnds)):
-        f.write(str(range_specs.range_bnds[i]) + ",")
-    f.write("\n")
-    f.write("bin_name_list = ")
-    for i in range(1, len(bin_specs.r)+1):
-        f.write("'aer_" + str(i) + "',")
-    f.write("\n")
-    f.write("\n")
-    f.write("/\n")
-    f.close()
 
     # ==============================================================================
     # Prepare output for chem_mech.in file
@@ -178,11 +156,14 @@ def bin_config(aerconf_file, chem_mech_file):
 
     # TODO: write output to a sensible place -> casefolder?
 
-    config_opts = CAM_CONFIG_OPTS.split(' ') # TODO: check if this is how CAM_CONFIG_OPTS works? is there a better way to reference this file?
-    index = parts.index('-chem')
-    CHEM_OPT = parts[index + 1]
+    config_opts = CAM_CONFIG_OPTS.split(' ')
+    chem_index = config_opts.index('-chem')
+    CHEM_OPT = config_opts[chem_index + 1]
     chemconf = os.path.join(srcroot, "src", "chemistry", "pp_" + CHEM_OPT, "chem_mech.in")
-    chem_outfile = os.path.join('my_chem_mech.in') # caseroot/...
+    chem_outfile = os.path.join(caseroot, 'my_chem_mech.in') # caseroot/...
+    config_opts += ['-usr_mech_infile', chem_outfile]
+    # TODO: Long-term find a better way to reference this chem_mech file than usr_mech_infile
+    case.set_value("CAM_CONFIG_OPTS", config_opts)
 
     composition_list = []
     implicit_list = []
@@ -231,9 +212,6 @@ def bin_config(aerconf_file, chem_mech_file):
     # write out to my_chem_mech.in
     with open(chem_outfile, 'w') as file:
         file.writelines(modified_chem)
-
-    # TODO: Long-term find a better way to reference this chem_mech file than usr_mech_infile
-    case.set_value("CAM_CONFIG_OPTS","-usr_mech_infile " + chem_outfile)
 
 def _main_func(): # TODO: import cimeroot and caseroot
     parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
