@@ -14,7 +14,6 @@ import numpy as np
 import configparser
 import sys, os
 import argparse
-import xml.etree.ElementTree as ET
 
 #_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
 #if _CIMEROOT is None:
@@ -84,6 +83,7 @@ class _RangeSpecs:
     def __init__(self, config):
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
         self.range_bnds = np.asarray(_parse_range(config, 'RANGE SPECS', 'range_bounds'))
+        self.range_bnd_bin_idx = np.array([1])
     def adjust_range_bnds(self, r_bnds):
         if self.ranges: # TODO: add explanation on what this computation is doing
             self.range_bnds[0] = r_bnds[0]
@@ -91,6 +91,9 @@ class _RangeSpecs:
             for i in range(1, len(self.range_bnds)-1):
                 idx = (np.abs(r_bnds - self.range_bnds[i])).argmin()
                 self.range_bnds[i] = r_bnds[idx]
+                self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, idx+1) # account for 1-indexing in Fortran
+   			self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, len(r_bnds)) # account for 1-indexing in Fortran
+
         else:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
             self.range_bnds = r_bnds
@@ -130,6 +133,7 @@ def bin_config(aerconf_file, chem_mech_file):
     # get species range indices
     [species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
 
+    nspecies = len(species_obj_list)
 	# =====================================================================
 	# Write to namelist
 	# Change to write to e.g. atm_in namelist?
@@ -142,6 +146,39 @@ def bin_config(aerconf_file, chem_mech_file):
     # look for ET. stuff
     # TODO: define output variables
 
+    f = open("oslo_sectional_in", "w")
+    f.write("&oslo_sectional_properties_nl\n")
+    f.write("oslo_sectional_nspecies = " + nspecies + "\n")
+
+    f.write("oslo_sectional_bin_bounds = ")
+    for i in range(bin_specs.N):
+        f.write("'" + bin_specs.r_bnds[i] + ":" + bin_specs.r_bnds[i+1] + "'")
+		if i != bin_specs.N-1:
+            f.write(', ')
+    f.write("\n")
+
+    f.write("oslo_sectional_bin_centers = ")
+    for i in range(bin_specs.N):
+        f.write("'" + bin_specs.r[i] + "'")
+		if i != bin_specs.N-1:
+            f.write(', ')
+    f.write("\n")
+
+    f.write("oslo_sectional_range_bounds = ")
+    for i in range(range_specs.nrange):
+        f.write("'" + self.range_bnd_bin_idx[i] + ":" + self.range_bnd_bin_idx[i+1] "'")
+        if i != range_specs.nrange:
+            f.write(', ')
+    f.write("\n")
+
+    for species in species_obj_list:
+        f.write("&oslo_sectional_properties_aerosol_nl\n")
+        f.write("oslo_sectional_aerosol_name = " + species.short_name + "\n")
+        f.write("oslo_sectional_aerosol_range = " + species.range_idx[0] + ":" + species.range_idx[-1]  + "\n")
+        f.write("oslo_sectional_aerosol_soluble = ." + species.soluble + ". \n")
+
+        f.write("/\n")
+    f.close()
 
     # ==============================================================================
     # Prepare output for chem_mech.in file
@@ -172,26 +209,19 @@ def bin_config(aerconf_file, chem_mech_file):
         if species.active:
             for i in range(len(species.range_idx)):
                 composition_list.append(
-                    species.short_name +
-                    '_R' +
-                    str(species.range_idx[i]) +
-                    ' -> ' +
-                    species.composition
-                    )
+                    f"{species.short_name}_R{species.range_idx[i]} -> {species.composition}"
+                    ) # test
                 implicit_list.append(
-                    species.short_name +
-                    '_R' +
-                    str(species.range_idx[i])
+                    f"{species.short_name}_R{species.range_idx[i]}"
                     )
 
     for i in range(1,bin_specs.N+1):
         composition_list.append(
-            'num_' + str(i) + ' -> H'
+            f"num_{i} -> H"
             )
-    implicit_list.append(
-        'num_' + str(i)
+        implicit_list.append(
+            f"num_{i}"
     )
-
 
     with open(chemconf, 'r') as chem_file:
     lines = chem_file.readlines()
@@ -204,11 +234,11 @@ def bin_config(aerconf_file, chem_mech_file):
     # add species composition
         if 'Solution' in line and not 'End' in line and not 'Classes' in line:
             for i in range(len(composition_list)):
-                modified_chem.append(composition_list[i] + '\n')
+                modified_chem.append(f"{composition_list[i]}\n")
    	# add species for advection
         if 'Implicit' in line and not 'End' in line:
             for i in range(len(implicit_list)):
-                modified_chem.append(implicit_list[i] + '\n')
+                modified_chem.append(f"{implicit_list[i]}\n")
     # write out to my_chem_mech.in
     with open(chem_outfile, 'w') as file:
         file.writelines(modified_chem)
