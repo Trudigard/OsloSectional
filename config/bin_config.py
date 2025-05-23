@@ -22,7 +22,7 @@ import argparse
 #_LIBDIR = os.path.join(_CIMEROOT, "scripts", "Tools")
 #sys.path.append(_LIBDIR)
 
-#from standard_script_setup          import *
+#from standard_script_setup          import * # TODO find out if we need these..
 #from CIME.XML.standard_module_setup import *
 from CIME.case                      import Case
 
@@ -140,44 +140,43 @@ def bin_config(aerconf_file, chem_mech_file):
 	# Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
 	# =====================================================================
 
-	# TODO: Find out where to write out -> to bld dir? use elementtree (examples in cime ? -> add new file read to build-namelist
-	# TODO: elementtree, example https://github.com/NCAR/ccpp-framework/blob/main/scripts/parse_tools/xml_tools.py
-    #https://github.com/NCAR/ccpp-framework/blob/main/scripts/ccpp_datafile.py -> check _new_var_entry
-    # look for ET. stuff
-    # TODO: define output variables
+	# TODO: Find out where to write out
 
-    f = open("oslo_sectional_in", "w")
+    f = open(os.path.join(caseroot, "oslo_sectional_in"), "w")
     f.write("&oslo_sectional_properties_nl\n")
-    f.write("oslo_sectional_nspecies = " + nspecies + "\n")
+    f.write(" oslo_sectional_nspecies		=  ")
+    f.write(f"{nspecies} \n")
 
-    f.write("oslo_sectional_bin_bounds = ")
+    f.write(" oslo_sectional_bin_bounds		=  ")
     for i in range(bin_specs.N):
-        f.write("'" + bin_specs.r_bnds[i] + ":" + bin_specs.r_bnds[i+1] + "'")
-		if i != bin_specs.N-1:
+        f.write(f"'{bin_specs.r_bnds[i]:.3f}D0:{bin_specs.r_bnds[i+1]:.3f}D0'")
+        if i != bin_specs.N-1:
             f.write(', ')
     f.write("\n")
 
-    f.write("oslo_sectional_bin_centers = ")
+    f.write(" oslo_sectional_bin_centers		=  ")
     for i in range(bin_specs.N):
-        f.write("'" + bin_specs.r[i] + "'")
-		if i != bin_specs.N-1:
+        f.write(f"'{bin_specs.r[i]:.3f}D0'")
+        if i != bin_specs.N-1:
             f.write(', ')
     f.write("\n")
 
-    f.write("oslo_sectional_range_bounds = ")
-    for i in range(range_specs.nrange):
-        f.write("'" + self.range_bnd_bin_idx[i] + ":" + self.range_bnd_bin_idx[i+1] "'")
-        if i != range_specs.nrange:
+    f.write(" oslo_sectional_range_bounds		=  ")
+    for i in range(len(range_specs.range_bnds)-1):
+        f.write(f"'{range_specs.range_bnd_bin_idx[i]}:{range_specs.range_bnd_bin_idx[i+1]}'")
+        if i != len(range_specs.range_bnds)-2:
             f.write(', ')
     f.write("\n")
 
     for species in species_obj_list:
-        f.write("&oslo_sectional_properties_aerosol_nl\n")
-        f.write("oslo_sectional_aerosol_name = " + species.short_name + "\n")
-        f.write("oslo_sectional_aerosol_range = " + species.range_idx[0] + ":" + species.range_idx[-1]  + "\n")
-        f.write("oslo_sectional_aerosol_soluble = ." + species.soluble + ". \n")
+        if species.active:
+            f.write("&oslo_sectional_properties_aerosol_nl\n")
+            f.write(f" oslo_sectional_aerosol_name		=  '{species.short_name}' \n")
+            f.write(" oslo_sectional_aerosol_range		=  ")
+            f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
+            f.write(f" oslo_sectional_aerosol_soluble		=  .{species.soluble}. \n")
 
-        f.write("/\n")
+    f.write("/\n")
     f.close()
 
     # ==============================================================================
