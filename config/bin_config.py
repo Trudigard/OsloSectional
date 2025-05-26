@@ -11,7 +11,6 @@
 import sys
 import os
 import logging
-import numpy as np
 import configparser
 import argparse
 
@@ -73,28 +72,29 @@ class _BinSpecs:
         # Bin calculations - Volume ratio approach
         V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1)) 		# calculate volume ratio
         v_0 = 3/4 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
-        v = v_0 * V_rat ** np.arange(self.N) # calculate all volumes for bins
-        v_lo = (2*v) / (1+V_rat) # lower radius bounds
+        v = [v_0 * V_rat ** i for i in range(self.N)]
+        v_lo = [(2*v[i]) / (1+V_rat) for i in range(self.N)] # lower radius bounds
         v_hi = V_rat*v_lo[-1] # upper bnd for largest bin
-        v_bnds = np.append(v_lo, v_hi) # append to get volume bounds
-
-        self.r = (v*4/(3*math.pi))**(1/3) # calculate radii
-        self.r_bnds = (v_bnds*4/(3*math.pi))**(1/3) # calculate radius bounds from volume
+        v_bnds = v_lo + [v_hi] #
+        self.r = [(v[i]*4/(3*math.pi))**(1/3) for i in range(self.N)] # calculate radii
+        self.r_bnds = [(v_bnds[i]*4/(3*math.pi))**(1/3) for i in range(self.N+1)] # calculate radius bounds from volume
 
 class _RangeSpecs:
     def __init__(self, config):
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
-        self.range_bnds = np.asarray(_parse_range(config, 'RANGE SPECS', 'range_bounds'))
-        self.range_bnd_bin_idx = np.array([1])
+        self.range_bnds = parse_range(config, 'RANGE SPECS', 'range_bounds')
+        self.range_bnd_bin_idx = [1]
     def adjust_range_bnds(self, r_bnds):
         if self.ranges: # TODO: add explanation on what this computation is doing
             self.range_bnds[0] = r_bnds[0]
             self.range_bnds[-1] = r_bnds[-1]
             for i in range(1, len(self.range_bnds)-1):
-                idx = (np.abs(r_bnds - self.range_bnds[i])).argmin()
+                abs_diff = [abs(radb - self.range_bnds[i]) for radb in r_bnds]
+                idx = abs_diff.index(min(abs_diff))
                 self.range_bnds[i] = r_bnds[idx]
-                self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, idx+1) # account for 1-indexing in Fortran
-            self.range_bnd_bin_idx = np.append(self.range_bnd_bin_idx, len(r_bnds)) # account for 1-indexing in Fortran
+                # TODO check indices
+                self.range_bnd_bin_idx.append(idx + 1) # account for 1-indexing in Fortran
+            self.range_bnd_bin_idx.append(len(r_bnds)-1) # account for 1-indexing in Fortran
 
         else:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
