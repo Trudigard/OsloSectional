@@ -8,10 +8,11 @@
 
 # TODO: Christina Brodowsky: Add documentation
 # TODO: double underscores to make all members private
-
+import sys
+import os
+import logging
 import numpy as np
 import configparser
-import sys, os
 import argparse
 
 #_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
@@ -49,8 +50,10 @@ class _AerosolSpecies:
             sys.exit('ERROR: Species range bound not equal to range bounds')
     def get_range_idx(self, range_bnds):
         # adjust species bounds to range bounds
-        idx0 = (np.abs(range_bnds - self.range_bnds[0])).argmin()
-        idx1 = (np.abs(range_bnds - self.range_bnds[1])).argmin()
+        abs_diff_lo = [abs(rb - self.range_bnds[0]) for rb in range_bnds] # calculate absolute difference to each range_bound value
+        idx0 = abs_diff_lo.index(min(abs_diff_lo))                        # get the index from this range bound value
+        abs_diff_hi = [abs(rb - self.range_bnds[1]) for rb in range_bnds]
+        idx1 = abs_diff_hi.index(min(abs_diff_hi))
         self.range_bnds = [range_bnds[idx0], range_bnds[idx1]]
         # get range indices for each species
         self.range_idx.extend([i for i in range(1, len(range_bnds))
@@ -69,14 +72,14 @@ class _BinSpecs:
     def calc_bins(self):
         # Bin calculations - Volume ratio approach
         V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1)) 		# calculate volume ratio
-        v_0 = 3/4 * np.pi * (self.r_1) ** 3 # # calculate smallest volume
+        v_0 = 3/4 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
         v = v_0 * V_rat ** np.arange(self.N) # calculate all volumes for bins
         v_lo = (2*v) / (1+V_rat) # lower radius bounds
         v_hi = V_rat*v_lo[-1] # upper bnd for largest bin
         v_bnds = np.append(v_lo, v_hi) # append to get volume bounds
 
-        self.r = (v*4/(3*np.pi))**(1/3) # calculate radii
-        self.r_bnds = (v_bnds*4/(3*np.pi))**(1/3) # calculate radius bounds from volume
+        self.r = (v*4/(3*math.pi))**(1/3) # calculate radii
+        self.r_bnds = (v_bnds*4/(3*math.pi))**(1/3) # calculate radius bounds from volume
 
 class _RangeSpecs:
     def __init__(self, config):
@@ -120,8 +123,8 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
     # initialize aerosol species
     species_obj_list = []
     for section in config.sections():
-    if section not in ['BIN SPECS', 'RANGE SPECS']:
-        species_obj_list.append(_AerosolSpecies(config, section))
+        if section not in ['BIN SPECS', 'RANGE SPECS']:
+            species_obj_list.append(_AerosolSpecies(config, section))
 
     [species_obj.check_range_bnds for species_obj in species_obj_list]  # check species range bnds
 
@@ -140,7 +143,7 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
 
     # TODO: Find out where to write out
 
-    f = open(oslo_sectional_in), "w")
+    f = open(oslo_sectional_in, "w")
     f.write("&oslo_sectional_properties_nl\n")
     f.write(" oslo_sectional_nspecies		=  ")
     f.write(f"{nspecies} \n")
@@ -212,7 +215,7 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
     )
 
     with open(chemconf, 'r') as chem_file:
-    lines = chem_file.readlines()
+        lines = chem_file.readlines()
 
     modified_chem = []
 
