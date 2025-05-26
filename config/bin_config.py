@@ -13,7 +13,7 @@ import os
 import logging
 import configparser
 import argparse
-
+import math
 #_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
 #if _CIMEROOT is None:
 #    raise SystemExit("ERROR: must set CIMEROOT environment variable")
@@ -82,7 +82,7 @@ class _BinSpecs:
 class _RangeSpecs:
     def __init__(self, config):
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
-        self.range_bnds = parse_range(config, 'RANGE SPECS', 'range_bounds')
+        self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
         self.range_bnd_bin_idx = [1]
     def adjust_range_bnds(self, r_bnds):
         if self.ranges: # TODO: add explanation on what this computation is doing
