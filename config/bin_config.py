@@ -6,29 +6,23 @@
 # my_chem_mech.in: edited to contain aerosol tracers
 # ==============================================================================
 
-# TODO: Christina Brodowsky: Add documentation
-# TODO: double underscores to make all members private
 import sys
 import os
 import logging
 import configparser
 import argparse
 import math
-#_CIMEROOT = os.environ.get("CIMEROOT") # TODO import in main fct instead
-#if _CIMEROOT is None:
-#    raise SystemExit("ERROR: must set CIMEROOT environment variable")
 
-#_LIBDIR = os.path.join(_CIMEROOT, "scripts", "Tools")
-#sys.path.append(_LIBDIR)
-
-#from standard_script_setup          import * # TODO find out if we need these..
-#from CIME.XML.standard_module_setup import *
-#from CIME.case                      import Case
-
-
-def _parse_range(config, section, option):
-    ''' Parse a range from the config file'''
-    range_str = config.get(section, option).split(',')
+def _parse_range(config, section, variable):
+    ''' Parse a range from the config file and make a list
+    Parameters:
+        config : Instance of ConfigParser class (aerosol config file)
+        section (str) : Section of the config.ini file in [] that should be read
+        variable (str) : variable in the config file to be read
+    Returns:
+        parsed_range (list(float)) : The values of the "variable"
+        '''
+    range_str = config.get(section, variable).split(',')
     parsed_range = [float(i) for i in range_str]
     return parsed_range
 
@@ -36,7 +30,34 @@ def _parse_range(config, section, option):
 # Types for bin, range and species information
 # ==============================================================================
 class _AerosolSpecies:
+    ''' Class representing an aerosol species.
+
+    Attributes:
+        active (bool) : whether the species should be included in the simulation
+        short_name (str) : short name of the aerosol species
+        long_name (str) : long name of the aerosol species
+        composition (str) : composition to trace aerosol mass
+        soluble (bool) : True for internally mixed, false for externally mixed aerosol
+        range_bnds (list(float)) : range bounds within which the species exists
+        range_idx (list(int)) : indices of ranges within which the species exists
+    '''
+
     def __init__(self, config, species):
+        ''' Initializes an aerosol species object with values from the aerosol
+            configuration file.
+
+        Parameters:
+            config : Instance of ConfigParser class (aerosol config file)
+            species (str) : Section with aerosol name of the config.ini file in [] that should be read
+        Attributes:
+            active (bool) : whether the species should be included in the simulation
+            short_name (str) : short name of the aerosol species
+            long_name (str) : long name of the aerosol species
+            composition (str) : composition to trace aerosol mass
+            soluble (bool) : True for internally mixed, false for externally mixed aerosol
+            range_bnds (list(float)) : range bounds within which the species exists
+            range_idx (list(int)) : indices of ranges within which the species exists
+        '''
         self.active = config.getboolean(species, 'active', fallback=False)
         self.short_name = config.get(species, 'short_name')
         self.long_name = config.get(species, 'long_name')
@@ -44,11 +65,28 @@ class _AerosolSpecies:
         self.soluble = config.getboolean(species, 'soluble')
         self.range_bnds = _parse_range(config, species, 'range_bounds')
         self.range_idx = []
+
     def check_range_bnds(self, range_bnds):
+        ''' Check whether range bounds for the individual species
+        in hte configuration file are valid (that is equal to the specified range bounds)
+        and raise error if not.
+
+        Parameters:
+            range_bnds (list(float)) : list of range bounds read from the config file
+        '''
         if any(i not in range_bnds for i in self.range_bnds):
             sys.exit('ERROR: Species range bound not equal to range bounds')
+
     def get_range_idx(self, range_bnds):
-        # adjust species bounds to range bounds
+        ''' Adjust the species bounds to the new range bounds
+        (adjusted in the _RangeSpecs adjust_range_bnds function).
+
+        Parameters:
+            range_bnds list(float) : The range bounds that the species range bounds should be adjusted to
+        Attributes:
+            range_bnds list(float) : The species specific range bounds of the class _AerosolSpecies to be adjusted
+            range_idx list(int) : The indices of the ranges the species live in
+        '''
         abs_diff_lo = [abs(rb - self.range_bnds[0]) for rb in range_bnds] # calculate absolute difference to each range_bound value
         idx0 = abs_diff_lo.index(min(abs_diff_lo))                        # get the index from this range bound value
         abs_diff_hi = [abs(rb - self.range_bnds[1]) for rb in range_bnds]
@@ -59,17 +97,48 @@ class _AerosolSpecies:
                                 if range_bnds[i] > self.range_bnds[0]
                                 and range_bnds[i] <= self.range_bnds[1]])
 
-# bin settings, maybe add 'method' to allow for other than
-# volume ratio. e.g. 'custom' -> user defined bin bounds
+# TODO: bin settings, maybe add 'method' to allow for other than volume ratio. e.g. 'custom' -> user defined bin bounds
 class _BinSpecs:
+    ''' Class representing all attributes associated with the size distribution in the Oslo sectional aerosol model.
+
+    Attributes:
+        N (int) : Total number of bins read from the sectional aerosol configuration file
+        r_1 (float) : Center radius of the smallest bin (nm)
+        r_N (float) : Center radius of the largest bin (nm)
+        r (list(float)) : list of the center radii of all bins (nm)
+        r_bnds (list(float)) : list of the radii at bin boundaries (nm)
+    '''
+
     def __init__(self, config):
+        ''' Initializes an instance of the _BinSpecs class
+
+        Parameters:
+            config : Instance of ConfigParser class (aerosol config file)
+        Attributes:
+            N (int) : Total number of bins read from the sectional aerosol configuration file
+            r_1 (float) : Center radius of the smallest bin (nm)
+            r_N (float) : Center radius of the largest bin (nm)
+            r (list(float)) : list of the center radii of all bins (nm)
+            r_bnds (list(float)) : list of the radii at bin boundaries (nm)
+        '''
         self.N = config.getint('BIN SPECS', 'nbin')
         self.r_1 = config.getfloat('BIN SPECS', 'radius_1')
         self.r_N = config.getfloat('BIN SPECS', 'radius_N')
         self.r = None
         self.r_bnds = None
+
     def calc_bins(self):
-        # Bin calculations - Volume ratio approach
+        ''' Calculates the actual bin specifications with the given number of bins and radius
+        information from the sectional aerosol configuration file using the
+        volume ratio approach.
+
+        Attributes:
+            N (int) : Total number of bins read from the sectional aerosol configuration file
+            r_1 (float) : Center radius of the smallest bin (nm)
+            r_N (float) : Center radius of the largest bin (nm)
+            r list(float) : List of center radii of all bins (nm)
+            r_bnds list(float) : list of radii at bin boundaries (nm)
+        '''
         V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1)) 		# calculate volume ratio
         v_0 = 3/4 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
         v = [v_0 * V_rat ** i for i in range(self.N)]
@@ -80,11 +149,38 @@ class _BinSpecs:
         self.r_bnds = [(v_bnds[i]*4/(3*math.pi))**(1/3) for i in range(self.N+1)] # calculate radius bounds from volume
 
 class _RangeSpecs:
+    ''' Class representing all attributes associated with a chemical composition range in the
+    Oslo sectional aerosol model.
+
+    Attributes:
+        ranges (bool) : True if the model should average the chemistry for a range of bins
+        range_bnds (list(float)) : The radii at the range boundaries (nm)
+        range_bnd_bin_idx (list(int)) : Indices of bins within a range
+    '''
     def __init__(self, config):
+        ''' Initializes an instance of the _RangeSpecs class.
+
+        Parameters:
+            config : Instance of ConfigParser class (aerosol config file)
+        Attributes:
+            ranges (bool) : True if the model should average the chemistry for a range of bins
+            range_bnds (list(float)) : The radii at the range boundaries (nm)
+            range_bnd_bin_idx (list(int)) : Indices of bins within a range
+        '''
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
         self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
-        self.range_bnd_bin_idx = [1]
+        self.range_bnd_bin_idx = [1] # TODO fix these indices, it is currently output as 1:3, 3:5 etc but should be either 1:2, 3:5 or 1:3, 4:5
     def adjust_range_bnds(self, r_bnds):
+        ''' Function to adjust the soft range bounds given in the configuration file to the
+        radius bounds calculated in the _BinSpecs calc_bins routine.
+
+        Parameters:
+            r_bnds (list(float)) : Radius bounds (nm) calculated in the _BinSpecs calc_bin function
+        Attributes:
+            ranges (bool) : True if the model should average the chemistry for a range of bins
+            range_bnds (list(float)) : The radii at the range boundaries (nm)
+            range_bnd_bin_idx (list(int)) : Indices of bins within a range
+        '''
         if self.ranges: # TODO: add explanation on what this computation is doing
             self.range_bnds[0] = r_bnds[0]
             self.range_bnds[-1] = r_bnds[-1]
@@ -100,8 +196,27 @@ class _RangeSpecs:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
             self.range_bnds = r_bnds
 
-def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
+def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
+    ''' Main function called from buildnml if a compset with the oslo sectional aerosol
+    model is used. This function is used to initialize instances of the classes above using
+    information from the sectional aerosol configuration file.
+    It will create a new chemistry mechanism file with added tracers for each aerosol species,
+    as well as a temporary namelist file with the necessary parameters for the model.
 
+    Parameters:
+        aerconf_file (str) : The full path to the aerosol configuration file.
+                             The name of the file can be changed with the xml variable
+                             CAM_AEROSOL_CONFIG. Currently the path is set to
+                             srcroot/src/chemistry/oslo_sectional/config/CAM_AEROSOL_CONFIG
+                             in the buildnml script.
+        chemconf (str) :     The full path to the chemistry mechanism file. This is the chem_mech.in
+                             file in the pp_ chemistry folder associated with the compset
+        chem_infile (str) :  The full path to the modified chemconf file with added aerosol tracers.
+                             This file is then added to the casefolder.
+        oslo_sectional_in (str) : Full path where the temporary namelist for the sectional aerosol model
+                             is written out. This file is deleted in buildnml after the contents are added
+                             to atm_in
+    '''
     # ==============================================================================
     # Read input from config file
     # ==============================================================================
@@ -136,12 +251,8 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
 
     nspecies = len(species_obj_list)
     # =====================================================================
-    # Write to namelist
-    # Change to write to e.g. atm_in namelist?
-    # Write tracers instead to chem_mech file or my_chem_mech.in in case dir?
+    # Write to temporary oslo_sectional namelist file
     # =====================================================================
-
-    # TODO: Find out where to write out
 
     f = open(oslo_sectional_in, "w")
     f.write("&oslo_sectional_properties_nl\n")
@@ -182,16 +293,11 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
 
     # ==============================================================================
     # Prepare output for chem_mech.in file
-    # The filenames and file dirs will need to be changed
-    # e.g. the directory where the chem_mech file comes from. Probably can be retrieved
-    # somehow from the compset.
-    # Also the output, currently 'my_chem_mech.in' needs to go to the casedir
     # The code below reads the chem_mech.in file line by line and looks for keywords
     # "Solution" and "Implicit". Below these, the composition of the tracers and the
-    # names of the tracers are added. The file is then written out to my_chem_mech.in
+    # names of the tracers are added. The file is then written out to the name and
+    # path specified in buildnml
     # ==============================================================================
-
-    # TODO: write output to a sensible place -> casefolder?
 
     composition_list = []
     implicit_list = []
@@ -231,14 +337,14 @@ def bin_config(aerconf_file, chemconf, chem_outfile, oslo_sectional_in):
             for i in range(len(implicit_list)):
                 modified_chem.append(f"{implicit_list[i]}\n")
     # write out to my_chem_mech.in
-    with open(chem_outfile, 'w') as file:
+    with open(chem_infile, 'w') as file:
         file.writelines(modified_chem)
 
-def _main_func(): # TODO: import cimeroot and caseroot
+def _main_func(): # TODO: Adjust _main_func aerconf_file, chemconf, chem_infile, oslo_sectional_in
     parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
     "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
     parser.add_argument('--aerconf', required=True, help='Path to the aerosol configuration file')
-    parser.add_argument('--chem_mech', required=True, help='Path to the chem_mech.in file')
+    parser.add_argument('--chem_mech', required=True, help='Path to the initial chem_mech.in file')
 
     args = parser.parse_args()
 
@@ -247,7 +353,7 @@ def _main_func(): # TODO: import cimeroot and caseroot
     if not os.path.isfile(args.aerconf):
         sys.exit('Error: Specified chem_mech.in file does not exist')
 
-    bin_config(args.aerconf, args.chem_mech)
+    bin_config(args.aerconf, args.chem_mech) # chem_infile, oslo_sectional_in
 
 if __name__ == "__main__":
     _main_func()
