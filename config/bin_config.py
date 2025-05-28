@@ -341,6 +341,17 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
         file.writelines(modified_chem)
 
 def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfiles):
+    ''' Function to modify the atm_in namelist file and add the oslo_sectional namelists
+    to it. Called by buildnml. The namelists in the original atm_in file are sorted alphabetically,
+    the new namelists are inserted in alphabetical order.
+    Each species gets its own namelist, all are named &oslo_sectional_properties_aerosol_nl and
+    iterated through by the nl reader.
+
+    Parameters:
+        oslo_atm_nlfile : full path to the original atm_in file, temporarily moved to oslo_atm_in
+        oslo_sectional_in : full path to the oslo sectional namelists created in bin_config bin_config
+        atm_nlfile : full path to the final atm_in, combined oslo_atm_nlfile and oslo_sectional_in
+    '''
     modified_atm_in = []
 
     with open(oslo_atm_nlfile, 'r') as f1:                  # read atm_in
