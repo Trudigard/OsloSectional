@@ -340,6 +340,28 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     with open(chem_infile, 'w') as file:
         file.writelines(modified_chem)
 
+def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfiles):
+    modified_atm_in = []
+
+    with open(oslo_atm_nlfile, 'r') as f1:                  # read atm_in
+        lines = f1.readlines()
+    with open(oslo_sectional_in, 'r') as f2:                # read sectional nl file
+        lines_oslo_sec = f2.readlines()
+    idx = 0
+    for line in lines:
+        if "&" in line and line > lines_oslo_sec[0]:        # write entries before oslo_sectional nl
+            break
+        else:
+            modified_atm_in.append(f"{line}")
+            idx += 1
+    for line_oslo in lines_oslo_sec:                        # write oslo sectional nl
+        modified_atm_in.append(f"{line_oslo}")
+    for line in lines[idx:]:                                # write entries after oslo sectional nl
+        modified_atm_in.append(f"{line}")
+
+    with open(atm_nlfile, 'w') as atm_infile:               # write out modified nlfile to "atm_in"
+        atm_infile.writelines(modified_atm_in)
+
 def _main_func(): # TODO: Adjust _main_func aerconf_file, chemconf, chem_infile, oslo_sectional_in
     parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
     "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
