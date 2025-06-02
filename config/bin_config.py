@@ -340,7 +340,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     with open(chem_infile, 'w') as file:
         file.writelines(modified_chem)
 
-def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfiles):
+def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfile):
     ''' Function to modify the atm_in namelist file and add the oslo_sectional namelists
     to it. Called by buildnml. The namelists in the original atm_in file are sorted alphabetically,
     the new namelists are inserted in alphabetical order.
