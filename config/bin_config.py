@@ -331,11 +331,17 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     # add species composition
         if 'Solution' in line and not 'End' in line and not 'Classes' in line:
             for i in range(len(composition_list)):
-                modified_chem.append(f"{composition_list[i]}\n")
+                if any(chemline == f"{composition_list[i]}\n" for chemline in lines): # check if the lines have already been added to chem_mech
+                    pass
+                else:
+                    modified_chem.append(f"{composition_list[i]}\n")
    	# add species for advection
         if 'Implicit' in line and not 'End' in line:
             for i in range(len(implicit_list)):
-                modified_chem.append(f"{implicit_list[i]}\n")
+                if any(chemline == f"{implicit_list[i]}\n" for chemline in lines):
+                    pass
+                else:
+                    modified_chem.append(f"{implicit_list[i]}\n")
     # write out to my_chem_mech.in
     with open(chem_infile, 'w') as file:
         file.writelines(modified_chem)
