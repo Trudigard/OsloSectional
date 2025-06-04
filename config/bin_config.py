@@ -384,15 +384,19 @@ def _main_func(): # TODO: Adjust _main_func aerconf_file, chemconf, chem_infile,
     "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
     parser.add_argument('--aerconf', required=True, help='Path to the aerosol configuration file')
     parser.add_argument('--chem_mech', required=True, help='Path to the initial chem_mech.in file')
-
+    parser.add_argument('--chem_mech_new', required=True, help='Path to the modified chem_mech.in file')
+    parser.add_argument('--atm_in', required=True, help='Path to the original atm_in file')
+    parser.add_argument('--atm_in_new', required=True, help='Path to new atm_in file with sectional aerosol info')
     args = parser.parse_args()
+
+    oslo_sectional_in = 'oslo_sectional_in' # temporary nl file with sectional info
 
     if not os.path.isfile(args.aerconf):
         sys.exit('Error: Specified aerosol configuration file does not exist')
     if not os.path.isfile(args.aerconf):
         sys.exit('Error: Specified chem_mech.in file does not exist')
 
-    bin_config(args.aerconf, args.chem_mech) # chem_infile, oslo_sectional_in
-
+    bin_config(args.aerconf, args.chem_mech, args.chem_mech_new, oslo_sectional_in)
+    add_oslo_sectional_nl(args.atm_in, oslo_sectional_in, args.atm_in_new)
 if __name__ == "__main__":
     _main_func()
