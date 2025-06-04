@@ -393,10 +393,15 @@ def _main_func(): # TODO: Adjust _main_func aerconf_file, chemconf, chem_infile,
 
     if not os.path.isfile(args.aerconf):
         sys.exit('Error: Specified aerosol configuration file does not exist')
-    if not os.path.isfile(args.aerconf):
+    if not os.path.isfile(args.chem_mech):
         sys.exit('Error: Specified chem_mech.in file does not exist')
+    if not os.path.isfile(args.atm_in):
+        sys.exit('Error: Specified atm_in file does not exist')
 
     bin_config(args.aerconf, args.chem_mech, args.chem_mech_new, oslo_sectional_in)
     add_oslo_sectional_nl(args.atm_in, oslo_sectional_in, args.atm_in_new)
+
+    os.remove(oslo_sectional_in)
+
 if __name__ == "__main__":
     _main_func()
