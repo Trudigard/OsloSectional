@@ -169,7 +169,7 @@ class _RangeSpecs:
         '''
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
         self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
-        self.range_bnd_bin_idx = [1] # TODO fix these indices, it is currently output as 1:3, 3:5 etc but should be either 1:2, 3:5 or 1:3, 4:5
+        self.range_bnd_bin_idx = [] # TODO fix these indices, it is currently output as 1:3, 3:5 etc but should be either 1:2, 3:5 or 1:3, 4:5
     def adjust_range_bnds(self, r_bnds):
         ''' Function to adjust the soft range bounds given in the configuration file to the
         radius bounds calculated in the _BinSpecs calc_bins routine.
@@ -179,21 +179,21 @@ class _RangeSpecs:
         Attributes:
             ranges (bool) : True if the model should average the chemistry for a range of bins
             range_bnds (list(float)) : The radii at the range boundaries (nm)
-            range_bnd_bin_idx (list(int)) : Indices of bins within a range
+            range_bnd_bin_idx (list(tuple(int,int))) : Indices of bins within a range (lower bin index, upper bin index)
         '''
         if self.ranges: # TODO: add explanation on what this computation is doing
-            self.range_bnds[0] = r_bnds[0]
             self.range_bnds[-1] = r_bnds[-1]
-            for i in range(1, len(self.range_bnds)-1):
-                abs_diff = [abs(radb - self.range_bnds[i]) for radb in r_bnds]
-                idx = abs_diff.index(min(abs_diff))
-                self.range_bnds[i] = r_bnds[idx]
+            for i in range(0, len(self.range_bnds)-1):
+                abs_diff_lo = [abs(radb - self.range_bnds[i]) for radb in r_bnds]
+                abs_diff_hi = [abs(radb - self.range_bnds[i+1]) for radb in r_bnds]
+                idx_lo = abs_diff_lo.index(min(abs_diff_lo))
+                idx_hi = abs_diff_hi.index(min(abs_diff_hi))
+                self.range_bnds[i] = r_bnds[idx_lo] # set the range_bnd to the radius_bnd that is closest
                 # TODO check indices
-                self.range_bnd_bin_idx.append(idx + 1) # account for 1-indexing in Fortran
-            self.range_bnd_bin_idx.append(len(r_bnds)-1) # account for 1-indexing in Fortran
-
+                self.range_bnd_bin_idx.append((idx_lo+1, idx_hi)) # idx_lo +1 -> first one will be 1, since fortran arrays start at 1
+                                                                  # idx_hi -> not plus one, since this is the index of the r_bnds and technically we would need to calculate -1 to get fortran indices
         else:
-            # If no ranges (classic sectional scheme), set range bounds equal to bin bounds
+            # If no ranges (classic sectional scheme), set range bounds equal to bin bounds TODO: is this necessary?
             self.range_bnds = r_bnds
 
 def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
@@ -275,7 +275,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
 
     f.write(" oslo_sectional_range_bounds		=  ")
     for i in range(len(range_specs.range_bnds)-1):
-        f.write(f"'{range_specs.range_bnd_bin_idx[i]}:{range_specs.range_bnd_bin_idx[i+1]}'")
+        f.write(f"'{range_specs.range_bnd_bin_idx[i][0]}:{range_specs.range_bnd_bin_idx[i][1]}'")
         if i != len(range_specs.range_bnds)-2:
             f.write(', ')
     f.write("\n")
@@ -379,7 +379,7 @@ def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfile):
     with open(atm_nlfile, 'w') as atm_infile:               # write out modified nlfile to "atm_in"
         atm_infile.writelines(modified_atm_in)
 
-def _main_func(): # TODO: Adjust _main_func aerconf_file, chemconf, chem_infile, oslo_sectional_in
+def _main_func():
     parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
     "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
     parser.add_argument('--aerconf', required=True, help='Path to the aerosol configuration file')
