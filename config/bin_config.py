@@ -249,7 +249,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     # get species range indices
     [species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
 
-    active_species_obj_list [species for species in species_obj_list if species.active]
+    active_species_obj_list = [species for species in species_obj_list if species.active]
     nspecies = len(active_species_obj_list)
     # =====================================================================
     # Write to temporary oslo_sectional namelist file
