@@ -177,14 +177,11 @@ contains
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
-    use phys_control,   only: phys_getopts
+    !use phys_control,   only: phys_getopts
     use mo_aerosols,    only: aerosols_inti
-    use mo_setsoa,      only: soa_inti
     use dust_model,     only: dust_init
-    use seasalt_model,  only: seasalt_init
     use aer_drydep_mod, only: inidrydep
     use wetdep,         only: wetdep_init
-    use mo_setsox,      only: has_sox
 
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
@@ -196,17 +193,21 @@ contains
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
 
-    call phys_getopts( history_aerosol_out = history_aerosol,&
-                       history_dust_out    = history_dust   )
-
+!    call phys_getopts( history_aerosol_out = history_aerosol,&
+!                       history_dust_out    = history_dust   )
     call aerosols_inti()
-    call soa_inti(pbuf2d)
+    if (masterproc) then
+        write(iulog,*) subrname//' before dust_init call'
+    endif
     call dust_init()
-    call seasalt_init()
-    call wetdep_init()
 
+    if (masterproc) then
+        write(iulog,*) subrname//' before FRACIS pbuf call'
+    endif
     fracis_idx = pbuf_get_index('FRACIS')
-
+    if (masterproc) then
+        write(iulog,*) subrname//' after FRACIS pbuf call'
+    endif
     if (nwetdep>0) &
          allocate(wetdep_indices(nwetdep))
     if (ndrydep>0) &
@@ -296,13 +297,6 @@ contains
           call add_default (dummy, 1, ' ')
        endif
 
-       if (sslt_active) then
-          dummy = 'SSTSFDRY'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Sea salt deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
        if (dust_active) then
           dummy = 'DSTSFDRY'
           call addfld (dummy,horiz_only, 'A','kg/m2/s','Dust deposition flux at surface')
@@ -379,42 +373,6 @@ contains
 
     endif
 
-    if (sslt_active) then
-
-       dummy = 'SSTSFMBL'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
-       if (history_aerosol) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-       do m = 1, seasalt_nbin
-          dummy = trim(seasalt_names(m)) // 'SF'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(seasalt_names(m))//' seasalt surface emission')
-          if (history_aerosol) then
-             call add_default (dummy, 1, ' ')
-          endif
-       enddo
-
-    endif
-
-    if( has_sox ) then
-       call addfld( 'XPH_LWC',(/ 'lev' /), 'A','kg/kg', 'pH value multiplied by lwc')
-
-       if ( history_aerosol ) then
-          call add_default ('XPH_LWC', 1, ' ')
-       endif
-    endif
-
-    so4_ndx    = get_spc_ndx( 'SO4' )
-    soa_ndx    = get_spc_ndx( 'SOA' )
-    soai_ndx   = get_spc_ndx( 'SOAI' )
-    soam_ndx   = get_spc_ndx( 'SOAM' )
-    soab_ndx   = get_spc_ndx( 'SOAB' )
-    soat_ndx   = get_spc_ndx( 'SOAT' )
-    soax_ndx   = get_spc_ndx( 'SOAX' )
-    cb2_ndx    = get_spc_ndx( 'CB2' )
-    oc2_ndx    = get_spc_ndx( 'OC2' )
-    nit_ndx    = get_spc_ndx( 'NH4NO3' )
 
     ! deallocate wetdep list and drydep list
     deallocate(wetdep_list)
