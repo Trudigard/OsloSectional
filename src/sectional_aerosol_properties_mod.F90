@@ -16,12 +16,10 @@ module sectional_aerosol_properties_mod
   type, extends(aerosol_properties) :: sectional_aerosol_properties
      private
      integer                         :: nranges_ = 0
-     real(r8), dimension(:), allocatable :: bin_centers_
-     real(r8), dimension(:,:), allocatable :: bin_bounds_
-     integer, dimension(:,:), allocatable :: range_bounds_
+     real(r8), dimension(:), allocatable :: bin_centers_ ! radii at bin center (nm)
+     real(r8), dimension(:,:), allocatable :: bin_bounds_ ! radii at bin bounds (nm)
+     integer, dimension(:,:), allocatable :: range_bounds_ ! index of bins at range bounds
 
-     real(r8), allocatable :: voltonumblo_(:)
-     real(r8), allocatable :: voltonumbhi_(:)
      integer,  allocatable :: sulfate_mode_ndxs_(:)
      integer,  allocatable :: dust_mode_ndxs_(:)
      integer,  allocatable :: ssalt_mode_ndxs_(:)
