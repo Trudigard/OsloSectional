@@ -214,7 +214,9 @@ contains
 
     character(len=*), parameter :: subname = 'amcube'
 
-    call endrun(subname//' is not yet implemented')
+    amcube = -1.0_r8
+    ! TODO: do we need this? cannot call endrun, due to "pure elemental"
+
 
   end function amcube
 

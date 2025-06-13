@@ -71,8 +71,9 @@ contains
   ! reads aerosol namelist options
   !=============================================================================
   subroutine aero_model_readnl(nlfile)
-    use mpi,             only: mpi_integer, mpi_real8, MPI_SUCCESS
-    use spmd_utils,      only: mstrid=>masterprocid, mpicon
+    use mpi,             only: mpi_integer, mpi_real8, mpi_character, MPI_SUCCESS
+    use spmd_utils,      only: mstrid=>masterprocid, mpicom
+    use string_utils,    only: int2str
     use namelist_utils,  only: find_group_name
 
     ! filepath for file containing namelist input
@@ -105,14 +106,17 @@ contains
                                             oslo_sectional_bin_bounds, &
                                             oslo_sectional_range_bounds
 
+    if (masterproc) then
+       write(iulog ,*) 'sectional aerosol aerosol_readnl'
+    end if
     ! Initialize namelist variables
     aer_sol_facti = nan
     aer_sol_factb = nan
     aer_scav_coef = nan
 
-    oslo_sectional_nspecies = nan
-    oslo_sectional_nbin = nan
-    oslo_sectional_nrange = nan
+    oslo_sectional_nspecies = 0
+    oslo_sectional_nbin = 0
+    oslo_sectional_nrange = 0
     oslo_sectional_bin_centers = ''
     oslo_sectional_bin_bounds = ''
     oslo_sectional_range_bounds = ''
@@ -251,7 +255,7 @@ contains
        write(iulog ,*) 'sectional aerosol properties namelist: '
        write(iulog ,*) 'nspecies = ', oslo_sectional_nspecies
        write(iulog ,*) 'nbins = ', oslo_sectional_nbin
-       write(iulog ,*) 'nranges = ', oslo_sectional_nranges
+       write(iulog ,*) 'nranges = ', oslo_sectional_nrange
        write(iulog ,*) 'bin_centers: '
        do ind = 1, oslo_sectional_nbin, 5
            write(iulog, *) oslo_sectional_bin_centers(ind:min(ind+4, oslo_sectional_nbin))

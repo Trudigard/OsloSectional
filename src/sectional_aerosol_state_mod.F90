@@ -10,6 +10,8 @@ module sectional_aerosol_state_mod
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
 
+  use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
+
   implicit none
 
   private
@@ -324,6 +326,8 @@ contains
     integer, intent(in) :: ncol                ! number of columns
     integer, intent(in) :: nlev                ! number of vertical levels
 
+    real(r8) :: wght(ncol,nlev)                 !
+
     character(len=*), parameter :: subname = 'hetfrz_size_wght'
 
     call endrun(subname//' is not yet implemented')
@@ -338,6 +342,7 @@ contains
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
+    real(r8), pointer :: kappa(:,:)                 !
 
     character(len=*), parameter :: subname = 'hygroscopicity'
 
