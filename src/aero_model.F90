@@ -55,8 +55,8 @@ module aero_model
 
 
   ! sectional_aerosol_properties_nl variables
-  integer                               :: oslo_sectional_nbin
-  integer                               :: oslo_sectional_nrange
+  integer                               :: oslo_sectional_nbins
+  integer                               :: oslo_sectional_nranges
   integer                               :: oslo_sectional_nspecies
   real, dimension(:), allocatable       :: oslo_sectional_bin_centers_list
   real, dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
@@ -85,38 +85,28 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_readnl'
 
-    ! Namelist variables
-    character(len=16) :: aer_wetdep_list(1000) = ' '
-    character(len=16) :: aer_drydep_list(1000) = ' '
-
     character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
     character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
     character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
 
 
-    ! Define namelist
-    namelist /aerosol_nl/ aer_wetdep_list, aer_drydep_list
-    namelist /aerosol_nl/ aer_sol_facti, aer_sol_factb, aer_scav_coef
-
     ! Aerosol properties namelist
     namelist /oslo_sectional_properties_nl/ oslo_sectional_nspecies, &
-                                            oslo_sectional_nbin, &
-                                            oslo_sectional_nrange, &
-                                            oslo_sectional_bin_centers, &
+                                            oslo_sectional_nbins, &
+                                            oslo_sectional_nranges, &
                                             oslo_sectional_bin_bounds, &
+                                            oslo_sectional_bin_centers, &
                                             oslo_sectional_range_bounds
 
-    if (masterproc) then
-       write(iulog ,*) 'sectional aerosol aerosol_readnl'
-    end if
+
     ! Initialize namelist variables
     aer_sol_facti = nan
     aer_sol_factb = nan
     aer_scav_coef = nan
 
     oslo_sectional_nspecies = 0
-    oslo_sectional_nbin = 0
-    oslo_sectional_nrange = 0
+    oslo_sectional_nbins = 0
+    oslo_sectional_nranges = 0
     oslo_sectional_bin_centers = ''
     oslo_sectional_bin_bounds = ''
     oslo_sectional_range_bounds = ''
@@ -124,88 +114,37 @@ contains
     ! Read namelists
     if (masterproc) then
        open(newunit=unitn, file=trim(nlfile), status='old')
-       call find_group_name(unitn, 'aerosol_nl', status=ierr)
-       if (ierr == 0) then
-          read(unitn, aerosol_nl, iostat=ierr)
-          if (ierr /= 0) then
-             call endrun(subname // ':: ERROR reading aerosol_nl namelist')
-          end if
-       end if
-       !close(unitn)
-
-
        call find_group_name(unitn, 'oslo_sectional_properties_nl', ierr)
        if (ierr == 0) then
            read(unitn, oslo_sectional_properties_nl, iostat=ierr)
            if (ierr /= 0) then
                call endrun(subname // ':: ERROR reading oslo_sectional_properties_nl namelist')
            end if
+
        end if
+       close(unitn)
 
-        ! allocate bins and ranges
-        allocate(oslo_sectional_bin_centers_list(oslo_sectional_nbin))
-        allocate(oslo_sectional_bin_bounds_list(oslo_sectional_nbin, 2))
-        allocate(oslo_sectional_range_bounds_list(oslo_sectional_nrange, 2))
-
-        ! parse bin bounds and centers
-        do ind=1,oslo_sectional_nbin
-            read(oslo_sectional_bin_centers(ind),*) oslo_sectional_bin_centers_list(ind)
-            tmp = oslo_sectional_bin_bounds(ind)
-            pos = index(tmp, ':')
-            read(tmp(1:pos-1), *) oslo_sectional_bin_bounds_list(ind,1)
-            read(tmp(pos+1:), *) oslo_sectional_bin_bounds_list(ind,2)
-        end do
-
-        ! parse range bounds
-        do ind=1,oslo_sectional_nrange
-            tmp = oslo_sectional_range_bounds(ind)
-            pos = index(tmp, ':')
-            read(tmp(1:pos-1), *) oslo_sectional_range_bounds_list(ind,1)
-            read(tmp(pos+1:), *) oslo_sectional_range_bounds_list(ind,2)
-        end do
-    end if
-
-    ! Broadcast namelist variables and check for errors
-    call MPI_Bcast(aer_wetdep_list, len(aer_wetdep_list(1))*pcnst, mpi_character, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_wetdep_list'")
-    end if
-    call MPI_Bcast(aer_drydep_list, len(aer_drydep_list(1))*pcnst, mpi_character, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_drydep_list'")
-    end if
-    call MPI_Bcast(aer_sol_facti, pcnst, mpi_real8, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_sol_facti'")
-    end if
-    call MPI_Bcast(aer_sol_factb, pcnst, mpi_real8, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_sol_factb'")
-    end if
-    call MPI_Bcast(aer_scav_coef, pcnst, mpi_real8, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-       call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aer_scav_coef'")
     end if
 
     call MPI_Bcast(oslo_sectional_nspecies, 1, mpi_integer, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
         call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
     end if
-    call MPI_Bcast(oslo_sectional_nbin, 1, mpi_integer, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_nbins, 1, mpi_integer, mstrid, mpicom, ierr)
     if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbin'")
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbins'")
     end if
-    call MPI_Bcast(oslo_sectional_nrange, 1, mpi_integer, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_nranges, 1, mpi_integer, mstrid, mpicom, ierr)
         if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nrange'")
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nranges'")
     end if
-    call MPI_Bcast(oslo_sectional_bin_centers_list, oslo_sectional_nbin, mpi_real8, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_bin_centers, oslo_sectional_nbins, mpi_real8, mstrid, mpicom, ierr)
         if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers_list'")
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers'")
     end if
-    call MPI_Bcast(oslo_sectional_bin_bounds_list, size(oslo_sectional_bin_bounds_list), mpi_real8, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_bin_bounds, size(oslo_sectional_bin_bounds_list), mpi_real8, mstrid, mpicom, ierr)
         if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds_list'")
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
     end if
     call MPI_Bcast(oslo_sectional_range_bounds, size(oslo_sectional_range_bounds), mpi_integer, mstrid, mpicom, ierr)
         if (ierr /= MPI_SUCCESS) then
@@ -213,60 +152,45 @@ contains
     end if
 
 
-    ! Allocate and initialize wetdep list and drydep list
-    nwetdep = 0
-    ndrydep = 0
+    ! allocate bins and ranges
+    allocate(oslo_sectional_bin_centers_list(oslo_sectional_nbins))
+    allocate(oslo_sectional_bin_bounds_list(oslo_sectional_nbins, 2))
+    allocate(oslo_sectional_range_bounds_list(oslo_sectional_nranges, 2))
 
-    do ind = 1, 1000
-      if (len_trim(aer_wetdep_list(ind)) > 0) then
-         nwetdep = nwetdep + 1
-      else
-         exit
-      end if
+        ! parse bin bounds and centers
+    do ind=1,oslo_sectional_nbins
+        read(oslo_sectional_bin_centers(ind),*) oslo_sectional_bin_centers_list(ind)
+        tmp = oslo_sectional_bin_bounds(ind)
+        pos = index(tmp, ':')
+        read(tmp(1:pos-1), *) oslo_sectional_bin_bounds_list(ind,1)
+        read(tmp(pos+1:), *) oslo_sectional_bin_bounds_list(ind,2)
     end do
-    allocate(wetdep_list(nwetdep))
-    wetdep_list(1:nwetdep) = aer_wetdep_list(1:nwetdep)
 
-    do ind = 1, 1000
-       if (len_trim(aer_drydep_list(ind)) > 0) then
-         ndrydep = ndrydep + 1
-       else
-         exit
-       end if
+    ! parse range bounds
+    do ind=1,oslo_sectional_nranges
+        tmp = oslo_sectional_range_bounds(ind)
+        pos = index(tmp, ':')
+        read(tmp(1:pos-1), *) oslo_sectional_range_bounds_list(ind,1)
+        read(tmp(pos+1:), *) oslo_sectional_range_bounds_list(ind,2)
     end do
-    allocate(drydep_list(ndrydep))
-    drydep_list(1:ndrydep) = aer_drydep_list(1:ndrydep)
 
     ! Report
     if (masterproc) then
-       write(iulog ,*) 'Aerosol namelist:'
-       write(iulog ,*) '   Wet deposition species:'
-       do ind = 1, nwetdep, 5
-         write(iulog, '(" ",5a)') wetdep_list(ind:min(ind+4,nwetdep))
-       end do
-       write(iulog ,*) '   Dry deposition species:'
-       do ind = 1, ndrydep, 5
-         write(iulog, '(" ",5a)') drydep_list(ind:min(ind+4,ndrydep))
-       end do
-       write(iulog ,*) '   aer_sol_facti = ', aer_sol_facti
-       write(iulog ,*) '   aer_sol_factb = ', aer_sol_factb
-       write(iulog ,*) '   aer_scav_coef = ', aer_scav_coef
-
        write(iulog ,*) 'sectional aerosol properties namelist: '
        write(iulog ,*) 'nspecies = ', oslo_sectional_nspecies
-       write(iulog ,*) 'nbins = ', oslo_sectional_nbin
-       write(iulog ,*) 'nranges = ', oslo_sectional_nrange
+       write(iulog ,*) 'nbins = ', oslo_sectional_nbins
+       write(iulog ,*) 'nranges = ', oslo_sectional_nranges
        write(iulog ,*) 'bin_centers: '
-       do ind = 1, oslo_sectional_nbin, 5
-           write(iulog, *) oslo_sectional_bin_centers(ind:min(ind+4, oslo_sectional_nbin))
+       do ind = 1, oslo_sectional_nbins, 5
+           write(iulog, *) oslo_sectional_bin_centers(ind:min(ind+4, oslo_sectional_nbins))
        end do
        write(iulog ,*) 'bin_bounds: '
-       do ind = 1, oslo_sectional_nbin, 5
-           write(iulog, *) oslo_sectional_bin_bounds(ind:min(ind+4, oslo_sectional_nbin))
+       do ind = 1, oslo_sectional_nbins, 5
+           write(iulog, *) oslo_sectional_bin_bounds(ind:min(ind+4, oslo_sectional_nbins))
        end do
        write(iulog ,*) 'range_bounds: '
-       do ind = 1, oslo_sectional_nrange, 5
-           write(iulog, *) oslo_sectional_range_bounds(ind:min(ind+4, oslo_sectional_nrange))
+       do ind = 1, oslo_sectional_nranges, 5
+           write(iulog, *) oslo_sectional_range_bounds(ind:min(ind+4, oslo_sectional_nranges))
        end do
 
     end if
