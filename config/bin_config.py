@@ -68,14 +68,13 @@ class _AerosolSpecies:
 
     def check_range_bnds(self, range_bnds):
         ''' Check whether range bounds for the individual species
-        in hte configuration file are valid (that is equal to the specified range bounds)
-        and raise error if not.
+        in the configuration file are valid (that is equal to the specified range bounds)
+        and raise an exception if not.
 
         Parameters:
             range_bnds (list(float)) : list of range bounds read from the config file
         '''
-        if any(i not in range_bnds for i in self.range_bnds):
-            sys.exit('ERROR: Species range bound not equal to range bounds')
+        expect(all(i in range_bounds for i in self.range_bnds), 'ERROR: Species range bound not equal to range bounds')
 
     def get_range_idx(self, range_bnds):
         ''' Adjust the species bounds to the new range bounds
@@ -139,13 +138,13 @@ class _BinSpecs:
             r list(float) : List of center radii of all bins (nm)
             r_bnds list(float) : list of radii at bin boundaries (nm)
         '''
-        V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1)) 		# calculate volume ratio
-        v_0 = 3/4 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
+        V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1))       # calculate volume ratio
+        v_0 = 4/3 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
         v = [v_0 * V_rat ** i for i in range(self.N)]
         v_lo = [(2*v[i]) / (1+V_rat) for i in range(self.N)] # lower radius bounds
         v_hi = V_rat*v_lo[-1] # upper bnd for largest bin
         v_bnds = v_lo + [v_hi] #
-        self.r = [(v[i]*4/(3*math.pi))**(1/3) for i in range(self.N)] # calculate radii
+        self.r = [(v[i]*3/(4*math.pi))**(1/3) for i in range(self.N)] # calculate radii
         self.r_bnds = [(v_bnds[i]*4/(3*math.pi))**(1/3) for i in range(self.N+1)] # calculate radius bounds from volume
 
 class _RangeSpecs:
@@ -257,24 +256,28 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
 
     f = open(oslo_sectional_in, "w")
     f.write("&oslo_sectional_properties_nl\n")
-    f.write(" oslo_sectional_nspecies		=  ")
+    f.write(" oslo_sectional_nspecies       =  ")
     f.write(f"{nspecies} \n")
+    f.write(" oslo_sectional_nbins       =  ")
+    f.write(f"{bin_specs.N} \n")
+    f.write(" oslo_sectional_nranges       =  ")
+    f.write(f"{len(range_specs.range_bnds)-1} \n")
 
-    f.write(" oslo_sectional_bin_bounds		=  ")
+    f.write(" oslo_sectional_bin_bounds     =  ")
     for i in range(bin_specs.N):
         f.write(f"'{bin_specs.r_bnds[i]:.3f}D0:{bin_specs.r_bnds[i+1]:.3f}D0'")
         if i != bin_specs.N-1:
             f.write(', ')
     f.write("\n")
 
-    f.write(" oslo_sectional_bin_centers		=  ")
+    f.write(" oslo_sectional_bin_centers        =  ")
     for i in range(bin_specs.N):
         f.write(f"'{bin_specs.r[i]:.3f}D0'")
         if i != bin_specs.N-1:
             f.write(', ')
     f.write("\n")
 
-    f.write(" oslo_sectional_range_bounds		=  ")
+    f.write(" oslo_sectional_range_bounds       =  ")
     for i in range(len(range_specs.range_bnds)-1):
         f.write(f"'{range_specs.range_bnd_bin_idx[i][0]}:{range_specs.range_bnd_bin_idx[i][1]}'")
         if i != len(range_specs.range_bnds)-2:
@@ -285,10 +288,10 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     for species in species_obj_list:
         if species.active:
             f.write("&oslo_sectional_properties_aerosol_nl\n")
-            f.write(f" oslo_sectional_aerosol_name		=  '{species.short_name}' \n")
-            f.write(" oslo_sectional_aerosol_range		=  ")
+            f.write(f" oslo_sectional_aerosol_name      =  '{species.short_name}' \n")
+            f.write(" oslo_sectional_aerosol_range      =  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
-            f.write(f" oslo_sectional_aerosol_soluble		=  .{species.soluble}. \n")
+            f.write(f" oslo_sectional_aerosol_soluble       =  .{species.soluble}. \n")
             f.write("/\n")
     f.close()
 
