@@ -58,8 +58,8 @@ module aero_model
   integer                               :: oslo_sectional_nbins
   integer                               :: oslo_sectional_nranges
   integer                               :: oslo_sectional_nspecies
-  real, dimension(:), allocatable       :: oslo_sectional_bin_centers_list
-  real, dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
+  real(r8), dimension(:), allocatable       :: oslo_sectional_bin_centers_list
+  real(r8), dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
   integer, dimension(:,:), allocatable  :: oslo_sectional_range_bounds_list
 
   integer :: fracis_idx = 0
@@ -142,7 +142,7 @@ contains
         if (ierr /= MPI_SUCCESS) then
         call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers'")
     end if
-    call MPI_Bcast(oslo_sectional_bin_bounds, size(oslo_sectional_bin_bounds_list), mpi_real8, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_bin_bounds, size(oslo_sectional_bin_bounds), mpi_real8, mstrid, mpicom, ierr)
         if (ierr /= MPI_SUCCESS) then
         call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
     end if
@@ -157,13 +157,16 @@ contains
     allocate(oslo_sectional_bin_bounds_list(oslo_sectional_nbins, 2))
     allocate(oslo_sectional_range_bounds_list(oslo_sectional_nranges, 2))
 
+    oslo_sectional_bin_centers_list = nan
+    oslo_sectional_bin_bounds_list = nan
+    oslo_Sectional_range_bounds_list = 0
         ! parse bin bounds and centers
     do ind=1,oslo_sectional_nbins
-        read(oslo_sectional_bin_centers(ind),*) oslo_sectional_bin_centers_list(ind)
+        read(oslo_sectional_bin_centers(ind),'(D)') oslo_sectional_bin_centers_list(ind)
         tmp = oslo_sectional_bin_bounds(ind)
         pos = index(tmp, ':')
-        read(tmp(1:pos-1), *) oslo_sectional_bin_bounds_list(ind,1)
-        read(tmp(pos+1:), *) oslo_sectional_bin_bounds_list(ind,2)
+        read(tmp(1:pos-1), '(D)') oslo_sectional_bin_bounds_list(ind,1)
+        read(tmp(pos+1:), '(D)') oslo_sectional_bin_bounds_list(ind,2)
     end do
 
     ! parse range bounds
@@ -231,18 +234,11 @@ contains
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
     call aerosols_inti()
-    if (masterproc) then
-        write(iulog,*) subrname//' before dust_init call'
-    endif
+
     call dust_init()
 
-    if (masterproc) then
-        write(iulog,*) subrname//' before FRACIS pbuf call'
-    endif
     fracis_idx = pbuf_get_index('FRACIS')
-    if (masterproc) then
-        write(iulog,*) subrname//' after FRACIS pbuf call'
-    endif
+
     if (nwetdep>0) &
          allocate(wetdep_indices(nwetdep))
     if (ndrydep>0) &
