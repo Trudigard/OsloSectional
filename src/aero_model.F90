@@ -19,6 +19,7 @@ module aero_model
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index
   use cam_history,       only: outfld
   use infnan,            only: nan, assignment(=)
+  use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
 
   implicit none
   private
@@ -43,9 +44,7 @@ module aero_model
   character(len=16), allocatable :: drydep_list(:)
 
   integer :: ndrydep = 0
-  integer,allocatable :: drydep_indices(:)
   integer :: nwetdep = 0
-  integer,allocatable :: wetdep_indices(:)
   logical :: drydep_lq(pcnst)
   logical :: wetdep_lq(pcnst)
 
@@ -58,11 +57,18 @@ module aero_model
   integer                               :: oslo_sectional_nbins
   integer                               :: oslo_sectional_nranges
   integer                               :: oslo_sectional_nspecies
+
+  character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
+  character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
+  character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
+
   real(r8), dimension(:), allocatable       :: oslo_sectional_bin_centers_list
   real(r8), dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
   integer, dimension(:,:), allocatable  :: oslo_sectional_range_bounds_list
 
   integer :: fracis_idx = 0
+
+  type(sectional_aerosol_properties), pointer :: aero_props=>null()
 
 
 contains
@@ -84,11 +90,6 @@ contains
     character(len=50)           :: tmp
 
     character(len=*), parameter :: subname = 'aero_model_readnl'
-
-    character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
-    character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
-    character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
-
 
     ! Aerosol properties namelist
     namelist /oslo_sectional_properties_nl/ oslo_sectional_nspecies, &
@@ -226,185 +227,37 @@ contains
 
     ! local vars
     character(len=12), parameter :: subrname = 'aero_model_init'
-    integer :: m, id
+    integer :: m, id, ierr
     character(len=20) :: dummy
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
 
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
-    call aerosols_inti()
+    !call aerosols_inti()
+    if (masterproc) then
+        write(iulog,*) subrname//' calling aero_props'
+    endif
+
+    aero_props => sectional_aerosol_properties() ! calls constructor function in sectional_aerosol_properties
+
+
+    if (masterproc) then
+        write(iulog,*) subrname//' called aero_props, now dust_init'
+    endif
+
 
     call dust_init()
 
+
+    if (masterproc) then
+        write(iulog,*) subrname//' calling pbuf_bet_index FRACIS'
+    endif
     fracis_idx = pbuf_get_index('FRACIS')
 
-    if (nwetdep>0) &
-         allocate(wetdep_indices(nwetdep))
-    if (ndrydep>0) &
-         allocate(drydep_indices(ndrydep))
-
-    do m = 1,ndrydep
-       call cnst_get_ind ( drydep_list(m), id, abort=.false. )
-       if (id>0) then
-          drydep_indices(m) = id
-       else
-          call endrun(subrname//': invalid drydep species: '//trim(drydep_list(m)) )
-       endif
-
-       if (masterproc) then
-          write(iulog,*) subrname//': '//drydep_list(m)//' will have drydep applied'
-       endif
-    enddo
-    do m = 1,nwetdep
-       call cnst_get_ind ( wetdep_list(m), id, abort=.false. )
-       if (id>0) then
-          wetdep_indices(m) = id
-       else
-          call endrun(subrname//': invalid wetdep species: '//trim(wetdep_list(m)) )
-       endif
-
-       if (masterproc) then
-          write(iulog,*) subrname//': '//wetdep_list(m)//' will have wet removal'
-       endif
-    enddo
-
-    ! set flags for drydep tendencies
-    drydep_lq(:) = .false.
-    do m=1,ndrydep
-       id = drydep_indices(m)
-       drydep_lq(id) =  .true.
-    enddo
-
-    ! set flags for wetdep tendencies
-    wetdep_lq(:) = .false.
-    do m=1,nwetdep
-       id = wetdep_indices(m)
-       wetdep_lq(id) = .true.
-    enddo
-
-    do m = 1,ndrydep
-
-       dummy = trim(drydep_list(m)) // 'TB'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m))//' turbulent dry deposition flux')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m))  // 'GV'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m)) //' gravitational dry deposition flux')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m))  // 'DD'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m)) //' dry deposition flux at bottom (grav + turb)')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m)) // 'DT'
-       call addfld (dummy,(/ 'lev' /), 'A','kg/kg/s',trim(drydep_list(m))//' dry deposition')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m)) // 'DV'
-       call addfld (dummy,(/ 'lev' /), 'A','m/s',trim(drydep_list(m))//' deposition velocity')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-    enddo
-
-    if (ndrydep>0) then
-
-       call inidrydep(rair, gravit)
-
-       dummy = 'RAM1'
-       call addfld (dummy,horiz_only, 'A','frac','RAM1')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = 'airFV'
-       call addfld (dummy,horiz_only, 'A','frac','FV')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-       if (dust_active) then
-          dummy = 'DSTSFDRY'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Dust deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-
+    if (masterproc) then
+        write(iulog,*) subrname//' aero_model_init done'
     endif
-
-    do m = 1,nwetdep
-
-       call addfld (trim(wetdep_list(m))//'SFWET', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux at surface')
-       call addfld (trim(wetdep_list(m))//'SFSIC', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (incloud, convective) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSIS', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (incloud, stratiform) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSBC', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (belowcloud, convective) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSBS', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (belowcloud, stratiform) at surface')
-       call addfld (trim(wetdep_list(m))//'WET',   (/ 'lev' /), 'A','kg/kg/s', &
-            'wet deposition tendency')
-       call addfld (trim(wetdep_list(m))//'SIC',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' ic wet deposition')
-       call addfld (trim(wetdep_list(m))//'SIS',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' is wet deposition')
-       call addfld (trim(wetdep_list(m))//'SBC',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' bc wet deposition')
-       call addfld (trim(wetdep_list(m))//'SBS',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' bs wet deposition')
-    enddo
-
-    if (nwetdep>0) then
-       if (sslt_active) then
-          dummy = 'SSTSFWET'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Sea salt wet deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-       if (dust_active) then
-          dummy = 'DSTSFWET'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Dust wet deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-    endif
-
-    if (dust_active) then
-       ! emissions diagnostics ....
-
-       do m = 1, dust_nbin
-          dummy = trim(dust_names(m)) // 'SF'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dust_names(m))//' dust surface emission')
-          if (history_aerosol) then
-             call add_default (dummy, 1, ' ')
-          endif
-       enddo
-
-       dummy = 'DSTSFMBL'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
-       if (history_aerosol .or. history_dust) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-       dummy = 'LND_MBL'
-       call addfld (dummy,horiz_only, 'A','frac','Soil erodibility factor')
-       if (history_aerosol) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-    endif
-
-
     ! deallocate wetdep list and drydep list
     deallocate(wetdep_list)
     deallocate(drydep_list)
@@ -518,7 +371,6 @@ contains
     ! do drydep for each of the bins of dust and seasalt
     do m=1,ndrydep
 
-       mm = drydep_indices(m)
        findindex: do im = 1,naero
          if (trim(cnst_name(mm))==trim(aeronames(im))) exit findindex
        enddo findindex
@@ -645,8 +497,6 @@ contains
     sflx_tot_slt(:) = 0._r8
 
     do m = 1, nwetdep
-
-       mm = wetdep_indices(m)
 
        sol_factb = aer_sol_factb(m)
        sol_facti = aer_sol_facti(m)

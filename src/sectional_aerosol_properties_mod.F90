@@ -33,6 +33,7 @@ module sectional_aerosol_properties_mod
      integer :: num_poa_ = 0
      integer :: num_bc_ = 0
    contains
+    ! procedure :: initialize => aero_props_init
      procedure :: number_transported
      procedure :: get
      procedure :: amcube
@@ -68,28 +69,107 @@ module sectional_aerosol_properties_mod
   logical, parameter :: debug = .false.
 
 contains
+  !subroutine aero_props_init(self, oslo_sectional_nbins, oslo_sectional_nranges, &
+  !                              oslo_sectional_nspecies, oslo_sectional_bin_centers, &
+  !                              oslo_sectional_bin_bounds, oslo_sectional_range_bounds, ierr)
+  !type(sectional_aerosol_properties), intent(inout) :: self
 
+  ! namelist variables
+!  integer, intent(in)   :: oslo_sectional_nbins
+!  integer, intent(in)   :: oslo_sectional_nranges
+!  integer, intent(in)   :: oslo_sectional_nspecies
+!  character, intent(in) :: oslo_sectional_bin_centers(:)
+!  character, intent(in) :: oslo_sectional_bin_bounds(:)
+!  character, intent(in) :: oslo_sectional_range_bounds(:)
+
+ ! integer, intent(out)         :: ierr
+
+  ! local variables
+  !integer                      :: pos, ind
+  !character(len=50)            :: tmp
+
+  !character(len=*), parameter  :: subname = 'sectional_aerosol_properties::aero_props_init'
+
+  !ierr = 0
+
+  !allocate(self%bin_centers_(oslo_sectional_nbins), stat=ierr)
+  !if( ierr /= 0 ) then
+  !  return
+  !end if
+  !allocate(self%bin_bounds_(oslo_sectional_nbins, 2), stat=ierr)
+  !if( ierr /= 0 ) then
+  !  return
+  !end if
+  !allocate(self%range_bounds_(oslo_sectional_nranges, 2), stat=ierr)
+  !if( ierr /= 0 ) then
+  !  return
+  !end if
+
+  !do ind=1,oslo_sectional_nbins
+  !  read(oslo_sectional_bin_centers(ind),'(D)') self%bin_centers_(ind)
+  !  tmp = oslo_sectional_bin_bounds(ind)
+  !  pos = index(tmp, ':')
+  !  read(tmp(1:pos-1), '(D)') self%bin_bounds_(ind,1)
+  !  read(tmp(pos+1:), '(D)') self%bin_bounds_(ind,2)
+  !end do
+
+  ! parse range bounds
+  !do ind=1,oslo_sectional_nranges
+  !  tmp = oslo_sectional_range_bounds(ind)
+  !  pos = index(tmp, ':')
+  !  read(tmp(1:pos-1), *) self%range_bounds_(ind,1)
+  !  read(tmp(pos+1:), *) self%range_bounds_(ind,2)
+  !end do
+
+
+  !self%nbins_ = oslo_sectional_nbins
+  !self%nranges_ = oslo_sectional_nranges
+  !self%nspecies_ = oslo_sectional_nspecies
+  !if (masterproc) then
+  !  write(iulog,*) subrname//' aero_props_init done!'
+  !endif
+  !end subroutine aero_props_init
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   function constructor() result(newobj)
 
     type(sectional_aerosol_properties), pointer :: newobj
 
-    integer :: l, m, nbins, ncnst_tot, mm
+    integer :: l, m, nbins, nranges, ncnst_tot, mm
     real(r8) :: dgnumlo
     real(r8) :: dgnumhi
-    integer,allocatable :: nspecies(:)
-    real(r8),allocatable :: f1(:)
-    real(r8),allocatable :: f2(:)
+    integer,allocatable   :: nspecies(:) ! nspecies per range
+    !real(r8),allocatable  :: f1(:)
+    !real(r8),allocatable  :: f2(:)
+    real(r8),dimension(:),allocatable  :: bin_centers
+    real(r8),dimension(:,:),allocatable:: bin_bounds
+    integer,dimension(:,:),allocatable :: range_bounds
     integer :: ierr
 
     character(len=aero_name_len) :: spectype
 
-    integer :: npoa, nsoa, nbc
     character(len=*), parameter :: subname = 'constructor'
+
+    allocate(newobj,stat=ierr)
+    if( ierr/=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    ! get bin and range info nbins nranges
+
+    ! allocate nspecies, bin_centers, bin_bounds, range_bounds
+    ! allocate( nspecies(nranges), stat=ierr)
+    !   if( ierr /= 0 ) then
+    !       nullify(newobj)
+    !       return
+    !   end if
+
+    ncnst_tot = 0 ! nr tracers? nr bins + nr species n range
 
     call endrun(subname//' is not yet implemented')
 
+    ! call newobj%initialize
   end function constructor
 
   !------------------------------------------------------------------------------
