@@ -212,7 +212,7 @@ contains
 
   !=============================================================================
   !=============================================================================
-  subroutine aero_model_init( pbuf2d )
+  subroutine aero_model_init( pbuf2d, nlfile )
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
@@ -232,6 +232,8 @@ contains
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
 
+    character(len=*), intent(in) :: nlfile
+
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
     !call aerosols_inti()
@@ -239,7 +241,7 @@ contains
         write(iulog,*) subrname//' calling aero_props'
     endif
 
-    aero_props => sectional_aerosol_properties() ! calls constructor function in sectional_aerosol_properties
+    aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
 
 
     if (masterproc) then
