@@ -37,7 +37,7 @@ class _AerosolSpecies:
         short_name (str) : short name of the aerosol species
         long_name (str) : long name of the aerosol species
         composition (str) : composition to trace aerosol mass
-        soluble (bool) : True for internally mixed, false for externally mixed aerosol
+        mixed (bool) : True for internally mixed, false for externally mixed aerosol
         range_bnds (list(float)) : range bounds within which the species exists
         range_idx (list(int)) : indices of ranges within which the species exists
     '''
@@ -54,7 +54,7 @@ class _AerosolSpecies:
             short_name (str) : short name of the aerosol species
             long_name (str) : long name of the aerosol species
             composition (str) : composition to trace aerosol mass
-            soluble (bool) : True for internally mixed, false for externally mixed aerosol
+            mixed (bool) : True for internally mixed, false for externally mixed aerosol
             range_bnds (list(float)) : range bounds within which the species exists
             range_idx (list(int)) : indices of ranges within which the species exists
         '''
@@ -62,7 +62,7 @@ class _AerosolSpecies:
         self.short_name = config.get(species, 'short_name')
         self.long_name = config.get(species, 'long_name')
         self.composition = config.get(species, 'composition')
-        self.soluble = config.getboolean(species, 'soluble')
+        self.mixed = config.getboolean(species, 'mixed')
         self.range_bnds = _parse_range(config, species, 'range_bounds')
         self.range_idx = []
 
@@ -291,7 +291,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
             f.write(f" oslo_sectional_aerosol_name      =  '{species.short_name}' \n")
             f.write(" oslo_sectional_aerosol_range      =  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
-            f.write(f" oslo_sectional_aerosol_soluble       =  .{species.soluble}. \n")
+            f.write(f" oslo_sectional_aerosol_mixed       =  .{species.mixed}. \n")
             f.write("/\n")
     f.close()
 
