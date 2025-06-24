@@ -212,87 +212,6 @@ contains
         close(unitn)
     end if
 
-    if (masterproc) then
-        write(iulog,*) subname//' broadcasted oslo_sectional_aerosol_mixed'
-    endif
-
-
-
-
-    ! Broadcast the namelist properties
-    call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
-    end if
-    call MPI_Bcast(oslo_sectional_nspecies, oslo_sectional_nranges, mpi_character, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
-    end if
-    call MPI_Bcast(oslo_sectional_nbins, 1, mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbins'")
-    end if
-    call MPI_Bcast(oslo_sectional_nranges, 1, mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nranges'")
-    end if
-    call MPI_Bcast(oslo_sectional_bin_centers, oslo_sectional_nbins, mpi_real8, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers'")
-    end if
-    call MPI_Bcast(oslo_sectional_bin_bounds, size(oslo_sectional_bin_bounds), mpi_real8, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
-    end if
-    call MPI_Bcast(oslo_sectional_range_bounds, size(oslo_sectional_range_bounds), mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds'")
-    end if
-    if (masterproc) then
-        write(iulog,*) subname//' broadcasted rest'
-    endif
-
-    ! Broadcast the species properties
-    do ind=1,oslo_sectional_nspecies_tot
-
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%specname, 1, mpi_character, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_name'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%range_idx, 2, mpi_integer, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_range'")
-        end if
-
-        if (masterproc) then
-            write(iulog,*) 'index = ', ind
-            write(iulog,*) 'mixed value= ', oslo_sectional_species_properties(ind)%mixed
-        end if
-
-        ! TODO: fix this broadcasting somehow
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
-
-        if (ierr/= MPI_SUCCESS) then
-            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
-                call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
-        end if
-
-    end do
-
-    if (masterproc) then
-        write(iulog,*) subname//' broadcasted rest'
-    endif
-
     nbins = oslo_sectional_nbins
     nranges = oslo_sectional_nranges
     nspecies_tot = oslo_sectional_nspecies_tot
@@ -355,9 +274,6 @@ contains
     f2 = nan
 
     ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
-    if (masterproc) then
-        write(iulog,*) subname//' reading bin_centers, bin_bounds'
-    endif
     do ibin=1,nbins
         read(oslo_sectional_bin_centers(ibin),'(D)') bin_centers(ibin)
         tmp = oslo_sectional_bin_bounds(ibin)
@@ -365,9 +281,7 @@ contains
         read(tmp(1:pos-1), '(D)') bin_bounds(ibin,1)
         read(tmp(pos+1:), '(D)') bin_bounds(ibin,2)
     end do
-    if (masterproc) then
-        write(iulog,*) subname//' reading range_bounds'
-    endif
+
     ! parse range bounds
     do irange=1,nranges
         tmp = oslo_sectional_range_bounds(irange)
@@ -379,20 +293,10 @@ contains
 
     ncnst_tot = nbins + sum(range_nspecies) ! nbins + sum(nspecies)
 
-    if (masterproc) then
-        write(iulog,*) subname//' getting bins2ranges'
-    endif
-
     ! initialize bins2ranges array
-    if (masterproc) then
-        write(iulog,*) subname//' calc bins2ranges'
-    endif
 
     do ibin=1,nbins
         do irange=1,nranges
-            if (masterproc) then
-                write(iulog,*) 'bin ', ibin, 'range ', irange, 'range_bounds ', range_bounds(irange, 1), range_bounds(irange, 2)
-            endif
             if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
                 bins2ranges(ibin) = irange
                 nspecies(ibin) = range_nspecies(irange)
@@ -440,6 +344,13 @@ contains
         return
     end if
 
+
+    allocate(newobj%bins2ranges_(nbins), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
     allocate(newobj%range_nspecies_(nranges), stat=ierr)
     if( ierr /=0 ) then
         nullify(newobj)
@@ -471,24 +382,89 @@ contains
     end if
 
     if (masterproc) then
-        write(iulog,*) subname//' reading data into object'
-    endif
-    newobj%bins2ranges_ = bins2ranges
-    newobj%nranges_ = nranges
-    newobj%range_nspecies_ = range_nspecies
-    newobj%bin_centers_ = bin_centers(:nbins)
-    newobj%bin_bounds_ = bin_bounds(:nbins, :)
-    newobj%range_bounds_ = range_bounds(:nranges, :)
-    newobj%aer_spec_prop = oslo_sectional_species_properties(:nspecies_tot)
 
-    if (masterproc) then
-        write(iulog,*) subname//' calling newobj initialize'
-    endif
+        newobj%bins2ranges_ = bins2ranges
+        newobj%nranges_ = nranges
+        newobj%range_nspecies_ = range_nspecies
+        newobj%bin_centers_ = bin_centers(:nbins)
+        newobj%bin_bounds_ = bin_bounds(:nbins, :)
+        newobj%range_bounds_ = range_bounds(:nranges, :)
+        newobj%aer_spec_prop = oslo_sectional_species_properties(:nspecies_tot)
+
+    end if
+
+    ! Broadcast the namelist properties
+    call MPI_Bcast(newobj%bins2ranges_, nbins, mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bins2ranges'")
+    end if
+
+    call MPI_Bcast(newobj%nranges_, 1, mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'nranges'")
+    end if
+
+    call MPI_Bcast(newobj%range_nspecies_, size(newobj%range_nspecies_), mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'range_nspecies_'")
+    end if
+
+    call MPI_Bcast(newobj%bin_centers_, nbins, mpi_real8, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bin_centers'")
+    end if
+
+    call MPI_Bcast(newobj%bin_bounds_, size(newobj%bin_bounds_), mpi_real8, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bin_bounds'")
+    end if
+
+
+    call MPI_Bcast(newobj%range_bounds_, size(newobj%range_bounds_), mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'range_bounds'")
+    end if
+
+    ! Broadcast the species properties
+    do ind=1,nspecies_tot
+
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%specname, 1, mpi_character, mstrid, mpicom, ierr)
+        if (ierr /= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop specname'")
+        end if
+
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%range_idx, 2, mpi_integer, mstrid, mpicom, ierr)
+        if (ierr /= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop range_idx'")
+        end if
+
+        ! TODO: fix this broadcasting somehow
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+        if (ierr/= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop mixed'")
+        end if
+
+    end do
+
     call newobj%initialize(nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
-
-    if (masterproc) then
-        write(iulog,*) subname//' new object is initialized'
-    endif
 
     ! deallocate local variables
     if (allocated(nspecies)) deallocate(nspecies)
