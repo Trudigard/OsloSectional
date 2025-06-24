@@ -19,6 +19,7 @@ module aero_model
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index
   use cam_history,       only: outfld
   use infnan,            only: nan, assignment(=)
+  use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
 
   implicit none
   private
@@ -43,9 +44,7 @@ module aero_model
   character(len=16), allocatable :: drydep_list(:)
 
   integer :: ndrydep = 0
-  integer,allocatable :: drydep_indices(:)
   integer :: nwetdep = 0
-  integer,allocatable :: wetdep_indices(:)
   logical :: drydep_lq(pcnst)
   logical :: wetdep_lq(pcnst)
 
@@ -58,11 +57,18 @@ module aero_model
   integer                               :: oslo_sectional_nbins
   integer                               :: oslo_sectional_nranges
   integer                               :: oslo_sectional_nspecies
+
+  character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
+  character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
+  character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
+
   real(r8), dimension(:), allocatable       :: oslo_sectional_bin_centers_list
   real(r8), dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
   integer, dimension(:,:), allocatable  :: oslo_sectional_range_bounds_list
 
   integer :: fracis_idx = 0
+
+  type(sectional_aerosol_properties), pointer :: aero_props=>null()
 
 
 contains
@@ -85,133 +91,32 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_readnl'
 
-    character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
-    character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
-    character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
+    ! modal_aero: read aerosol_nl: aer_drydep_list, modal_strat_sulfate, modal_accum_coarse_exch, seasalt_emis_scale
+    ! oslo aero: read aerosol_nl: sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial
 
-
-    ! Aerosol properties namelist
-    namelist /oslo_sectional_properties_nl/ oslo_sectional_nspecies, &
-                                            oslo_sectional_nbins, &
-                                            oslo_sectional_nranges, &
-                                            oslo_sectional_bin_bounds, &
-                                            oslo_sectional_bin_centers, &
-                                            oslo_sectional_range_bounds
-
-
-    ! Initialize namelist variables
-    aer_sol_facti = nan
-    aer_sol_factb = nan
-    aer_scav_coef = nan
-
-    oslo_sectional_nspecies = 0
-    oslo_sectional_nbins = 0
-    oslo_sectional_nranges = 0
-    oslo_sectional_bin_centers = ''
-    oslo_sectional_bin_bounds = ''
-    oslo_sectional_range_bounds = ''
-
-    ! Read namelists
     if (masterproc) then
-       open(newunit=unitn, file=trim(nlfile), status='old')
-       call find_group_name(unitn, 'oslo_sectional_properties_nl', ierr)
-       if (ierr == 0) then
-           read(unitn, oslo_sectional_properties_nl, iostat=ierr)
-           if (ierr /= 0) then
-               call endrun(subname // ':: ERROR reading oslo_sectional_properties_nl namelist')
-           end if
-
-       end if
-       close(unitn)
-
-    end if
-
-    call MPI_Bcast(oslo_sectional_nspecies, 1, mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
-    end if
-    call MPI_Bcast(oslo_sectional_nbins, 1, mpi_integer, mstrid, mpicom, ierr)
-    if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbins'")
-    end if
-    call MPI_Bcast(oslo_sectional_nranges, 1, mpi_integer, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nranges'")
-    end if
-    call MPI_Bcast(oslo_sectional_bin_centers, oslo_sectional_nbins, mpi_real8, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers'")
-    end if
-    call MPI_Bcast(oslo_sectional_bin_bounds, size(oslo_sectional_bin_bounds), mpi_real8, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
-    end if
-    call MPI_Bcast(oslo_sectional_range_bounds, size(oslo_sectional_range_bounds), mpi_integer, mstrid, mpicom, ierr)
-        if (ierr /= MPI_SUCCESS) then
-        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds'")
-    end if
-
-
-    ! allocate bins and ranges
-    allocate(oslo_sectional_bin_centers_list(oslo_sectional_nbins))
-    allocate(oslo_sectional_bin_bounds_list(oslo_sectional_nbins, 2))
-    allocate(oslo_sectional_range_bounds_list(oslo_sectional_nranges, 2))
-
-    oslo_sectional_bin_centers_list = nan
-    oslo_sectional_bin_bounds_list = nan
-    oslo_Sectional_range_bounds_list = 0
-        ! parse bin bounds and centers
-    do ind=1,oslo_sectional_nbins
-        read(oslo_sectional_bin_centers(ind),'(D)') oslo_sectional_bin_centers_list(ind)
-        tmp = oslo_sectional_bin_bounds(ind)
-        pos = index(tmp, ':')
-        read(tmp(1:pos-1), '(D)') oslo_sectional_bin_bounds_list(ind,1)
-        read(tmp(pos+1:), '(D)') oslo_sectional_bin_bounds_list(ind,2)
-    end do
-
-    ! parse range bounds
-    do ind=1,oslo_sectional_nranges
-        tmp = oslo_sectional_range_bounds(ind)
-        pos = index(tmp, ':')
-        read(tmp(1:pos-1), *) oslo_sectional_range_bounds_list(ind,1)
-        read(tmp(pos+1:), *) oslo_sectional_range_bounds_list(ind,2)
-    end do
-
-    ! Report
-    if (masterproc) then
-       write(iulog ,*) 'sectional aerosol properties namelist: '
-       write(iulog ,*) 'nspecies = ', oslo_sectional_nspecies
-       write(iulog ,*) 'nbins = ', oslo_sectional_nbins
-       write(iulog ,*) 'nranges = ', oslo_sectional_nranges
-       write(iulog ,*) 'bin_centers: '
-       do ind = 1, oslo_sectional_nbins, 5
-           write(iulog, *) oslo_sectional_bin_centers(ind:min(ind+4, oslo_sectional_nbins))
-       end do
-       write(iulog ,*) 'bin_bounds: '
-       do ind = 1, oslo_sectional_nbins, 5
-           write(iulog, *) oslo_sectional_bin_bounds(ind:min(ind+4, oslo_sectional_nbins))
-       end do
-       write(iulog ,*) 'range_bounds: '
-       do ind = 1, oslo_sectional_nranges, 5
-           write(iulog, *) oslo_sectional_range_bounds(ind:min(ind+4, oslo_sectional_nranges))
-       end do
-
+        write(iulog,*) subname//' nothing to read here..'
     end if
   end subroutine aero_model_readnl
 
   !=============================================================================
   !=============================================================================
   subroutine aero_model_register()
-   ! nbin
-   ! nrange
-   ! spec_name
-   ! idx
+    character(len=*), parameter :: subname = 'aero_model_register'
 
+    ! modal_aero: modal_aero_data_reg: allocate all kind of stuff, etc with number modes
+    ! oslo aero: aero_register: lots of cnst_get_ind calls for all tracers, set aerosol types
+
+    ! TODO: find out how to get tracer indices -> part of constructor?
+
+    if (masterproc) then
+        write(iulog,*) subname//' nothing to do here..'
+    end if
   end subroutine aero_model_register
 
   !=============================================================================
   !=============================================================================
-  subroutine aero_model_init( pbuf2d )
+  subroutine aero_model_init( pbuf2d, nlfile )
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
@@ -225,189 +130,43 @@ contains
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
 
     ! local vars
-    character(len=12), parameter :: subrname = 'aero_model_init'
-    integer :: m, id
+    character(len=12), parameter :: subname = 'aero_model_init'
+    integer :: m, id, ierr
     character(len=20) :: dummy
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
 
+    character(len=*), intent(in) :: nlfile
+
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
-    call aerosols_inti()
+    !call aerosols_inti()
+    if (masterproc) then
+        write(iulog,*) subname//' calling aero_props'
+    endif
+
+    aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
+
+
+    if (masterproc) then
+        write(iulog,*) subname//' called aero_props, now dust_init'
+    endif
+
 
     call dust_init()
 
+
+    if (masterproc) then
+        write(iulog,*) subname//' calling pbuf_bet_index FRACIS'
+    endif
     fracis_idx = pbuf_get_index('FRACIS')
 
-    if (nwetdep>0) &
-         allocate(wetdep_indices(nwetdep))
-    if (ndrydep>0) &
-         allocate(drydep_indices(ndrydep))
-
-    do m = 1,ndrydep
-       call cnst_get_ind ( drydep_list(m), id, abort=.false. )
-       if (id>0) then
-          drydep_indices(m) = id
-       else
-          call endrun(subrname//': invalid drydep species: '//trim(drydep_list(m)) )
-       endif
-
-       if (masterproc) then
-          write(iulog,*) subrname//': '//drydep_list(m)//' will have drydep applied'
-       endif
-    enddo
-    do m = 1,nwetdep
-       call cnst_get_ind ( wetdep_list(m), id, abort=.false. )
-       if (id>0) then
-          wetdep_indices(m) = id
-       else
-          call endrun(subrname//': invalid wetdep species: '//trim(wetdep_list(m)) )
-       endif
-
-       if (masterproc) then
-          write(iulog,*) subrname//': '//wetdep_list(m)//' will have wet removal'
-       endif
-    enddo
-
-    ! set flags for drydep tendencies
-    drydep_lq(:) = .false.
-    do m=1,ndrydep
-       id = drydep_indices(m)
-       drydep_lq(id) =  .true.
-    enddo
-
-    ! set flags for wetdep tendencies
-    wetdep_lq(:) = .false.
-    do m=1,nwetdep
-       id = wetdep_indices(m)
-       wetdep_lq(id) = .true.
-    enddo
-
-    do m = 1,ndrydep
-
-       dummy = trim(drydep_list(m)) // 'TB'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m))//' turbulent dry deposition flux')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m))  // 'GV'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m)) //' gravitational dry deposition flux')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m))  // 'DD'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(drydep_list(m)) //' dry deposition flux at bottom (grav + turb)')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m)) // 'DT'
-       call addfld (dummy,(/ 'lev' /), 'A','kg/kg/s',trim(drydep_list(m))//' dry deposition')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = trim(drydep_list(m)) // 'DV'
-       call addfld (dummy,(/ 'lev' /), 'A','m/s',trim(drydep_list(m))//' deposition velocity')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-    enddo
-
-    if (ndrydep>0) then
-
-       call inidrydep(rair, gravit)
-
-       dummy = 'RAM1'
-       call addfld (dummy,horiz_only, 'A','frac','RAM1')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-       dummy = 'airFV'
-       call addfld (dummy,horiz_only, 'A','frac','FV')
-       if ( history_aerosol ) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-       if (dust_active) then
-          dummy = 'DSTSFDRY'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Dust deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-
+    if (masterproc) then
+        write(iulog,*) subname//' aero_model_init done'
     endif
-
-    do m = 1,nwetdep
-
-       call addfld (trim(wetdep_list(m))//'SFWET', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux at surface')
-       call addfld (trim(wetdep_list(m))//'SFSIC', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (incloud, convective) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSIS', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (incloud, stratiform) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSBC', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (belowcloud, convective) at surface')
-       call addfld (trim(wetdep_list(m))//'SFSBS', horiz_only,  'A','kg/m2/s', &
-            'Wet deposition flux (belowcloud, stratiform) at surface')
-       call addfld (trim(wetdep_list(m))//'WET',   (/ 'lev' /), 'A','kg/kg/s', &
-            'wet deposition tendency')
-       call addfld (trim(wetdep_list(m))//'SIC',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' ic wet deposition')
-       call addfld (trim(wetdep_list(m))//'SIS',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' is wet deposition')
-       call addfld (trim(wetdep_list(m))//'SBC',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' bc wet deposition')
-       call addfld (trim(wetdep_list(m))//'SBS',   (/ 'lev' /), 'A','kg/kg/s', &
-            trim(wetdep_list(m))//' bs wet deposition')
-    enddo
-
-    if (nwetdep>0) then
-       if (sslt_active) then
-          dummy = 'SSTSFWET'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Sea salt wet deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-       if (dust_active) then
-          dummy = 'DSTSFWET'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s','Dust wet deposition flux at surface')
-          if ( history_aerosol ) then
-             call add_default (dummy, 1, ' ')
-          endif
-       endif
-    endif
-
-    if (dust_active) then
-       ! emissions diagnostics ....
-
-       do m = 1, dust_nbin
-          dummy = trim(dust_names(m)) // 'SF'
-          call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dust_names(m))//' dust surface emission')
-          if (history_aerosol) then
-             call add_default (dummy, 1, ' ')
-          endif
-       enddo
-
-       dummy = 'DSTSFMBL'
-       call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
-       if (history_aerosol .or. history_dust) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-       dummy = 'LND_MBL'
-       call addfld (dummy,horiz_only, 'A','frac','Soil erodibility factor')
-       if (history_aerosol) then
-          call add_default (dummy, 1, ' ')
-       endif
-
-    endif
-
-
     ! deallocate wetdep list and drydep list
-    deallocate(wetdep_list)
-    deallocate(drydep_list)
+    !deallocate(wetdep_list)
+    !deallocate(drydep_list)
 
   end subroutine aero_model_init
 
@@ -469,6 +228,9 @@ contains
 
     integer :: m,mm, i, im
 
+    character(len=*), parameter :: subname = 'aero_model_drydep'
+
+
     if (ndrydep<1) return
 
     landfrac => cam_in%landfrac(:)
@@ -518,7 +280,6 @@ contains
     ! do drydep for each of the bins of dust and seasalt
     do m=1,ndrydep
 
-       mm = drydep_indices(m)
        findindex: do im = 1,naero
          if (trim(cnst_name(mm))==trim(aeronames(im))) exit findindex
        enddo findindex
@@ -630,6 +391,9 @@ contains
 
     type(wetdep_inputs_t) :: dep_inputs  ! obj that contains inputs to wetdepa routine
 
+    character(len=*), parameter :: subname = 'aero_model_wetdep'
+
+
     if (nwetdep<1) return
 
     call pbuf_get_field(pbuf, fracis_idx, fracis, start=(/1,1,1/), kount=(/pcols, pver, pcnst/) )
@@ -645,8 +409,6 @@ contains
     sflx_tot_slt(:) = 0._r8
 
     do m = 1, nwetdep
-
-       mm = wetdep_indices(m)
 
        sol_factb = aer_sol_factb(m)
        sol_facti = aer_sol_facti(m)
@@ -725,6 +487,7 @@ contains
 
     use mo_constants, only : pi, avo => avogadro
 
+
     ! dummy args
     real(r8), intent(in)    :: pmid(:,:)
     real(r8), intent(in)    :: temp(:,:)
@@ -788,6 +551,9 @@ contains
     !           (no growth effect for mineral dust)
     !-----------------------------------------------------------------
     real(r8), dimension(7) :: table_rh, table_rfac_sulf, table_rfac_bc, table_rfac_oc, table_rfac_ss
+
+    character(len=*), parameter :: subname = 'aero_model_surfarea'
+
 
     data table_rh(1:7)        / 0.0_r8, 0.5_r8, 0.7_r8, 0.8_r8, 0.9_r8, 0.95_r8, 0.99_r8/
     data table_rfac_sulf(1:7) / 1.0_r8, 1.4_r8, 1.5_r8, 1.6_r8, 1.8_r8, 1.9_r8,  2.2_r8/
@@ -1027,6 +793,8 @@ contains
     real(r8), intent(out)   :: strato_sad(:,:)
     real(r8), intent(out)   :: reff_strat(:,:)
 
+    character(len=*), parameter :: subname = 'aero_model_strat_surfarea'
+
     strato_sad(:,:) = 0._r8
     reff_strat(:,:) = 0._r8
 
@@ -1081,6 +849,8 @@ contains
     real(r8) ::  aqso4_h2o2(ncol)            ! SO4 aqueous phase chemistry due to H2O2
     real(r8) ::  aqso4_o3(ncol)              ! SO4 aqueous phase chemistry due to O3
     real(r8) ::  xphlwc(ncol,pver)           ! pH value multiplied by lwc
+
+    character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
 
   ! aqueous chemistry ...
@@ -1142,6 +912,8 @@ contains
     real(r8) :: sflx(pcols)   ! accumulate over all bins for output
     real(r8) :: u10cubed(pcols)
     real (r8), parameter :: z0=0.0001_r8  ! m roughness length over oceans--from ocean model
+
+    character(len=*), parameter :: subname = 'aero_model_emissions'
 
     lchnk = state%lchnk
     ncol = state%ncol

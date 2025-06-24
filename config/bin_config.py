@@ -37,7 +37,7 @@ class _AerosolSpecies:
         short_name (str) : short name of the aerosol species
         long_name (str) : long name of the aerosol species
         composition (str) : composition to trace aerosol mass
-        soluble (bool) : True for internally mixed, false for externally mixed aerosol
+        mixed (bool) : True for internally mixed, false for externally mixed aerosol
         range_bnds (list(float)) : range bounds within which the species exists
         range_idx (list(int)) : indices of ranges within which the species exists
     '''
@@ -54,7 +54,7 @@ class _AerosolSpecies:
             short_name (str) : short name of the aerosol species
             long_name (str) : long name of the aerosol species
             composition (str) : composition to trace aerosol mass
-            soluble (bool) : True for internally mixed, false for externally mixed aerosol
+            mixed (bool) : True for internally mixed, false for externally mixed aerosol
             range_bnds (list(float)) : range bounds within which the species exists
             range_idx (list(int)) : indices of ranges within which the species exists
         '''
@@ -62,7 +62,7 @@ class _AerosolSpecies:
         self.short_name = config.get(species, 'short_name')
         self.long_name = config.get(species, 'long_name')
         self.composition = config.get(species, 'composition')
-        self.soluble = config.getboolean(species, 'soluble')
+        self.mixed = config.getboolean(species, 'mixed')
         self.range_bnds = _parse_range(config, species, 'range_bounds')
         self.range_idx = []
 
@@ -155,6 +155,7 @@ class _RangeSpecs:
         ranges (bool) : True if the model should average the chemistry for a range of bins
         range_bnds (list(float)) : The radii at the range boundaries (nm)
         range_bnd_bin_idx (list(int)) : Indices of bins within a range
+        nspecies (list(int)) : number of species in each range
     '''
     def __init__(self, config):
         ''' Initializes an instance of the _RangeSpecs class.
@@ -165,10 +166,12 @@ class _RangeSpecs:
             ranges (bool) : True if the model should average the chemistry for a range of bins
             range_bnds (list(float)) : The radii at the range boundaries (nm)
             range_bnd_bin_idx (list(int)) : Indices of bins within a range
+            nspecies (list(int)) : number of species in each range
         '''
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
         self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
-        self.range_bnd_bin_idx = [] # TODO fix these indices, it is currently output as 1:3, 3:5 etc but should be either 1:2, 3:5 or 1:3, 4:5
+        self.range_bnd_bin_idx = []
+        self.nspecies = []
     def adjust_range_bnds(self, r_bnds):
         ''' Function to adjust the soft range bounds given in the configuration file to the
         radius bounds calculated in the _BinSpecs calc_bins routine.
@@ -180,20 +183,25 @@ class _RangeSpecs:
             range_bnds (list(float)) : The radii at the range boundaries (nm)
             range_bnd_bin_idx (list(tuple(int,int))) : Indices of bins within a range (lower bin index, upper bin index)
         '''
-        if self.ranges: # TODO: add explanation on what this computation is doing
-            self.range_bnds[-1] = r_bnds[-1]
+        if self.ranges:
+            self.range_bnds[-1] = r_bnds[-1] # set lowest range bound equal to lowest bin bound
             for i in range(0, len(self.range_bnds)-1):
+                # find closest bin bound to each range bound
                 abs_diff_lo = [abs(radb - self.range_bnds[i]) for radb in r_bnds]
                 abs_diff_hi = [abs(radb - self.range_bnds[i+1]) for radb in r_bnds]
                 idx_lo = abs_diff_lo.index(min(abs_diff_lo))
                 idx_hi = abs_diff_hi.index(min(abs_diff_hi))
                 self.range_bnds[i] = r_bnds[idx_lo] # set the range_bnd to the radius_bnd that is closest
-                # TODO check indices
                 self.range_bnd_bin_idx.append((idx_lo+1, idx_hi)) # idx_lo +1 -> first one will be 1, since fortran arrays start at 1
                                                                   # idx_hi -> not plus one, since this is the index of the r_bnds and technically we would need to calculate -1 to get fortran indices
         else:
             # If no ranges (classic sectional scheme), set range bounds equal to bin bounds TODO: is this necessary?
             self.range_bnds = r_bnds
+    def get_nspecies(self, species_obj_list):
+            n = len(self.range_bnds)-1
+            self.nspecies = [0] * n
+            for r in range(n):
+                self.nspecies[r] = sum([1 for obj in species_obj_list if r+1 in obj.range_idx])
 
 def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     ''' Main function called from buildnml if a compset with the oslo sectional aerosol
@@ -249,20 +257,26 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     [species_obj.get_range_idx(range_specs.range_bnds) for species_obj in species_obj_list]
 
     active_species_obj_list = [species for species in species_obj_list if species.active]
-    nspecies = len(active_species_obj_list)
+    nspecies_tot = len(active_species_obj_list)
+    range_specs.get_nspecies(active_species_obj_list)
     # =====================================================================
     # Write to temporary oslo_sectional namelist file
     # =====================================================================
 
     f = open(oslo_sectional_in, "w")
     f.write("&oslo_sectional_properties_nl\n")
-    f.write(" oslo_sectional_nspecies       =  ")
-    f.write(f"{nspecies} \n")
+    f.write(" oslo_sectional_nspecies_tot       =  ")
+    f.write(f"{nspecies_tot} \n")
     f.write(" oslo_sectional_nbins       =  ")
     f.write(f"{bin_specs.N} \n")
     f.write(" oslo_sectional_nranges       =  ")
     f.write(f"{len(range_specs.range_bnds)-1} \n")
-
+    f.write(" oslo_sectional_nspecies       =  ")
+    for i in range(0, len(range_specs.range_bnds)-1):
+        f.write(f"'{range_specs.nspecies[i]}' ")
+        if i != len(range_specs.range_bnds)-2:
+            f.write(', ')
+    f.write("\n")
     f.write(" oslo_sectional_bin_bounds     =  ")
     for i in range(bin_specs.N):
         f.write(f"'{bin_specs.r_bnds[i]:.3f}D0:{bin_specs.r_bnds[i+1]:.3f}D0'")
@@ -291,7 +305,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
             f.write(f" oslo_sectional_aerosol_name      =  '{species.short_name}' \n")
             f.write(" oslo_sectional_aerosol_range      =  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
-            f.write(f" oslo_sectional_aerosol_soluble       =  .{species.soluble}. \n")
+            f.write(f" oslo_sectional_aerosol_mixed       =  .{species.mixed}. \n")
             f.write("/\n")
     f.close()
 

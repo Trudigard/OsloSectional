@@ -13,12 +13,21 @@ module sectional_aerosol_properties_mod
 
   public :: sectional_aerosol_properties
 
+  type aerosol_species_properties
+     character(len=10)       :: specname
+     integer, dimension(2)   :: range_idx
+     logical                 :: mixed
+  end type aerosol_species_properties
+
   type, extends(aerosol_properties) :: sectional_aerosol_properties
      private
-     integer                         :: nranges_ = 0
-     real(r8), dimension(:), allocatable :: bin_centers_ ! radii at bin center (nm)
-     real(r8), dimension(:,:), allocatable :: bin_bounds_ ! radii at bin bounds (nm)
-     integer, dimension(:,:), allocatable :: range_bounds_ ! index of bins at range bounds
+     integer                                                     :: nranges_ = 0
+     integer, dimension(:), allocatable                          :: range_nspecies_
+     real(r8), dimension(:), allocatable                         :: bin_centers_ ! radii at bin center (nm)
+     real(r8), dimension(:,:), allocatable                       :: bin_bounds_ ! radii at bin bounds (nm)
+     integer, dimension(:,:), allocatable                        :: range_bounds_ ! index of bins at range bounds
+     integer, dimension(:), allocatable                          :: bins2ranges_ ! range index for each bin
+     type(aerosol_species_properties), dimension(:), allocatable :: aer_spec_prop
 
      integer,  allocatable :: sulfate_mode_ndxs_(:)
      integer,  allocatable :: dust_mode_ndxs_(:)
@@ -68,27 +77,405 @@ module sectional_aerosol_properties_mod
   logical, parameter :: debug = .false.
 
 contains
+  !------------------------------------------------------------------------------
+  function constructor(nlfile) result(newobj)
 
-  !------------------------------------------------------------------------------
-  !------------------------------------------------------------------------------
-  function constructor() result(newobj)
+    use mpi,               only: mpi_integer, mpi_real8, mpi_character, mpi_logical, MPI_SUCCESS
+    use spmd_utils,        only: mstrid=>masterprocid, mpicom
+    use string_utils,      only: int2str
+    use namelist_utils,    only: find_group_name
+    use infnan, only: nan, assignment(=)
+
 
     type(sectional_aerosol_properties), pointer :: newobj
 
-    integer :: l, m, nbins, ncnst_tot, mm
-    real(r8) :: dgnumlo
-    real(r8) :: dgnumhi
-    integer,allocatable :: nspecies(:)
-    real(r8),allocatable :: f1(:)
-    real(r8),allocatable :: f2(:)
-    integer :: ierr
+    character(len=*), intent(in) :: nlfile
+    integer                      :: nbins=0, nranges=0, ncnst_tot=0, nspecies_tot=0
+    ! TODO: ncnst_tot = tracers ??
+    integer,allocatable          :: nspecies(:) ! nspecies per bin (given by base_object)
+    integer,allocatable          :: range_nspecies(:) ! nspecies per range
+    real(r8),allocatable         :: alogsig(:) ! given by base obj
+    real(r8),allocatable         :: f1(:) ! given by base obj
+    real(r8),allocatable         :: f2(:) ! given by base obj
+    real(r8),dimension(:),allocatable  :: bin_centers
+    real(r8),dimension(:,:),allocatable:: bin_bounds
+    integer,dimension(:,:),allocatable :: range_bounds
+    integer,dimension(:),allocatable   :: bins2ranges
+    integer                      :: ierr, unitn, ind, pos, ibin, irange
+    character(len=50)            :: tmp
+
+    ! namelist variables
+    integer                               :: oslo_sectional_nbins
+    integer                               :: oslo_sectional_nranges
+    integer                               :: oslo_sectional_nspecies_tot
+    character(len=10), dimension(500)     :: oslo_sectional_nspecies ! range_nspecies
+
+    character(len=50), dimension(500)     :: oslo_sectional_bin_centers
+    character(len=50), dimension(500)     :: oslo_sectional_bin_bounds
+    character(len=50), dimension(500)     :: oslo_sectional_range_bounds
+
+    ! namelist aerosol species variables
+    type(aerosol_species_properties), dimension(:), allocatable :: oslo_sectional_species_properties
+    character(len=10)                     :: oslo_sectional_aerosol_name
+    character(len=10)                     :: oslo_sectional_aerosol_range
+    logical                               :: oslo_sectional_aerosol_mixed
 
     character(len=aero_name_len) :: spectype
 
-    integer :: npoa, nsoa, nbc
     character(len=*), parameter :: subname = 'constructor'
 
-    call endrun(subname//' is not yet implemented')
+
+    ! Namelists (constructed in bin_config.py)
+    namelist /oslo_sectional_properties_nl/ oslo_sectional_nspecies_tot, &
+                                            oslo_sectional_nspecies, &
+                                            oslo_sectional_nbins, &
+                                            oslo_sectional_nranges, &
+                                            oslo_sectional_bin_bounds, &
+                                            oslo_sectional_bin_centers, &
+                                            oslo_sectional_range_bounds
+
+    namelist /oslo_sectional_properties_aerosol_nl/ oslo_sectional_aerosol_name, &
+                                            oslo_sectional_aerosol_range, &
+                                            oslo_sectional_aerosol_mixed
+
+    ! initialize variables
+    oslo_sectional_nspecies_tot = 0
+    oslo_sectional_nspecies = ''
+    oslo_sectional_nbins = 0
+    oslo_sectional_nranges = 0
+    oslo_sectional_bin_centers = ''
+    oslo_sectional_bin_bounds = ''
+    oslo_sectional_range_bounds = ''
+
+    oslo_sectional_aerosol_name = ''
+    oslo_sectional_aerosol_range = ''
+    oslo_sectional_aerosol_mixed = .false.
+
+    ! read aerosol properties namelist
+    if (masterproc) then
+        open(newunit=unitn, file=trim(nlfile), status='old')
+        call find_group_name(unitn, 'oslo_sectional_properties_nl', ierr)
+        if ( ierr /= 0 ) then
+            close(unitn)
+            call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_nl'")
+        end if
+
+        read(unitn, oslo_sectional_properties_nl, iostat=ierr)
+        if ( ierr /= 0 ) then
+            close(unitn)
+            call endrun(subname // ':: ERROR reading oslo_sectional_properties_nl namelist')
+        end if
+    end if
+
+    ! allocate array for species objects
+    allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
+    if(ierr/=0) then
+        if (masterproc) close(unitn)
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties")
+    end if
+
+    ! read aerosol species properties namelists in sequence
+    if (masterproc) then
+        do ind=1,oslo_sectional_nspecies_tot
+            oslo_sectional_species_properties(ind)%range_idx = 0
+            oslo_sectional_species_properties(ind)%specname = ''
+            oslo_sectional_species_properties(ind)%mixed = .false.
+
+            call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
+            if (ierr /= 0) then
+                close(unitn)
+                call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_aerosol_nl'")
+            end if
+
+            read(unitn, oslo_sectional_properties_aerosol_nl, iostat=ierr)
+            if (ierr /= 0) then
+                close(unitn)
+                call endrun(subname // ':: ERROR reading oslo_sectional_properties_aerosol_nl')
+            end if
+
+            pos = index(oslo_sectional_aerosol_range, ':')
+            if ( pos == 0 ) then
+                close(unitn)
+                call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
+            end if
+
+            read(oslo_sectional_aerosol_range(1:pos-1), *) oslo_sectional_species_properties(ind)%range_idx(1)
+            read(oslo_sectional_aerosol_range(pos+1:), *) oslo_sectional_species_properties(ind)%range_idx(2)
+
+            oslo_sectional_species_properties(ind)%specname = oslo_sectional_aerosol_name
+            oslo_sectional_species_properties(ind)%mixed = oslo_sectional_aerosol_mixed
+
+            oslo_sectional_aerosol_name = ''
+            oslo_sectional_aerosol_range = ''
+            oslo_sectional_aerosol_mixed = .false.
+        end do
+        close(unitn)
+    end if
+
+    nbins = oslo_sectional_nbins
+    nranges = oslo_sectional_nranges
+    nspecies_tot = oslo_sectional_nspecies_tot
+
+    ! allocate with size nbins
+    allocate( nspecies(nbins), stat=ierr)
+        if(ierr/=0) then
+            call endrun(subname// ": Error "//int2str(ierr)//" allocating nspecies")
+            return
+        end if
+
+    allocate( bins2ranges(nbins), stat=ierr)
+        if(ierr/=0) then
+            call endrun(subname// ": Error "//int2str(ierr)//" allocating bins2ranges'")
+            return
+        end if
+
+    allocate( bin_centers(nbins), stat=ierr)
+       if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating bin_centers'")
+           return
+       end if
+    allocate( bin_bounds(nbins, 2), stat=ierr)
+       if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating bin_bounds'")
+           return
+       end if
+
+    ! allocate with size nranges
+    allocate( range_nspecies(nranges), stat=ierr)
+       if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating nspecies'")
+           return
+       end if
+
+    allocate( range_bounds(nranges, 2), stat=ierr)
+       if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating range_bounds'")
+           return
+       end if
+
+    ! TODO: find out what to do with these three
+    allocate( alogsig(nbins), stat=ierr)
+        if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating alogsig'")
+           return
+       end if
+    allocate( f1(nbins), stat=ierr)
+           if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating f1'")
+           return
+       end if
+    allocate( f2(nbins), stat=ierr)
+           if( ierr /= 0 ) then
+           call endrun(subname// ": Error "//int2str(ierr)//" allocating f2'")
+           return
+       end if
+    alogsig = nan
+    f1 = nan
+    f2 = nan
+
+    ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
+    do ibin=1,nbins
+        read(oslo_sectional_bin_centers(ibin),'(D)') bin_centers(ibin)
+        tmp = oslo_sectional_bin_bounds(ibin)
+        pos = index(tmp, ':')
+        read(tmp(1:pos-1), '(D)') bin_bounds(ibin,1)
+        read(tmp(pos+1:), '(D)') bin_bounds(ibin,2)
+    end do
+
+    ! parse range bounds
+    do irange=1,nranges
+        tmp = oslo_sectional_range_bounds(irange)
+        pos = index(tmp, ':')
+        read(tmp(1:pos-1), *) range_bounds(irange,1)
+        read(tmp(pos+1:), *) range_bounds(irange,2)
+    end do
+    read(oslo_sectional_nspecies, *) range_nspecies
+
+    ncnst_tot = nbins + sum(range_nspecies) ! nbins + sum(nspecies)
+
+    ! initialize bins2ranges array
+
+    do ibin=1,nbins
+        do irange=1,nranges
+            if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
+                bins2ranges(ibin) = irange
+                nspecies(ibin) = range_nspecies(irange)
+            end if
+        end do
+    end do
+
+
+       ! Report
+    if (masterproc) then
+        write(iulog ,*) 'sectional aerosol properties namelist: '
+        write(iulog ,*) 'nspecies_tot = ', oslo_sectional_nspecies_tot
+        write(iulog ,*) 'nbins = ', oslo_sectional_nbins
+        write(iulog ,*) 'nranges = ', oslo_sectional_nranges
+        write(iulog ,*) 'range_nspecies = '
+        do ind = 1, nranges, 5
+            write(iulog,*) oslo_sectional_nspecies(ind:min(ind+4, oslo_sectional_nranges))
+        end do
+        write(iulog ,*) 'bin_centers: '
+        do ind = 1, oslo_sectional_nbins, 5
+            write(iulog, *) oslo_sectional_bin_centers(ind:min(ind+4, oslo_sectional_nbins))
+        end do
+        write(iulog ,*) 'bin_bounds: '
+        do ind = 1, oslo_sectional_nbins, 5
+            write(iulog, *) oslo_sectional_bin_bounds(ind:min(ind+4, oslo_sectional_nbins))
+        end do
+        write(iulog ,*) 'range_bounds: '
+        do ind = 1, oslo_sectional_nranges, 5
+            write(iulog, *) oslo_sectional_range_bounds(ind:min(ind+4, oslo_sectional_nranges))
+        end do
+
+        do ind = 1,oslo_sectional_nspecies_tot
+            write(iulog ,*) 'sectional aerosol species properties namelist: '
+            write(iulog ,*) 'species name = ', oslo_sectional_species_properties(ind)%specname
+            write(iulog ,*) 'range bound idces = ', oslo_sectional_species_properties(ind)%range_idx
+            write(iulog ,*) 'mixed = ', oslo_sectional_species_properties(ind)%mixed
+            write(iulog ,*) 'bins2ranges = ', bins2ranges
+       end do
+    end if
+
+    ! allocate the aerosol_properties object
+    allocate(newobj,stat=ierr)
+    if ( ierr/=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+
+    allocate(newobj%bins2ranges_(nbins), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%range_nspecies_(nranges), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%bin_centers_(nbins), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%bin_bounds_(nbins, 2), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%range_bounds_(nranges, 2), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%aer_spec_prop(nspecies_tot), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    if (masterproc) then
+
+        newobj%bins2ranges_ = bins2ranges
+        newobj%nranges_ = nranges
+        newobj%range_nspecies_ = range_nspecies
+        newobj%bin_centers_ = bin_centers(:nbins)
+        newobj%bin_bounds_ = bin_bounds(:nbins, :)
+        newobj%range_bounds_ = range_bounds(:nranges, :)
+        newobj%aer_spec_prop = oslo_sectional_species_properties(:nspecies_tot)
+
+    end if
+
+    ! Broadcast the namelist properties
+    call MPI_Bcast(newobj%bins2ranges_, nbins, mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bins2ranges'")
+    end if
+
+    call MPI_Bcast(newobj%nranges_, 1, mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'nranges'")
+    end if
+
+    call MPI_Bcast(newobj%range_nspecies_, size(newobj%range_nspecies_), mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'range_nspecies_'")
+    end if
+
+    call MPI_Bcast(newobj%bin_centers_, nbins, mpi_real8, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bin_centers'")
+    end if
+
+    call MPI_Bcast(newobj%bin_bounds_, size(newobj%bin_bounds_), mpi_real8, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'bin_bounds'")
+    end if
+
+
+    call MPI_Bcast(newobj%range_bounds_, size(newobj%range_bounds_), mpi_integer, mstrid, mpicom, ierr)
+    if (ierr /= MPI_SUCCESS) then
+        nullify(newobj)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'range_bounds'")
+    end if
+
+    ! Broadcast the species properties
+    do ind=1,nspecies_tot
+
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%specname, 1, mpi_character, mstrid, mpicom, ierr)
+        if (ierr /= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop specname'")
+        end if
+
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%range_idx, 2, mpi_integer, mstrid, mpicom, ierr)
+        if (ierr /= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop range_idx'")
+        end if
+
+        ! TODO: fix this broadcasting somehow
+        call MPI_Bcast(newobj%aer_spec_prop(ind)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+        if (ierr/= MPI_SUCCESS) then
+            nullify(newobj)
+            if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+            call endrun(subname// ": Error "//int2str(ierr)//" broadcasting 'aer_spec_prop mixed'")
+        end if
+
+    end do
+
+    call newobj%initialize(nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
+
+    ! deallocate local variables
+    if (allocated(nspecies)) deallocate(nspecies)
+    if (allocated(range_nspecies)) deallocate(range_nspecies)
+    if (allocated(alogsig)) deallocate(alogsig)
+    if (allocated(f1)) deallocate(f1)
+    if (allocated(f2)) deallocate(f2)
+    if (allocated(bin_centers)) deallocate(bin_centers)
+    if (allocated(bin_bounds)) deallocate(bin_bounds)
+    if (allocated(range_bounds)) deallocate(range_bounds)
+    if (allocated(bins2ranges)) deallocate(bins2ranges)
 
   end function constructor
 
@@ -99,7 +486,30 @@ contains
 
     character(len=*), parameter :: subname = 'destructor'
 
-    call endrun(subname//' is not yet implemented')
+    if (allocated(self%range_nspecies_)) then
+        deallocate(self%range_nspecies_)
+    end if
+
+    if (allocated(self%bin_centers_)) then
+        deallocate(self%bin_centers_)
+    end if
+
+    if (allocated(self%bin_bounds_)) then
+        deallocate(self%bin_bounds_)
+    end if
+
+    if (allocated(self%range_bounds_)) then
+        deallocate(self%range_bounds_)
+    end if
+
+    if (allocated(self%bins2ranges_)) then
+        deallocate(self%bins2ranges_)
+    end if
+
+    if (allocated(self%aer_spec_prop)) then
+        deallocate(self%aer_spec_prop)
+    end if
+    call self%final()
 
   end subroutine destructor
 
