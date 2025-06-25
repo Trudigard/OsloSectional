@@ -58,12 +58,15 @@ class _AerosolSpecies:
             range_bnds (list(float)) : range bounds within which the species exists
             range_idx (list(int)) : indices of ranges within which the species exists
         '''
-        self.active = config.getboolean(species, 'active', fallback=False)
-        self.short_name = config.get(species, 'short_name')
-        self.long_name = config.get(species, 'long_name')
-        self.composition = config.get(species, 'composition')
-        self.mixed = config.getboolean(species, 'mixed')
-        self.range_bnds = _parse_range(config, species, 'range_bounds')
+        try:
+            self.active = config.getboolean(species, 'active', fallback=False)
+            self.short_name = config.get(species, 'short_name')
+            self.long_name = config.get(species, 'long_name', fallback=self.short_name)
+            self.composition = config.get(species, 'composition')
+            self.mixed = config.getboolean(species, 'mixed', fallback=True)
+            self.range_bnds = _parse_range(config, species, 'range_bounds')
+        except:
+            sys.exit('Error: Species attributes in configuration file missing')
         self.range_idx = []
 
     def check_range_bnds(self, range_bnds):
