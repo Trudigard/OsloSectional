@@ -232,7 +232,10 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     # ==============================================================================
     # INPUT
     config = configparser.ConfigParser()
-    config.read(aerconf_file)
+    try:
+        config.read(aerconf_file)
+    except:
+        sys.exit('Error: Config file does not exist or bad file format')
 
     # ==============================================================================
     # Initialize
