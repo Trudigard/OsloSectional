@@ -1,8 +1,6 @@
 module aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
   use spmd_utils,     only: masterproc
-  use cam_abortutils, only: endrun
-  use cam_logfile,    only: iulog
   implicit none
 
   private
@@ -462,45 +460,24 @@ contains
     real(r8), parameter :: spechygro_pom = 0.1_r8            ! POM hygroscopicity
 
     ierr = 0
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing nspecies_'
-    endif
+
     allocate(self%nspecies_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing nmasses_'
-    endif
     allocate(self%nmasses_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing alogsig_'
-    endif
     allocate(self%alogsig_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing f1'
-    endif
     allocate(self%f1_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing f2'
-    endif
     allocate(self%f2_(nbin),stat=ierr)
-    if( ierr /= 0 ) then
-       return
-    end if
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing indexer'
-    endif
-    allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
     if( ierr /= 0 ) then
        return
     end if
