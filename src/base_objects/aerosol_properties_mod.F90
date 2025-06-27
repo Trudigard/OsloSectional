@@ -1,6 +1,5 @@
 module aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
-  use spmd_utils,     only: masterproc
   implicit none
 
   private
@@ -478,6 +477,11 @@ contains
        return
     end if
     allocate(self%f2_(nbin),stat=ierr)
+    if( ierr /= 0 ) then
+       return
+    end if
+
+    allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
     if( ierr /= 0 ) then
        return
     end if

@@ -95,8 +95,8 @@ contains
     integer,allocatable          :: nspecies(:) ! nspecies per bin (given by base_object)
     integer,allocatable          :: range_nspecies(:) ! nspecies per range
     real(r8),allocatable         :: alogsig(:) ! given by base obj
-    real(r8),allocatable         :: f1(:) ! given by base obj
-    real(r8),allocatable         :: f2(:) ! given by base obj
+    real(r8),allocatable         :: f1(:) ! given by base obj: Abdul-Razzak 1998 eq 28
+    real(r8),allocatable         :: f2(:) ! given by base obj: Abdul-Razzak 1998 eq 29
     real(r8),dimension(:),allocatable  :: bin_centers
     real(r8),dimension(:,:),allocatable:: bin_bounds
     integer,dimension(:,:),allocatable :: range_bounds
@@ -219,7 +219,7 @@ contains
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
     end if
 
-    call MPI_Bcast(oslo_sectional_nspecies, oslo_sectional_nbins, mpi_integer, mstrid, mpicom, ierr)
+    call MPI_Bcast(oslo_sectional_nspecies, 1, mpi_integer, mstrid, mpicom, ierr)
     if ( ierr /= MPI_SUCCESS ) then
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
     end if
@@ -248,7 +248,6 @@ contains
     if ( ierr /= MPI_SUCCESS ) then
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds")
     end if
-
     ! broadcast species variables
     do ind=1,oslo_sectional_nspecies_tot
         call MPI_Bcast(oslo_sectional_species_properties(ind)%specname, 1, mpi_character, mstrid, mpicom, ierr)
@@ -330,6 +329,11 @@ contains
 ! parse bin info
 !==================================================================================================
 
+
+    ! TODO: figure out what to do with these
+    ! alogsig -> alogsig(m) = log(sigmag(m))
+    ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
+    ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
     alogsig = nan
     f1 = nan
     f2 = nan
@@ -347,10 +351,10 @@ contains
     do irange=1,oslo_sectional_nranges
         tmp = oslo_sectional_range_bounds(irange)
         pos = index(tmp, ':')
-        read(tmp(1:pos-1), *) range_bounds(irange,1)
-        read(tmp(pos+1:), *) range_bounds(irange,2)
+        read(tmp(1:pos-1), '(I)') range_bounds(irange,1)
+        read(tmp(pos+1:), '(I)') range_bounds(irange,2)
     end do
-    read(oslo_sectional_nspecies, *) range_nspecies
+    read(oslo_sectional_nspecies,'(I)') range_nspecies
 
     ncnst_tot = oslo_sectional_nbins + sum(range_nspecies) ! nbins + sum(nspecies)
 
@@ -417,6 +421,7 @@ contains
     newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
     newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
     newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
+
     newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
 
     call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
@@ -432,28 +437,41 @@ contains
         write(iulog,*) 'ncnst_tot = ', ncnst_tot
         write(iulog,*) 'nspecies_tot = ', oslo_sectional_nspecies_tot
 
-        ! 1D
-        write(iulog,*) 'nspecies = ', nspecies
-        write(iulog,*) 'range_nspecies = ', newobj%range_nspecies_
-        write(iulog,*) 'bin_centers = ', newobj%bin_centers_
-        write(iulog,*) 'bins2ranges = ',newobj%bins2ranges_
-        ! alogsig
-        ! f1
-        ! f2
+        do ibin=1,oslo_sectional_nbins,5
+            write(iulog,*) 'nspecies = ', nspecies(ibin:min(ibin+4, oslo_sectional_nbins))
+        end do
 
-        ! 2D
-        write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_
-        write(iulog,*) 'range_bounds = ', newobj%range_bounds_
+        do irange=1,oslo_sectional_nranges
+            write(iulog,*) 'range_nspecies = ', newobj%range_nspecies_(irange:min(irange+4, oslo_sectional_nranges))
+        end do
 
-!        write(iulog ,*) 'range_nspecies = '
-!        do ind = 1, oslo_sectional_nranges, 5
-!            write(iulog,*) oslo_sectional_nspecies(ind:min(ind+4, oslo_sectional_nranges))
-!        end do
+        do ibin=1,oslo_sectional_nbins,5
+            write(iulog,*) 'bin_centers = ', newobj%bin_centers_(ibin:min(ibin+4, oslo_sectional_nbins))
+        end do
+
+        do ibin=1,oslo_sectional_nbins,5
+            write(iulog,*) 'bins2ranges = ',newobj%bins2ranges_(ibin:min(ibin+4, oslo_sectional_nbins))
+        end do
+
+        ! TODO: figure out what to do with these
+        ! alogsig -> alogsig(m) = log(sigmag(m))
+        ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
+        ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
+
+        do ibin=1,oslo_sectional_nbins,5
+            write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(ibin:min(ibin+4, oslo_sectional_nbins),1), &
+                                     ' : ', newobj%bin_bounds_(ibin:min(ibin+4, oslo_sectional_nbins),2)
+        end do
+        do irange=1,oslo_sectional_nranges
+            write(iulog,*) 'range_bounds = ', newobj%range_bounds_(irange:min(irange+4, oslo_sectional_nranges),1), &
+                                       ' : ', newobj%range_bounds_(irange:min(irange+4, oslo_sectional_nranges),2)
+        end do
+
 
         do ind = 1,oslo_sectional_nspecies_tot
             write(iulog ,*) 'sectional aerosol species properties: '
             write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
-            write(iulog ,*) 'range bound idces = ', newobj%aer_spec_prop(ind)%range_idx
+            write(iulog ,*) 'range bound idces = ', newobj%aer_spec_prop(ind)%range_idx(1), newobj%aer_spec_prop(ind)%range_idx(2)
             write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
        end do
     end if
