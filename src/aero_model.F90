@@ -152,13 +152,8 @@ contains
         write(iulog,*) subname//' called aero_props, now dust_init'
     endif
 
-
     call dust_init()
 
-
-    if (masterproc) then
-        write(iulog,*) subname//' calling pbuf_bet_index FRACIS'
-    endif
     fracis_idx = pbuf_get_index('FRACIS')
 
     if (masterproc) then

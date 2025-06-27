@@ -421,8 +421,15 @@ contains
     newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
     newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
     newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
-
     newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
+
+    ! deallocate local variables
+    if (allocated(range_nspecies)) deallocate(range_nspecies)
+    if (allocated(bin_centers)) deallocate(bin_centers)
+    if (allocated(bin_bounds)) deallocate(bin_bounds)
+    if (allocated(range_bounds)) deallocate(range_bounds)
+    if (allocated(bins2ranges)) deallocate(bins2ranges)
+    if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
 
     call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
 
@@ -478,14 +485,9 @@ contains
 
     ! deallocate local variables
     if (allocated(nspecies)) deallocate(nspecies)
-    if (allocated(range_nspecies)) deallocate(range_nspecies)
     if (allocated(alogsig)) deallocate(alogsig)
     if (allocated(f1)) deallocate(f1)
     if (allocated(f2)) deallocate(f2)
-    if (allocated(bin_centers)) deallocate(bin_centers)
-    if (allocated(bin_bounds)) deallocate(bin_bounds)
-    if (allocated(range_bounds)) deallocate(range_bounds)
-    if (allocated(bins2ranges)) deallocate(bins2ranges)
 
   end function constructor
 
