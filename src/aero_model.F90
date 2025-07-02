@@ -82,6 +82,8 @@ contains
     use string_utils,    only: int2str
     use namelist_utils,  only: find_group_name
 
+    use oslo_aero_control, only: oslo_aero_ctl_readnl ! TODO: use the file in oslo_aero directly? currently this is a copy in the local chemistry.F90
+
     ! filepath for file containing namelist input
     character(len=*), intent(in) :: nlfile
 
@@ -94,9 +96,8 @@ contains
     ! modal_aero: read aerosol_nl: aer_drydep_list, modal_strat_sulfate, modal_accum_coarse_exch, seasalt_emis_scale
     ! oslo aero: read aerosol_nl: sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial
 
-    if (masterproc) then
-        write(iulog,*) subname//' nothing to read here..'
-    end if
+    call oslo_aero_ctl_readnl(nlfile)
+    !return
   end subroutine aero_model_readnl
 
   !=============================================================================
@@ -126,6 +127,7 @@ contains
     use aer_drydep_mod, only: inidrydep
     use wetdep,         only: wetdep_init
 
+    use oslo_aero_ocean, only: oslo_aero_ocean_init
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
 
@@ -138,27 +140,18 @@ contains
 
     character(len=*), intent(in) :: nlfile
 
+    call oslo_aero_ocean_init()
+
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
     !call aerosols_inti()
-    if (masterproc) then
-        write(iulog,*) subname//' calling aero_props'
-    endif
 
     aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
-
-
-    if (masterproc) then
-        write(iulog,*) subname//' called aero_props, now dust_init'
-    endif
 
     call dust_init()
 
     fracis_idx = pbuf_get_index('FRACIS')
 
-    if (masterproc) then
-        write(iulog,*) subname//' aero_model_init done'
-    endif
     ! deallocate wetdep list and drydep list
     !deallocate(wetdep_list)
     !deallocate(drydep_list)
@@ -890,66 +883,37 @@ contains
   !=============================================================================
   !=============================================================================
   subroutine aero_model_emissions( state, cam_in )
-    use seasalt_model, only: seasalt_emis, seasalt_indices
-    use dust_model,    only: dust_emis, dust_indices
-    use physics_types, only: physics_state
+     use oslo_aero_control, only: dms_from_ocn
+     use constituents     , only: cnst_get_ind, sflxnam
+     use oslo_aero_ocean,   only: oslo_aero_dms_emis
 
-    ! Arguments:
+     ! Arguments:
 
     type(physics_state),    intent(in)    :: state   ! Physics state variables
     type(cam_in_t),         intent(inout) :: cam_in  ! import state
 
     ! local vars
 
-    integer :: lchnk, ncol
-    integer :: m, mm
-    real(r8) :: soil_erod_tmp(pcols)
-    real(r8) :: sflx(pcols)   ! accumulate over all bins for output
-    real(r8) :: u10cubed(pcols)
-    real (r8), parameter :: z0=0.0001_r8  ! m roughness length over oceans--from ocean model
-
+    integer :: icol
+    integer :: pndx_fdms  ! DMS surface flux physics index
     character(len=*), parameter :: subname = 'aero_model_emissions'
 
-    lchnk = state%lchnk
-    ncol = state%ncol
-
-    if (dust_active) then
-
-       call dust_emis( ncol, lchnk, cam_in%dstflx, cam_in%cflx, soil_erod_tmp )
-
-       ! some dust emis diagnostics ...
-       sflx(:)=0._r8
-       do m=1,dust_nbin
-          mm = dust_indices(m)
-          sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,mm)
-          call outfld(trim(dust_names(m))//'SF',cam_in%cflx(:,mm),pcols, lchnk)
-       enddo
-       call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
-       call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
-    endif
-
-    if (sslt_active) then
-       u10cubed(:ncol)=sqrt(state%u(:ncol,pver)**2+state%v(:ncol,pver)**2)
-       ! move the winds to 10m high from the midpoint of the gridbox:
-       ! follows Tie and Seinfeld and Pandis, p.859 with math.
-
-       u10cubed(:ncol)=u10cubed(:ncol)*log(10._r8/z0)/log(state%zm(:ncol,pver)/z0)
-
-       ! we need them to the 3.41 power, according to Gong et al., 1997:
-       u10cubed(:ncol)=u10cubed(:ncol)**3.41_r8
-
-       sflx(:)=0._r8
-
-       call seasalt_emis( u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx )
-
-       do m=1,seasalt_nbin
-          mm = seasalt_indices(m)
-          sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,mm)
-          call outfld(trim(seasalt_names(m))//'SF',cam_in%cflx(:,mm),pcols,lchnk)
-       enddo
-       call outfld('SSTSFMBL',sflx(:),pcols,lchnk)
-    endif
-
+    ! Pick up correct DMS emissions (replace values from file if requested)
+    ! Update cam_in%clfx for pndx_dms when dms is read in or obtained from the ocean
+    if (.not. dms_from_ocn) then
+        call oslo_aero_dms_emis(state%ncol, state%lchnk, &
+            state%u(:,pver), state%v(:,pver), state%zm(:,pver), &
+            cam_in%ocnfrac, cam_in%icefrac, cam_in%sst, cam_in%cflx)
+    else
+       call cnst_get_ind('DMS', pndx_fdms, abort=.true.)
+       do icol = 1,state%ncol
+          cam_in%cflx(icol,pndx_fdms) = cam_in%fdms(icol)
+          ! The addfld call for 'odms' below is in the routine
+          ! oslo_aero_ocean_init in module oslo_aero_ocean.F90.
+          call outfld('odms', cam_in%fdms(:state%ncol), state%ncol, state%lchnk)
+       end do
+    end if
+    !return
   end subroutine aero_model_emissions
 
 end module aero_model
