@@ -6,7 +6,7 @@ module prescribed_volcaero
    use spmd_utils,       only : mpi_logical, mpi_real8, mpi_character, mpi_integer, mpi_success
    use tracer_data,      only : trfld, trfile
    use cam_logfile,      only : iulog
-
+   use spmd_utils,       only : masterproc
    implicit none
    private
 
@@ -230,6 +230,7 @@ contains
       !---------------------------------------------------
 
       if ( has_prescribed_volcaero) then
+
          call advance_trcdata( fields, file, state, pbuf2d )
 
          do c = begchunk,endchunk
