@@ -200,6 +200,9 @@ contains
     integer :: ispec
 
     do ispec = 1,n_ocean_species
+                        if (masterproc) then
+        write(iulog,*) 'DEBUG: advance_trcdata from: oslo_aero_ocean_adv '
+    end if
        call advance_trcdata( oceanspcs(ispec)%fields, oceanspcs(ispec)%file, state, pbuf2d  )
     end do
 
