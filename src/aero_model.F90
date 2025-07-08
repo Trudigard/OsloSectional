@@ -127,7 +127,7 @@ contains
     use aer_drydep_mod, only: inidrydep
     use wetdep,         only: wetdep_init
 
-    use oslo_aero_ocean, only: oslo_aero_ocean_init
+    !use oslo_aero_ocean, only: oslo_aero_ocean_init ! DMS
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
 
@@ -140,7 +140,7 @@ contains
 
     character(len=*), intent(in) :: nlfile
 
-    call oslo_aero_ocean_init()
+    !call oslo_aero_ocean_init() ! DMS
 
 !    call phys_getopts( history_aerosol_out = history_aerosol,&
 !                       history_dust_out    = history_dust   )
@@ -869,13 +869,13 @@ contains
         call outfld( 'XPH_LWC',xphlwc(:ncol,:), ncol , lchnk )
     endif
 
-    if( has_soa ) then
-       call setsoa( ncol, lchnk, delt, reaction_rates, tfld, airdens, vmr, pbuf)
-    endif
+    !if( has_soa ) then
+    !   call setsoa( ncol, lchnk, delt, reaction_rates, tfld, airdens, vmr, pbuf)
+    !endif
 
-    if( has_aerosols ) then
-       call aerosols_formation( ncol, lchnk, tfld, relhum, vmr )
-    endif
+    !if( has_aerosols ) then
+    !   call aerosols_formation( ncol, lchnk, tfld, relhum, vmr )
+    !endif
 
 
   end subroutine aero_model_gasaerexch
@@ -883,9 +883,9 @@ contains
   !=============================================================================
   !=============================================================================
   subroutine aero_model_emissions( state, cam_in )
-     use oslo_aero_control, only: dms_from_ocn
+     !use oslo_aero_control, only: dms_from_ocn ! DMS
      use constituents     , only: cnst_get_ind, sflxnam
-     use oslo_aero_ocean,   only: oslo_aero_dms_emis
+     !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
 
      ! Arguments:
 
@@ -900,19 +900,19 @@ contains
 
     ! Pick up correct DMS emissions (replace values from file if requested)
     ! Update cam_in%clfx for pndx_dms when dms is read in or obtained from the ocean
-    if (.not. dms_from_ocn) then
-        call oslo_aero_dms_emis(state%ncol, state%lchnk, &
-            state%u(:,pver), state%v(:,pver), state%zm(:,pver), &
-            cam_in%ocnfrac, cam_in%icefrac, cam_in%sst, cam_in%cflx)
-    else
-       call cnst_get_ind('DMS', pndx_fdms, abort=.true.)
-       do icol = 1,state%ncol
-          cam_in%cflx(icol,pndx_fdms) = cam_in%fdms(icol)
+    !if (.not. dms_from_ocn) then                       ! DMS
+    !    call oslo_aero_dms_emis(state%ncol, state%lchnk, &
+    !        state%u(:,pver), state%v(:,pver), state%zm(:,pver), &
+    !        cam_in%ocnfrac, cam_in%icefrac, cam_in%sst, cam_in%cflx)
+    !else
+    !   call cnst_get_ind('DMS', pndx_fdms, abort=.true.)
+    !   do icol = 1,state%ncol
+    !      cam_in%cflx(icol,pndx_fdms) = cam_in%fdms(icol)
           ! The addfld call for 'odms' below is in the routine
           ! oslo_aero_ocean_init in module oslo_aero_ocean.F90.
-          call outfld('odms', cam_in%fdms(:state%ncol), state%ncol, state%lchnk)
-       end do
-    end if
+    !      call outfld('odms', cam_in%fdms(:state%ncol), state%ncol, state%lchnk)
+    !   end do
+    !end if
     !return
   end subroutine aero_model_emissions
 
