@@ -13,7 +13,7 @@ module aero_model
   use physics_types,     only: physics_state, physics_ptend, physics_ptend_init
   use physics_buffer,    only: physics_buffer_desc
   use physconst,         only: gravit, rair
-  use dust_model,        only: dust_active, dust_names, dust_nbin
+  use dust_model,        only: dust_active, dust_names !, dust_nbin
   use seasalt_model,     only: sslt_active=>seasalt_active, seasalt_names, seasalt_nbin
   use spmd_utils,        only: masterproc
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index
@@ -122,12 +122,13 @@ contains
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
     !use phys_control,   only: phys_getopts
-    use mo_aerosols,    only: aerosols_inti
+    !use mo_aerosols,    only: aerosols_inti
     use dust_model,     only: dust_init
-    use aer_drydep_mod, only: inidrydep
-    use wetdep,         only: wetdep_init
+    !use aer_drydep_mod, only: inidrydep
+    !use wetdep,         only: wetdep_init
 
-    !use oslo_aero_ocean, only: oslo_aero_ocean_init ! DMS
+    !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
+
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
 
@@ -142,19 +143,15 @@ contains
 
     !call oslo_aero_ocean_init() ! DMS
 
-!    call phys_getopts( history_aerosol_out = history_aerosol,&
-!                       history_dust_out    = history_dust   )
-    !call aerosols_inti()
+    ! TODO: fix this :)
+    !call phys_getopts( history_aerosol_out = history_aerosol,&
+    !                   history_dust_out    = history_dust   )
 
     aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
 
     call dust_init()
 
     fracis_idx = pbuf_get_index('FRACIS')
-
-    ! deallocate wetdep list and drydep list
-    !deallocate(wetdep_list)
-    !deallocate(drydep_list)
 
   end subroutine aero_model_init
 
@@ -164,7 +161,7 @@ contains
 
     use dust_sediment_mod, only: dust_sediment_tend
     use aer_drydep_mod,    only: d3ddflux, calcram
-    use dust_model,        only: dust_depvel, dust_nbin, dust_names
+    use dust_model,        only: dust_depvel, dust_names ! dust_nbin
     use seasalt_model,     only: sslt_depvel=>seasalt_depvel, sslt_nbin=>seasalt_nbin, sslt_names=>seasalt_names
 
     ! args
@@ -189,19 +186,20 @@ contains
 
      ! local decarations
 
-    integer, parameter :: naero = sslt_nbin+dust_nbin
+   ! integer, parameter :: naero = sslt_nbin+dust_nbin
     integer, parameter :: begslt = 1
-    integer, parameter :: endslt = sslt_nbin
-    integer, parameter :: begdst = sslt_nbin+1
-    integer, parameter :: enddst = sslt_nbin+dust_nbin
+    integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start
+    !integer, parameter :: endslt = sslt_nbin
+    !integer, parameter :: begdst = sslt_nbin+1
+    !integer, parameter :: enddst = sslt_nbin+dust_nbin
 
     integer :: ncol, lchnk
 
-    character(len=6) :: aeronames(naero) ! = (/ sslt_names, dust_names /)
+   ! character(len=6) :: aeronames(naero) ! = (/ sslt_names, dust_names /)
 
-    real(r8) :: vlc_trb(pcols,naero)    !Turbulent deposn velocity (m/s)
-    real(r8) :: vlc_grv(pcols,pver,naero)  !grav deposn velocity (m/s)
-    real(r8) :: vlc_dry(pcols,pver,naero)  !dry deposn velocity (m/s)
+   ! real(r8) :: vlc_trb(pcols,naero)    !Turbulent deposn velocity (m/s)
+   ! real(r8) :: vlc_grv(pcols,pver,naero)  !grav deposn velocity (m/s)
+   ! real(r8) :: vlc_dry(pcols,pver,naero)  !dry deposn velocity (m/s)
 
     real(r8) :: dep_trb(pcols)       !kg/m2/s
     real(r8) :: dep_grv(pcols)       !kg/m2/s (total of grav and trb)
@@ -243,8 +241,8 @@ contains
 
     call physics_ptend_init(ptend, state%psetcols, 'aero_model_drydep', lq=drydep_lq)
 
-    aeronames(:sslt_nbin)   = sslt_names(:)
-    aeronames(sslt_nbin+1:) = dust_names(:)
+    !aeronames(:sslt_nbin)   = sslt_names(:)
+    !aeronames(sslt_nbin+1:) = dust_names(:)
 
     lchnk = state%lchnk
     ncol  = state%ncol
@@ -253,14 +251,14 @@ contains
     rho(:ncol,:) = state%pmid(:ncol,:)/(rair*state%t(:ncol,:))
 
     ! compute dep velocities for sea salt and dust...
-    if (sslt_active) then
-       call sslt_depvel( state%t(:,:), state%pmid(:,:), state%q(:,:,1), ram1, fv, ncol, lchnk, &
-                         vlc_dry(:,:,begslt:endslt), vlc_trb(:,begslt:endslt), vlc_grv(:,:,begslt:endslt))
-    endif
-    if (dust_active) then
-       call dust_depvel( state%t(:,:), state%pmid(:,:),                 ram1, fv, ncol, &
-                         vlc_dry(:,:,begdst:enddst), vlc_trb(:,begdst:enddst), vlc_grv(:,:,begdst:enddst) )
-    endif
+ !   if (sslt_active) then
+ !      call sslt_depvel( state%t(:,:), state%pmid(:,:), state%q(:,:,1), ram1, fv, ncol, lchnk, &
+ !                        vlc_dry(:,:,begslt:endslt), vlc_trb(:,begslt:endslt), vlc_grv(:,:,begslt:endslt))
+ !   endif
+   ! if (dust_active) then
+   !    call dust_depvel( state%t(:,:), state%pmid(:,:),                 ram1, fv, ncol, &
+   !                      vlc_dry(:,:,begdst:enddst), vlc_trb(:,begdst:enddst), vlc_grv(:,:,begdst:enddst) )
+   ! endif
 
     tsflx_dst(:)=0._r8
     tsflx_slt(:)=0._r8
@@ -268,12 +266,12 @@ contains
     ! do drydep for each of the bins of dust and seasalt
     do m=1,ndrydep
 
-       findindex: do im = 1,naero
-         if (trim(cnst_name(mm))==trim(aeronames(im))) exit findindex
-       enddo findindex
+       !findindex: do im = 1,naero
+       !  if (trim(cnst_name(mm))==trim(aeronames(im))) exit findindex
+       !enddo findindex
 
        pvaeros(:ncol,1)=0._r8
-       pvaeros(:ncol,2:pverp) = vlc_dry(:ncol,:,im)
+       !pvaeros(:ncol,2:pverp) = vlc_dry(:ncol,:,im)
 
        call outfld( trim(cnst_name(mm))//'DV', pvaeros(:,2:pverp), pcols, lchnk )
 
@@ -283,20 +281,20 @@ contains
           pvaeros(:ncol,2:pverp) = pvaeros(:ncol,2:pverp) * rho(:ncol,:)*gravit
 
           !      calculate the tendencies and sfc fluxes from the above velocities
-          call dust_sediment_tend( &
-               ncol,             dt,       state%pint(:,:), state%pmid, state%pdel, state%t , &
-               state%q(:,:,mm) , pvaeros  , ptend%q(:,:,mm), sflx  )
-       else   !use charlie's method
-          call d3ddflux(ncol, vlc_dry(:,:,im), state%q(:,:,mm),state%pmid,state%pdel, tvs,sflx,ptend%q(:,:,mm),dt)
+   !       call dust_sediment_tend( &
+   !            ncol,             dt,       state%pint(:,:), state%pmid, state%pdel, state%t , &
+   !            state%q(:,:,mm) , pvaeros  , ptend%q(:,:,mm), sflx  )
+       !else   !use charlie's method
+       !   call d3ddflux(ncol, vlc_dry(:,:,im), state%q(:,:,mm),state%pmid,state%pdel, tvs,sflx,ptend%q(:,:,mm),dt)
        endif
        ! apportion dry deposition into turb and gravitational settling for tapes
-       do i=1,ncol
-          dep_trb(i)=sflx(i)*vlc_trb(i,im)/vlc_dry(i,pver,im)
-          dep_grv(i)=sflx(i)*vlc_grv(i,pver,im)/vlc_dry(i,pver,im)
-       enddo
+ !      do i=1,ncol
+ !         dep_trb(i)=sflx(i)*vlc_trb(i,im)/vlc_dry(i,pver,im)
+ !         dep_grv(i)=sflx(i)*vlc_grv(i,pver,im)/vlc_dry(i,pver,im)
+ !      enddo
 
-       if ( any( sslt_names(:)==trim(cnst_name(mm)) ) ) &
-            tsflx_slt(:ncol)=tsflx_slt(:ncol)+sflx(:ncol)
+     !  if ( any( sslt_names(:)==trim(cnst_name(mm)) ) ) &
+     !       tsflx_slt(:ncol)=tsflx_slt(:ncol)+sflx(:ncol)
        if ( any( dust_names(:)==trim(cnst_name(mm)) ) ) &
             tsflx_dst(:ncol)=tsflx_dst(:ncol)+sflx(:ncol)
 
@@ -315,20 +313,20 @@ contains
           endif
        endif
 
-       call outfld( trim(cnst_name(mm))//'DD', sflx, pcols, lchnk)
-       call outfld( trim(cnst_name(mm))//'TB', dep_trb, pcols, lchnk )
-       call outfld( trim(cnst_name(mm))//'GV', dep_grv, pcols, lchnk )
-       call outfld( trim(cnst_name(mm))//'DT', ptend%q(:,:,mm), pcols, lchnk)
+  !     call outfld( trim(cnst_name(mm))//'DD', sflx, pcols, lchnk)
+  !     call outfld( trim(cnst_name(mm))//'TB', dep_trb, pcols, lchnk )
+  !     call outfld( trim(cnst_name(mm))//'GV', dep_grv, pcols, lchnk )
+  !     call outfld( trim(cnst_name(mm))//'DT', ptend%q(:,:,mm), pcols, lchnk)
 
     end do
 
     ! output the total dry deposition
-    if (sslt_active) then
-       call outfld( 'SSTSFDRY', tsflx_slt, pcols, lchnk)
-    endif
-    if (dust_active) then
-       call outfld( 'DSTSFDRY', tsflx_dst, pcols, lchnk)
-    endif
+  !  if (sslt_active) then
+  !     call outfld( 'SSTSFDRY', tsflx_slt, pcols, lchnk)
+  !  endif
+  !  if (dust_active) then
+  !     call outfld( 'DSTSFDRY', tsflx_dst, pcols, lchnk)
+  !  endif
 
   endsubroutine aero_model_drydep
 
@@ -338,7 +336,7 @@ contains
 
     use wetdep,        only : wetdepa_v1, wetdep_inputs_set, wetdep_inputs_t
     use dust_model,    only : dust_names
-    use seasalt_model, only : sslt_names=>seasalt_names
+  !  use seasalt_model, only : sslt_names=>seasalt_names
 
     ! args
 
@@ -430,8 +428,8 @@ contains
        enddo
        call outfld( trim(cnst_name(mm))//'SFWET', sflx, pcols, lchnk)
 
-       if ( any( sslt_names(:)==trim(cnst_name(mm)) ) ) &
-            sflx_tot_slt(:ncol) = sflx_tot_slt(:ncol) + sflx(:ncol)
+     !  if ( any( sslt_names(:)==trim(cnst_name(mm)) ) ) &
+     !       sflx_tot_slt(:ncol) = sflx_tot_slt(:ncol) + sflx(:ncol)
        if ( any( dust_names(:)==trim(cnst_name(mm)) ) ) &
             sflx_tot_dst(:ncol) = sflx_tot_dst(:ncol) + sflx(:ncol)
 
@@ -456,12 +454,12 @@ contains
 
     enddo
 
-    if (sslt_active) then
-       call outfld( 'SSTSFWET', sflx_tot_slt, pcols, lchnk)
-    endif
-    if (dust_active) then
-       call outfld( 'DSTSFWET', sflx_tot_dst, pcols, lchnk)
-    endif
+  !  if (sslt_active) then
+  !     call outfld( 'SSTSFWET', sflx_tot_slt, pcols, lchnk)
+  !  endif
+  !  if (dust_active) then
+  !     call outfld( 'DSTSFWET', sflx_tot_dst, pcols, lchnk)
+  !  endif
 
   endsubroutine aero_model_wetdep
 
