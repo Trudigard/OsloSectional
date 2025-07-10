@@ -1,5 +1,5 @@
 module nucleate_ice_cam
-
+! TODO: doesn't work currently without particles present, hence copied here
 !---------------------------------------------------------------------------------
 !
 !  CAM Interfaces for nucleate_ice module.

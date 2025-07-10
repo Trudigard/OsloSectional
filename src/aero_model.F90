@@ -1,5 +1,5 @@
 !===============================================================================
-! Bulk Aerosol Model
+! Sectional Aerosol Model
 !===============================================================================
 module aero_model
   use shr_kind_mod,      only: r8 => shr_kind_r8
@@ -468,13 +468,14 @@ contains
   ! called from mo_usrrxt
   !-------------------------------------------------------------------------
   subroutine aero_model_surfarea( &
-                  mmr, radmean, relhum, pmid, temp, strato_sad, sulfate,  m, ltrop, &
+                  state, mmr, radmean, relhum, pmid, temp, strato_sad, sulfate,  m, ltrop, &
                   dlat, het1_ndx, pbuf, ncol, sfc, dm_aer, sad_total, reff_trop )
 
     use mo_constants, only : pi, avo => avogadro
 
 
     ! dummy args
+    type(physics_state), intent(in) :: state           ! Physics state variables
     real(r8), intent(in)    :: pmid(:,:)
     real(r8), intent(in)    :: temp(:,:)
     real(r8), intent(in)    :: mmr(:,:,:)
@@ -767,9 +768,9 @@ contains
   !-------------------------------------------------------------------------
   ! stub
   !-------------------------------------------------------------------------
-  subroutine aero_model_strat_surfarea( ncol, mmr, pmid, temp, ltrop, pbuf, strato_sad, reff_strat )
-
+  subroutine aero_model_strat_surfarea( state, ncol, mmr, pmid, temp, ltrop, pbuf, strato_sad, reff_strat )
     ! dummy args
+    type(physics_state), intent(in) :: state           ! Physics state variables
     integer,  intent(in)    :: ncol
     real(r8), intent(in)    :: mmr(:,:,:)
     real(r8), intent(in)    :: pmid(:,:)
@@ -788,11 +789,12 @@ contains
 
   !=============================================================================
   !=============================================================================
-  subroutine aero_model_gasaerexch( loffset, ncol, lchnk, troplev, delt, reaction_rates, &
+  subroutine aero_model_gasaerexch( state, loffset, ncol, lchnk, troplev, delt, reaction_rates, &
                                     tfld, pmid, pdel, mbar, relhum, &
                                     zm,  qh2o, cwat, cldfr, cldnum, &
                                     airdens, invariants, del_h2so4_gasprod,  &
                                     vmr0, vmr, pbuf )
+
 
     use chem_mods,   only : gas_pcnst
     use mo_aerosols, only : aerosols_formation, has_aerosols
@@ -802,6 +804,8 @@ contains
     !-----------------------------------------------------------------------
     !      ... dummy arguments
     !-----------------------------------------------------------------------
+        ! dummy args
+    type(physics_state), intent(in) :: state           ! Physics state variables
     integer,  intent(in) :: loffset                ! offset applied to modal aero "pointers"
     integer,  intent(in) :: ncol                   ! number columns in chunk
     integer,  intent(in) :: lchnk                  ! chunk index
@@ -841,31 +845,31 @@ contains
 
   ! aqueous chemistry ...
 
-    if( has_sox ) then
-       call setsox(   &
-            ncol,     &
-            lchnk,    &
-            loffset,  &
-            delt,     &
-            pmid,     &
-            pdel,     &
-            tfld,     &
-            mbar,     &
-            cwat,     &
-            cldfr,    &
-            cldnum,   &
-            airdens,  &
-            invariants, &
-            vmrcw,    &
-            vmr,      &
-            xphlwc,   &
-            aqso4,    &
-            aqh2so4,  &
-            aqso4_h2o2,&
-            aqso4_o3  &
-            )
-        call outfld( 'XPH_LWC',xphlwc(:ncol,:), ncol , lchnk )
-    endif
+  !  if( has_sox ) then
+  !     call setsox(   &
+  !          ncol,     &
+  !          lchnk,    &
+   !         loffset,  &
+   !         delt,     &
+   !         pmid,     &
+   !         pdel,     &
+   !         tfld,     &
+   !         mbar,     &
+   !         cwat,     &
+   !         cldfr,    &
+   !         cldnum,   &
+   !         airdens,  &
+   !         invariants, &
+   !         vmrcw,    &
+   !         vmr,      &
+   !         xphlwc,   &
+   !         aqso4,    &
+   !         aqh2so4,  &
+   !         aqso4_h2o2,&
+   !         aqso4_o3  &
+   !         )
+   !     call outfld( 'XPH_LWC',xphlwc(:ncol,:), ncol , lchnk )
+   ! endif
 
     !if( has_soa ) then
     !   call setsoa( ncol, lchnk, delt, reaction_rates, tfld, airdens, vmr, pbuf)

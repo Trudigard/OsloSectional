@@ -1,5 +1,5 @@
 module modal_aero_wateruptake
-
+! TODO: call to "modal_aero" in main CAM code
 !   RCE 07.04.13:  Adapted from MIRAGE2 code
 
 use shr_kind_mod,     only: r8 => shr_kind_r8

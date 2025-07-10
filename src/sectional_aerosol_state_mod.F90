@@ -45,6 +45,7 @@ module sectional_aerosol_state_mod
      procedure :: water_volume
      procedure :: wet_diameter
      procedure :: convcld_actfrac
+     procedure :: wgtpct
 
      final :: destructor
 
@@ -338,17 +339,17 @@ contains
   ! returns hygroscopicity for a given radiation diagnostic list number and
   ! bin number
   !------------------------------------------------------------------------------
-  function hygroscopicity(self, list_ndx, bin_ndx) result(kappa)
+  subroutine hygroscopicity(self, list_ndx, bin_ndx, kappa)
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
-    real(r8), pointer :: kappa(:,:)                 !
+    real(r8), intent(out) :: kappa(:,:)                 !
 
     character(len=*), parameter :: subname = 'hygroscopicity'
 
     call endrun(subname//' is not yet implemented')
 
-  end function hygroscopicity
+  end subroutine hygroscopicity
 
   !------------------------------------------------------------------------------
   ! returns aerosol wet diameter and aerosol water concentration for a given
@@ -482,5 +483,18 @@ contains
     call endrun(subname//' is not yet implemented')
 
   end function convcld_actfrac
+
+  !------------------------------------------------------------------------------
+  ! aerosol weight precent of H2SO4/H2O solution
+  !------------------------------------------------------------------------------
+  function wgtpct(self, ncol, nlev) result(wtp)
+    class(sectional_aerosol_state), intent(in) :: self
+    integer, intent(in) ::  ncol, nlev
+    real(r8) :: wtp(ncol,nlev)  ! weight precent of H2SO4/H2O solution for given icol, ilev
+    character(len=*), parameter :: subname = 'wgtpct'
+
+    call endrun(subname//' is not yet implemented')
+
+  end function wgtpct
 
 end module sectional_aerosol_state_mod

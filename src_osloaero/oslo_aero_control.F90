@@ -10,7 +10,7 @@ module oslo_aero_control
   use namelist_utils,    only: find_group_name
   use cam_logfile,       only: iulog
   use cam_abortutils,    only: endrun
-  use atm_import_export, only: drv_dms_from_ocn => dms_from_ocn
+  !use atm_import_export, only: drv_dms_from_ocn => dms_from_ocn
 
   implicit none
   private
@@ -111,7 +111,7 @@ contains
     if (ierr /= mpi_success) call endrun(subname//" mpi_bcast: ocean_filepath")
 
     ! Set this from the driver namelist (always read first)
-    dms_from_ocn = drv_dms_from_ocn
+    !dms_from_ocn = drv_dms_from_ocn
 
     ! Reset dms_source if ocean is sending dms to atm
     if (dms_from_ocn) then
