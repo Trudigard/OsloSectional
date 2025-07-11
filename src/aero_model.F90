@@ -13,7 +13,7 @@ module aero_model
   use physics_types,     only: physics_state, physics_ptend, physics_ptend_init
   use physics_buffer,    only: physics_buffer_desc
   use physconst,         only: gravit, rair
-  use dust_model,        only: dust_active, dust_names !, dust_nbin
+  use dust_model,        only: dust_active, dust_names, dust_nbin, dust_nrange
   use seasalt_model,     only: sslt_active=>seasalt_active, seasalt_names, seasalt_nbin
   use spmd_utils,        only: masterproc
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index
@@ -82,6 +82,8 @@ contains
     use string_utils,    only: int2str
     use namelist_utils,  only: find_group_name
 
+    use dust_model,      only: dust_readnl
+
     use oslo_aero_control, only: oslo_aero_ctl_readnl ! TODO: use the file in oslo_aero directly? currently this is a copy in the local chemistry.F90
 
     ! filepath for file containing namelist input
@@ -97,6 +99,8 @@ contains
     ! oslo aero: read aerosol_nl: sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial
 
     call oslo_aero_ctl_readnl(nlfile)
+
+    call dust_readnl(nlfile)
     !return
   end subroutine aero_model_readnl
 
@@ -121,9 +125,8 @@ contains
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
-    !use phys_control,   only: phys_getopts
-    !use mo_aerosols,    only: aerosols_inti
-    use dust_model,     only: dust_init
+    use phys_control,   only: phys_getopts
+    use dust_model,     only: dust_init, dust_names
     !use aer_drydep_mod, only: inidrydep
     !use wetdep,         only: wetdep_init
 
@@ -138,21 +141,48 @@ contains
     character(len=20) :: dummy
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
+    logical  :: history_chemistry ! Output Chemistry
 
     character(len=*), intent(in) :: nlfile
 
     !call oslo_aero_ocean_init() ! DMS
 
     ! TODO: fix this :)
-    !call phys_getopts( history_aerosol_out = history_aerosol,&
-    !                   history_dust_out    = history_dust   )
+    call phys_getopts( history_aerosol_out   = history_aerosol, &
+                       history_dust_out      = history_dust,    &
+                       history_chemistry_out = history_chemistry   )
 
     aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
 
-    call dust_init()
+    call dust_init(aero_props)
 
     fracis_idx = pbuf_get_index('FRACIS')
 
+    ! if (dust_active) then
+        do m = 1, 2!len(dust_names)
+          dummy = trim(dust_names(m)) // 'SF'
+          call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dust_names(m))//' dust surface emission')
+          if (history_aerosol.or.history_chemistry) then
+             call add_default (dummy, 1, ' ')
+          endif
+       enddo
+
+       dummy = 'DSTSFMBL'
+       call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
+       if (history_aerosol .or. history_dust) then
+          call add_default (dummy, 1, ' ')
+       endif
+
+       dummy = 'LND_MBL'
+       call addfld (dummy,horiz_only, 'A','frac','Soil erodibility factor')
+       if (history_aerosol) then
+          call add_default (dummy, 1, ' ')
+       endif
+    ! endif
+
+    if (masterproc) then
+        write(iulog,*) 'aero_model_init done'
+    end if
   end subroutine aero_model_init
 
   !=============================================================================
@@ -161,7 +191,7 @@ contains
 
     use dust_sediment_mod, only: dust_sediment_tend
     use aer_drydep_mod,    only: d3ddflux, calcram
-    use dust_model,        only: dust_depvel, dust_names ! dust_nbin
+    use dust_model,        only: dust_depvel, dust_names, dust_nbin
     use seasalt_model,     only: sslt_depvel=>seasalt_depvel, sslt_nbin=>seasalt_nbin, sslt_names=>seasalt_names
 
     ! args
@@ -186,23 +216,10 @@ contains
 
      ! local decarations
 
-   ! integer, parameter :: naero = sslt_nbin+dust_nbin
-    integer, parameter :: begslt = 1
-    integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start
-    !integer, parameter :: endslt = sslt_nbin
-    !integer, parameter :: begdst = sslt_nbin+1
-    !integer, parameter :: enddst = sslt_nbin+dust_nbin
+    integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start (from bulk aero)
 
     integer :: ncol, lchnk
 
-   ! character(len=6) :: aeronames(naero) ! = (/ sslt_names, dust_names /)
-
-   ! real(r8) :: vlc_trb(pcols,naero)    !Turbulent deposn velocity (m/s)
-   ! real(r8) :: vlc_grv(pcols,pver,naero)  !grav deposn velocity (m/s)
-   ! real(r8) :: vlc_dry(pcols,pver,naero)  !dry deposn velocity (m/s)
-
-    real(r8) :: dep_trb(pcols)       !kg/m2/s
-    real(r8) :: dep_grv(pcols)       !kg/m2/s (total of grav and trb)
 
     real(r8) :: tsflx_dst(pcols)
     real(r8) :: tsflx_slt(pcols)
@@ -216,8 +233,9 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
-
     if (ndrydep<1) return
+
+    call endrun(subname//":: is not yet implemented")
 
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
@@ -233,16 +251,13 @@ contains
                   ustar,ram1in,ram1,state%t(:,pver),state%pmid(:,pver),&
                   state%pdel(:,pver),fvin,fv)
 
-    call outfld( 'airFV', fv(:), pcols, lchnk )
-    call outfld( 'RAM1', ram1(:), pcols, lchnk )
+    !call outfld( 'airFV', fv(:), pcols, lchnk )
+    !call outfld( 'RAM1', ram1(:), pcols, lchnk )
 
     ! note that tendencies are not only in sfc layer (because of sedimentation)
     ! and that ptend is updated within each subroutine for different species
 
     call physics_ptend_init(ptend, state%psetcols, 'aero_model_drydep', lq=drydep_lq)
-
-    !aeronames(:sslt_nbin)   = sslt_names(:)
-    !aeronames(sslt_nbin+1:) = dust_names(:)
 
     lchnk = state%lchnk
     ncol  = state%ncol
@@ -250,51 +265,22 @@ contains
     tvs(:ncol,:) = state%t(:ncol,:)
     rho(:ncol,:) = state%pmid(:ncol,:)/(rair*state%t(:ncol,:))
 
-    ! compute dep velocities for sea salt and dust...
- !   if (sslt_active) then
- !      call sslt_depvel( state%t(:,:), state%pmid(:,:), state%q(:,:,1), ram1, fv, ncol, lchnk, &
- !                        vlc_dry(:,:,begslt:endslt), vlc_trb(:,begslt:endslt), vlc_grv(:,:,begslt:endslt))
- !   endif
-   ! if (dust_active) then
-   !    call dust_depvel( state%t(:,:), state%pmid(:,:),                 ram1, fv, ncol, &
-   !                      vlc_dry(:,:,begdst:enddst), vlc_trb(:,begdst:enddst), vlc_grv(:,:,begdst:enddst) )
-   ! endif
-
     tsflx_dst(:)=0._r8
     tsflx_slt(:)=0._r8
 
     ! do drydep for each of the bins of dust and seasalt
     do m=1,ndrydep
 
-       !findindex: do im = 1,naero
-       !  if (trim(cnst_name(mm))==trim(aeronames(im))) exit findindex
-       !enddo findindex
-
        pvaeros(:ncol,1)=0._r8
-       !pvaeros(:ncol,2:pverp) = vlc_dry(:ncol,:,im)
 
        call outfld( trim(cnst_name(mm))//'DV', pvaeros(:,2:pverp), pcols, lchnk )
 
        if(.true.) then ! use phil's method
           !      convert from meters/sec to pascals/sec
-          !      pvaeros(:,1) is assumed zero, use density from layer above in conversion
           pvaeros(:ncol,2:pverp) = pvaeros(:ncol,2:pverp) * rho(:ncol,:)*gravit
 
-          !      calculate the tendencies and sfc fluxes from the above velocities
-   !       call dust_sediment_tend( &
-   !            ncol,             dt,       state%pint(:,:), state%pmid, state%pdel, state%t , &
-   !            state%q(:,:,mm) , pvaeros  , ptend%q(:,:,mm), sflx  )
-       !else   !use charlie's method
-       !   call d3ddflux(ncol, vlc_dry(:,:,im), state%q(:,:,mm),state%pmid,state%pdel, tvs,sflx,ptend%q(:,:,mm),dt)
        endif
-       ! apportion dry deposition into turb and gravitational settling for tapes
- !      do i=1,ncol
- !         dep_trb(i)=sflx(i)*vlc_trb(i,im)/vlc_dry(i,pver,im)
- !         dep_grv(i)=sflx(i)*vlc_grv(i,pver,im)/vlc_dry(i,pver,im)
- !      enddo
 
-     !  if ( any( sslt_names(:)==trim(cnst_name(mm)) ) ) &
-     !       tsflx_slt(:ncol)=tsflx_slt(:ncol)+sflx(:ncol)
        if ( any( dust_names(:)==trim(cnst_name(mm)) ) ) &
             tsflx_dst(:ncol)=tsflx_dst(:ncol)+sflx(:ncol)
 
@@ -312,21 +298,7 @@ contains
              cam_out%dstdry4(:ncol) = max(sflx(:ncol), 0._r8)
           endif
        endif
-
-  !     call outfld( trim(cnst_name(mm))//'DD', sflx, pcols, lchnk)
-  !     call outfld( trim(cnst_name(mm))//'TB', dep_trb, pcols, lchnk )
-  !     call outfld( trim(cnst_name(mm))//'GV', dep_grv, pcols, lchnk )
-  !     call outfld( trim(cnst_name(mm))//'DT', ptend%q(:,:,mm), pcols, lchnk)
-
     end do
-
-    ! output the total dry deposition
-  !  if (sslt_active) then
-  !     call outfld( 'SSTSFDRY', tsflx_slt, pcols, lchnk)
-  !  endif
-  !  if (dust_active) then
-  !     call outfld( 'DSTSFDRY', tsflx_dst, pcols, lchnk)
-  !  endif
 
   endsubroutine aero_model_drydep
 
@@ -381,6 +353,9 @@ contains
 
 
     if (nwetdep<1) return
+
+    call endrun(subname//":: is not yet implemented")
+
 
     call pbuf_get_field(pbuf, fracis_idx, fracis, start=(/1,1,1/), kount=(/pcols, pver, pcnst/) )
 
@@ -540,6 +515,8 @@ contains
     real(r8), dimension(7) :: table_rh, table_rfac_sulf, table_rfac_bc, table_rfac_oc, table_rfac_ss
 
     character(len=*), parameter :: subname = 'aero_model_surfarea'
+
+    call endrun(subname//":: is not yet implemented")
 
 
     data table_rh(1:7)        / 0.0_r8, 0.5_r8, 0.7_r8, 0.8_r8, 0.9_r8, 0.95_r8, 0.99_r8/
@@ -782,6 +759,8 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_strat_surfarea'
 
+    call endrun(subname//":: is not yet implemented")
+
     strato_sad(:,:) = 0._r8
     reff_strat(:,:) = 0._r8
 
@@ -842,43 +821,7 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
-
-  ! aqueous chemistry ...
-
-  !  if( has_sox ) then
-  !     call setsox(   &
-  !          ncol,     &
-  !          lchnk,    &
-   !         loffset,  &
-   !         delt,     &
-   !         pmid,     &
-   !         pdel,     &
-   !         tfld,     &
-   !         mbar,     &
-   !         cwat,     &
-   !         cldfr,    &
-   !         cldnum,   &
-   !         airdens,  &
-   !         invariants, &
-   !         vmrcw,    &
-   !         vmr,      &
-   !         xphlwc,   &
-   !         aqso4,    &
-   !         aqh2so4,  &
-   !         aqso4_h2o2,&
-   !         aqso4_o3  &
-   !         )
-   !     call outfld( 'XPH_LWC',xphlwc(:ncol,:), ncol , lchnk )
-   ! endif
-
-    !if( has_soa ) then
-    !   call setsoa( ncol, lchnk, delt, reaction_rates, tfld, airdens, vmr, pbuf)
-    !endif
-
-    !if( has_aerosols ) then
-    !   call aerosols_formation( ncol, lchnk, tfld, relhum, vmr )
-    !endif
-
+    call endrun(subname//":: is not yet implemented")
 
   end subroutine aero_model_gasaerexch
 
@@ -888,6 +831,7 @@ contains
      !use oslo_aero_control, only: dms_from_ocn ! DMS
      use constituents     , only: cnst_get_ind, sflxnam
      !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
+     use dust_model, only: dust_emis, dust_names, dust_nbin, dust_nrange
 
      ! Arguments:
 
@@ -896,26 +840,28 @@ contains
 
     ! local vars
 
-    integer :: icol
-    integer :: pndx_fdms  ! DMS surface flux physics index
+    integer  :: lchnk, ncol
+    integer  :: m, mm
+    real(r8) :: soil_erod_tmp(pcols)
+    real(r8) :: sflx(pcols)   ! accumulate over all bins for output
+    integer  :: pndx_fdms  ! DMS surface flux physics index
+
     character(len=*), parameter :: subname = 'aero_model_emissions'
 
-    ! Pick up correct DMS emissions (replace values from file if requested)
-    ! Update cam_in%clfx for pndx_dms when dms is read in or obtained from the ocean
-    !if (.not. dms_from_ocn) then                       ! DMS
-    !    call oslo_aero_dms_emis(state%ncol, state%lchnk, &
-    !        state%u(:,pver), state%v(:,pver), state%zm(:,pver), &
-    !        cam_in%ocnfrac, cam_in%icefrac, cam_in%sst, cam_in%cflx)
-    !else
-    !   call cnst_get_ind('DMS', pndx_fdms, abort=.true.)
-    !   do icol = 1,state%ncol
-    !      cam_in%cflx(icol,pndx_fdms) = cam_in%fdms(icol)
-          ! The addfld call for 'odms' below is in the routine
-          ! oslo_aero_ocean_init in module oslo_aero_ocean.F90.
-    !      call outfld('odms', cam_in%fdms(:state%ncol), state%ncol, state%lchnk)
-    !   end do
-    !end if
-    !return
+    ! if (dust_active) then
+        call dust_emis( ncol, lchnk, cam_in%dstflx, cam_in%cflx, soil_erod_tmp )
+
+       ! some dust emis diagnostics ...
+       sflx(:)=0._r8
+       do m=1,dust_nrange
+          if (m<=dust_nrange) sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m) ! TODO: check indices
+          call outfld(trim(dust_names(m))//'SF',cam_in%cflx(:,m),pcols, lchnk)
+       enddo
+       call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
+       call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
+    !endif
+!    call endrun(subname//":: is not yet implemented")
+
   end subroutine aero_model_emissions
 
 end module aero_model

@@ -7,12 +7,16 @@ module dust_model
   use cam_logfile,     only: iulog
   use cam_abortutils,  only: endrun
 
+  use aerosol_properties_mod, only: aerosol_properties
+  use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
+
   implicit none
   private
 
   public :: dust_names
-!  public :: dust_nbin
- ! public :: dust_indices
+  public :: dust_nbin
+  public :: dust_nrange
+  public :: dust_indices
   public :: dust_emis
   public :: dust_readnl
   public :: dust_init
@@ -20,22 +24,21 @@ module dust_model
 
   public :: dust_depvel
 
-!  integer, parameter :: dust_nbin = 4
-!  integer, parameter :: dust_nnum = 0
-
+  integer :: dust_nbin = 0
+  integer :: dust_nrange = 0
   character(len=6), protected, allocatable :: dust_names(:)
 
-!  real(r8), parameter :: dust_dmt_grd(dust_nbin+1) &
-!       = (/ 0.1e-6_r8, 1.0e-6_r8, 2.5e-6_r8, 5.0e-6_r8, 10.0e-6_r8 /)
+  real(r8), allocatable :: dust_dmt_grd(:) ! TODO: ?? diameter?
 
-!  integer  :: dust_indices(dust_nbin)
-!  real(r8) :: dust_dmt_vwr(dust_nbin)
+  integer, protected, allocatable :: dust_indices(:)
+!  real(r8) :: dust_dmt_vwr(dust_nbin) !TODO: wet diameter??
 !  real(r8) :: dust_stk_crc(dust_nbin)
 
   real(r8)          :: dust_emis_fact = 0._r8        ! tuning parameter for dust emissions
   character(len=cl) :: soil_erod_file = 'none' ! full pathname for soil erodibility dataset
 
   logical :: dust_active = .false.
+  class(aerosol_properties), pointer :: aero_props=>null()
 
 contains
 
@@ -90,7 +93,7 @@ contains
 
   !=============================================================================
   !=============================================================================
-  subroutine dust_init()
+  subroutine dust_init(aero_props)
     use soil_erod_mod, only: soil_erod_init
     use constituents,  only: cnst_get_ind
     use dust_common,   only: dust_set_params
@@ -98,17 +101,49 @@ contains
     use constituents,  only: cnst_name
     use mo_tracname, only: solsym
 
+    type(sectional_aerosol_properties), intent(in) :: aero_props
+
     ! local variables
     character(len=6), dimension(100) :: dust_name_list
-    integer :: n, ndst, nspec
+    integer :: n, dust_nspecies
+    integer :: ispec, ibin, ndst
+    integer,allocatable :: bins2ranges(:)
     character(len=6) :: name
 
     character(len=*), parameter :: subname = 'dust_init'
 
-    ndst=0
+    !aero_props => sectional_aerosol_properties()
+    ! ndst = dust_nbin what bins the dust is in should be dust_nrange here
+    ! dust_nnum also ndst
+    ! dust_indices(2*ndst) -> (dust_nbin + dust_nnum) -> one per tracer here num_1, dust_r3, ... = nbin(where du) + nrange(where du)
+
+    allocate(bins2ranges(aero_props%nbins()))
+
+    bins2ranges = aero_props%bins2ranges(aero_props%nbins())
+
+    ! TODO: generalize and move to obj?
+    dust_nspecies = 0
+    dust_nbin = 0 ! TODO: make allocatable with dust_nspecies
+    dust_nrange = 0 ! TODO: make allocatable with dust_nspecies
+    do ispec = 1, aero_props%nspecies_tot()
+        call aero_props%get(1, ispec, specname=name)
+        if (trim(name) == 'DU') then
+            dust_nspecies = dust_nspecies + 1
+            dust_nrange = aero_props%spec_range_idx(ispec,'upper') - aero_props%spec_range_idx(ispec,'lower') + 1 !TODO: move to second loop to allow for several dust species
+            do ibin = 1, aero_props%nbins()
+                if (bins2ranges(ibin) >= aero_props%spec_range_idx(ispec,'lower') .and. &
+                    bins2ranges(ibin) <= aero_props%spec_range_idx(ispec,'upper')) then
+                    dust_nbin = dust_nbin + 1 ! TODO: move to second loop to allow for several dust species
+                end if
+            end do
+        end if
+    end do
+
+    allocate(dust_indices(dust_nbin + dust_nrange)) ! TODO fix with dust_nspecies, sth sum(dust_nbin) + sum(dust_nrange)
 
     ! TODO: get dust_names from aero_props?
     ! inspired by chemistry.F90 chem_implements_cnst
+    ndst = 0
 
     do n = 1,gas_pcnst
         name = solsym(n)
@@ -120,12 +155,15 @@ contains
 
 
     ! find ndst from aero_props species props or nr of DU_ tracers
-    allocate( dust_names(ndst) )
+    allocate( dust_names(dust_nrange) )
 
-    dust_names = dust_name_list(:ndst)
+    dust_names = dust_name_list(:dust_nrange)
 
     if (masterproc) then
         write(iulog,*) ' dust names: ', dust_names
+        write(iulog,*) ' dust_nspecies: ', dust_nspecies
+        write(iulog,*) ' dust_nrange: ', dust_nrange
+        write(iulog,*) ' dust_nbin: ', dust_nbin
     end if
 
     call  soil_erod_init( dust_emis_fact, soil_erod_file )
@@ -137,6 +175,8 @@ contains
   subroutine dust_emis( ncol, lchnk, dust_flux_in, cflx, soil_erod )
     use soil_erod_mod, only : soil_erod_fact
     use soil_erod_mod, only : soil_erodibility
+    use mo_constants,  only : dust_density
+    use physconst,     only : pi
 
    ! args
     integer,  intent(in)    :: ncol, lchnk
@@ -146,6 +186,8 @@ contains
 
    ! local vars
     integer :: i, m, idst
+    real(r8) :: x_mton
+    real(r8),parameter :: soil_erod_threshold = 0.1_r8
 
     character(len=*), parameter :: subname = 'dust_emis'
 

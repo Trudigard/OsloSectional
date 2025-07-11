@@ -22,6 +22,7 @@ module sectional_aerosol_properties_mod
   type, extends(aerosol_properties) :: sectional_aerosol_properties
      private
      integer                                                     :: nranges_ = 0
+     integer                                                     :: nspecies_tot_ = 0
      integer, dimension(:), allocatable                          :: range_nspecies_
      real(r8), dimension(:), allocatable                         :: bin_centers_ ! radii at bin center (nm)
      real(r8), dimension(:,:), allocatable                       :: bin_bounds_ ! radii at bin bounds (nm)
@@ -57,6 +58,10 @@ module sectional_aerosol_properties_mod
      procedure :: hetfrz_species
      procedure :: optics_params
      procedure :: nbins_rlist
+     procedure :: nspecies_tot
+     procedure :: nranges
+     procedure :: spec_range_idx
+     procedure :: bins2ranges
      procedure :: nspecies_per_bin_rlist
      procedure :: alogsig_rlist
      procedure :: soluble
@@ -417,6 +422,7 @@ contains
 
     newobj%bins2ranges_ = bins2ranges
     newobj%nranges_ = oslo_sectional_nranges
+    newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
     newobj%range_nspecies_ = range_nspecies
     newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
     newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
@@ -564,7 +570,38 @@ contains
     integer :: ilist
     character(len=*), parameter :: subname = 'get'
 
-    call endrun(subname//' is not yet implemented')
+
+    if (present(list_ndx)) then
+        call endrun(subname//' list_ndx is not yet implemented')
+    end if
+
+    if (present(density)) then
+        call endrun(subname//' density is not yet implemented')
+    end if
+
+    if (present(hygro)) then
+        call endrun(subname//' hygro is not yet implemented')
+    end if
+
+    if (present(spectype)) then
+        call endrun(subname//' spectype is not yet implemented')
+    end if
+
+    if (present(specname)) then
+        specname = self%aer_spec_prop(species_ndx)%specname
+    end if
+
+    if (present(specmorph)) then
+        call endrun(subname//' specmorph is not yet implemented')
+    end if
+
+    if (present(refindex_sw)) then
+        call endrun(subname//' refindex_sw is not yet implemented')
+    end if
+
+    if (present(refindex_lw)) then
+        call endrun(subname//' refindex_lw is not yet implemented')
+    end if
 
   end subroutine get
 
@@ -847,6 +884,62 @@ contains
 
   end function nbins_rlist
 
+  !------------------------------------------------------------------------------
+  ! returns the total number of species objects
+  !------------------------------------------------------------------------------
+  function nspecies_tot(self)  result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer :: res
+    character(len=*), parameter :: subname = 'nspecies_tot'
+
+    res = self%nspecies_tot_
+
+  end function nspecies_tot
+
+  !------------------------------------------------------------------------------
+  ! returns the total number of species objects
+  !------------------------------------------------------------------------------
+  function nranges(self)  result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer :: res
+    character(len=*), parameter :: subname = 'nranges'
+
+    res = self%nranges_
+
+  end function nranges
+
+  !------------------------------------------------------------------------------
+  ! returns the total number of species objects
+  !------------------------------------------------------------------------------
+  function spec_range_idx(self, species_idx, bound)  result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+    character(len=*), intent(in) :: bound
+    integer :: res
+    character(len=*), parameter :: subname = 'range_bounds'
+
+    if (bound == 'upper') then
+        res = self%aer_spec_prop(species_idx)%range_idx(2)
+    else if (bound == 'lower') then
+        res = self%aer_spec_prop(species_idx)%range_idx(1)
+    else
+        call endrun(subname//' Error: bound must be "upper" or "lower"')
+    endif
+
+  end function spec_range_idx
+
+  !------------------------------------------------------------------------------
+  ! returns the total number of species objects
+  !------------------------------------------------------------------------------
+  function bins2ranges(self, nbin)  result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in)         :: nbin
+    integer,dimension(nbin)     :: res
+    character(len=*), parameter :: subname = 'bins2ranges'
+
+    res = self%bins2ranges_
+
+  end function bins2ranges
   !------------------------------------------------------------------------------
   ! returns number of species in a bin for a given radiation list index
   !------------------------------------------------------------------------------
