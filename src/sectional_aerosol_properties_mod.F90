@@ -14,34 +14,28 @@ module sectional_aerosol_properties_mod
   public :: sectional_aerosol_properties
 
   type aerosol_species_properties
-     character(len=10)       :: specname
-     integer, dimension(2)   :: range_idx
-     logical                 :: mixed
-  end type aerosol_species_properties
+  ! TODO: make more allocatable or leave as is?
+     character(len=10)       :: specname        ! e.g. DU
+     integer                 :: nbin            ! number of bins containing species
+     integer                 :: nrange          ! nr of ranges containing species
+     integer                 :: range_idx(100)  ! indices of ranges containing species
+     integer                 :: bin_idx(100)    ! bin indices containing species
+     logical                 :: mixed           ! true if internally mixed
+     ! integer               :: idx             ! indices of species tracers
+     character(len=10)       :: tracernames(100) ! e.g. DU_R3
+     end type aerosol_species_properties
 
   type, extends(aerosol_properties) :: sectional_aerosol_properties
      private
-     integer                                                     :: nranges_ = 0
-     integer                                                     :: nspecies_tot_ = 0
-     integer, dimension(:), allocatable                          :: range_nspecies_
-     real(r8), dimension(:), allocatable                         :: bin_centers_ ! radii at bin center (nm)
-     real(r8), dimension(:,:), allocatable                       :: bin_bounds_ ! radii at bin bounds (nm)
-     integer, dimension(:,:), allocatable                        :: range_bounds_ ! index of bins at range bounds
-     integer, dimension(:), allocatable                          :: bins2ranges_ ! range index for each bin
-     type(aerosol_species_properties), dimension(:), allocatable :: aer_spec_prop
+     integer               :: nranges_ = 0
+     integer               :: nspecies_tot_ = 0
+     integer, allocatable  :: range_nspecies_(:)
+     real(r8), allocatable :: bin_centers_(:) ! radii at bin center (nm)
+     real(r8), allocatable :: bin_bounds_(:,:)! radii at bin bounds (nm)
+     integer, allocatable  :: range_bounds_(:,:) ! index of bins at range bounds
+     integer, allocatable  :: bins2ranges_(:) ! range index for each bin
+     type(aerosol_species_properties), allocatable :: aer_spec_prop(:)
 
-     integer,  allocatable :: sulfate_mode_ndxs_(:)
-     integer,  allocatable :: dust_mode_ndxs_(:)
-     integer,  allocatable :: ssalt_mode_ndxs_(:)
-     integer,  allocatable :: ammon_mode_ndxs_(:)
-     integer,  allocatable :: nitrate_mode_ndxs_(:)
-     integer,  allocatable :: msa_mode_ndxs_(:)
-     integer,  allocatable :: bcarbon_mode_ndxs_(:,:)
-     integer,  allocatable :: porganic_mode_ndxs_(:,:)
-     integer,  allocatable :: sorganic_mode_ndxs_(:,:)
-     integer :: num_soa_ = 0
-     integer :: num_poa_ = 0
-     integer :: num_bc_ = 0
    contains
      procedure :: number_transported
      procedure :: get
@@ -60,7 +54,11 @@ module sectional_aerosol_properties_mod
      procedure :: nbins_rlist
      procedure :: nspecies_tot
      procedure :: nranges
-     procedure :: spec_range_idx
+     procedure :: spec_range_idx !TODO merge the spec_ into one subroutine?
+     procedure :: spec_bin_idx
+     procedure :: spec_nrange
+     procedure :: spec_nbin
+     procedure :: spec_tracernames
      procedure :: bins2ranges
      procedure :: nspecies_per_bin_rlist
      procedure :: alogsig_rlist
@@ -89,7 +87,7 @@ contains
     use spmd_utils,        only: mstrid=>masterprocid, mpicom
     use string_utils,      only: int2str
     use namelist_utils,    only: find_group_name
-    use infnan, only: nan, assignment(=)
+    use infnan,            only: nan, assignment(=)
 
 
     type(sectional_aerosol_properties), pointer :: newobj
@@ -102,25 +100,26 @@ contains
     real(r8),allocatable         :: alogsig(:) ! given by base obj
     real(r8),allocatable         :: f1(:) ! given by base obj: Abdul-Razzak 1998 eq 28
     real(r8),allocatable         :: f2(:) ! given by base obj: Abdul-Razzak 1998 eq 29
-    real(r8),dimension(:),allocatable  :: bin_centers
-    real(r8),dimension(:,:),allocatable:: bin_bounds
-    integer,dimension(:,:),allocatable :: range_bounds
-    integer,dimension(:),allocatable   :: bins2ranges
-    integer                      :: ierr, unitn, ind, pos, ibin, irange
+    real(r8),allocatable         :: bin_centers(:)
+    real(r8),allocatable         :: bin_bounds(:,:)
+    integer,allocatable          :: range_bounds(:,:)
+    integer,allocatable          :: bins2ranges(:)
+    integer                      :: ierr, unitn, pos, lower, upper
+    integer                      :: ind, ibin, irange, ispec
     character(len=50)            :: tmp
 
     ! namelist variables
-    integer                               :: oslo_sectional_nbins
-    integer                               :: oslo_sectional_nranges
-    integer                               :: oslo_sectional_nspecies_tot
-    character(len=10), dimension(500)     :: oslo_sectional_nspecies ! range_nspecies
+    integer               :: oslo_sectional_nbins
+    integer               :: oslo_sectional_nranges
+    integer               :: oslo_sectional_nspecies_tot
+    character(len=10)     :: oslo_sectional_nspecies(500) ! range_nspecies
 
-    character(len=50), dimension(500)     :: oslo_sectional_bin_centers
-    character(len=50), dimension(500)     :: oslo_sectional_bin_bounds
-    character(len=50), dimension(500)     :: oslo_sectional_range_bounds
+    character(len=50)     :: oslo_sectional_bin_centers(500)
+    character(len=50)     :: oslo_sectional_bin_bounds(500)
+    character(len=50)     :: oslo_sectional_range_bounds(500)
 
     ! namelist aerosol species variables
-    type(aerosol_species_properties), dimension(:), allocatable :: oslo_sectional_species_properties
+    type(aerosol_species_properties), allocatable :: oslo_sectional_species_properties(:)
     character(len=10)                     :: oslo_sectional_aerosol_name
     character(len=10)                     :: oslo_sectional_aerosol_range
     logical                               :: oslo_sectional_aerosol_mixed
@@ -170,7 +169,7 @@ contains
         end if
     end if
 
-    ! allocate array for species objects
+ !    allocate array for species objects
     allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
     if(ierr/=0) then
         if (masterproc) close(unitn)
@@ -179,13 +178,22 @@ contains
 
     ! read aerosol species properties namelists in sequence
     if (masterproc) then
-        do ind=1,oslo_sectional_nspecies_tot
+        do ispec=1,oslo_sectional_nspecies_tot
+            ! namelist variables
             oslo_sectional_aerosol_name = ''
             oslo_sectional_aerosol_range = ''
             oslo_sectional_aerosol_mixed = .false.
-            oslo_sectional_species_properties(ind)%range_idx = 0
-            oslo_sectional_species_properties(ind)%specname = ''
-            oslo_sectional_species_properties(ind)%mixed = .false.
+            oslo_sectional_species_properties(ispec)%range_idx = 0
+            oslo_sectional_species_properties(ispec)%specname = ''
+            oslo_sectional_species_properties(ispec)%mixed = .false.
+            ! other object variables
+            oslo_sectional_species_properties(ispec)%bin_idx = 0
+            oslo_sectional_species_properties(ispec)%nbin = 0
+            oslo_sectional_species_properties(ispec)%nrange = 0
+            oslo_sectional_species_properties(ispec)%tracernames = ''
+
+            lower = 0
+            upper = 0
 
             call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
             if (ierr /= 0) then
@@ -205,11 +213,15 @@ contains
                 call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
             end if
 
-            read(oslo_sectional_aerosol_range(1:pos-1), *) oslo_sectional_species_properties(ind)%range_idx(1)
-            read(oslo_sectional_aerosol_range(pos+1:), *) oslo_sectional_species_properties(ind)%range_idx(2)
-
-            oslo_sectional_species_properties(ind)%specname = oslo_sectional_aerosol_name
-            oslo_sectional_species_properties(ind)%mixed = oslo_sectional_aerosol_mixed
+            read(oslo_sectional_aerosol_range(1:pos-1), *) lower
+            read(oslo_sectional_aerosol_range(pos+1:), *) upper
+            do ind = 1, (upper - lower + 1)
+                oslo_sectional_species_properties(ispec)%range_idx(ind) = lower + ind - 1
+            end do
+            !oslo_sectional_species_properties(ispec)%range_idx =  [(ind, ind=lower, upper)]
+            oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
+            oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
+            oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
 
         end do
         close(unitn)
@@ -254,21 +266,42 @@ contains
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds")
     end if
     ! broadcast species variables
-    do ind=1,oslo_sectional_nspecies_tot
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%specname, 1, mpi_character, mstrid, mpicom, ierr)
+    do ispec=1,oslo_sectional_nspecies_tot
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%specname, 1, mpi_character, mstrid, mpicom, ierr)
         if ( ierr /= MPI_SUCCESS ) then
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'species_name'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%range_idx, 2, mpi_integer, mstrid, mpicom, ierr)
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%range_idx, 100, mpi_integer, mstrid, mpicom, ierr)
         if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'aerosol_range'")
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'range_idx'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ind)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
         if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'mixed'")
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'mixed'")
         end if
+
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%bin_idx, 100, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'bin_index'")
+        end if
+
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%nbin, 1, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'nbin'")
+        end if
+
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%nrange, 1, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'nrange'")
+        end if
+
+        call MPI_Bcast(oslo_sectional_species_properties(ispec)%tracernames, 100, mpi_character, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'tracernames'")
+        end if
+
     end do
 
 !==================================================================================================
@@ -329,12 +362,9 @@ contains
            return
        end if
 
-
 !==================================================================================================
 ! parse bin info
 !==================================================================================================
-
-
     ! TODO: figure out what to do with these
     ! alogsig -> alogsig(m) = log(sigmag(m))
     ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
@@ -364,13 +394,35 @@ contains
     ncnst_tot = oslo_sectional_nbins + sum(range_nspecies) ! nbins + sum(nspecies)
 
     ! initialize bins2ranges array
-
     do ibin=1,oslo_sectional_nbins
         do irange=1,oslo_sectional_nranges
             if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
                 bins2ranges(ibin) = irange
                 nspecies(ibin) = range_nspecies(irange)
             end if
+        end do
+    end do
+
+    ! fill species objects with bin info
+    do ispec = 1, oslo_sectional_nspecies_tot
+        ind = 0
+        oslo_sectional_species_properties(ispec)%nbin = 0
+        do ibin = 1, oslo_sectional_nbins
+            if (bins2ranges(ibin) >= oslo_sectional_species_properties(ispec)%range_idx(1) .and. &
+                bins2ranges(ibin) <= maxval(oslo_sectional_species_properties(ispec)%range_idx)) then
+                ! nr of bins containing each species (e.g. dust_nbin in dust_model.F90)
+                oslo_sectional_species_properties(ispec)%nbin = oslo_sectional_species_properties(ispec)%nbin + 1
+                ind = ind+1
+                ! indices of bins containing each species
+                oslo_sectional_species_properties(ispec)%bin_idx(ind) = ibin
+            end if
+        end do
+
+        do irange = 1, oslo_sectional_species_properties(ispec)%nrange
+            ! tracernames for each species - potentially check if consistent with cnst_get_ind?
+            oslo_sectional_species_properties(ispec)%tracernames(irange) = &
+            trim(oslo_sectional_species_properties(ispec)%specname)//'_R'//&
+            trim(int2str(oslo_sectional_species_properties(ispec)%range_idx(irange)))
         end do
     end do
 
@@ -482,10 +534,15 @@ contains
 
 
         do ind = 1,oslo_sectional_nspecies_tot
+            ! TODO (low priority): fix the format :D
             write(iulog ,*) 'sectional aerosol species properties: '
             write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
-            write(iulog ,*) 'range bound idces = ', newobj%aer_spec_prop(ind)%range_idx(1), newobj%aer_spec_prop(ind)%range_idx(2)
+            write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_idx(1), ' : ', newobj%aer_spec_prop(ind)%range_idx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
             write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
+            write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
+            write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
+            write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_idx(1), ' : ', newobj%aer_spec_prop(ind)%bin_idx(newobj%aer_spec_prop(ind)%nbin) ! TODO: is there a nicer way?
+            write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
        end do
     end if
 
@@ -527,6 +584,7 @@ contains
     if (allocated(self%aer_spec_prop)) then
         deallocate(self%aer_spec_prop)
     end if
+
     call self%final()
 
   end subroutine destructor
@@ -909,32 +967,82 @@ contains
   end function nranges
 
   !------------------------------------------------------------------------------
-  ! returns the total number of species objects
+  ! returns the upper or lower range idx TODO: change to array of idices?
   !------------------------------------------------------------------------------
-  function spec_range_idx(self, species_idx, bound)  result(res)
+  function spec_range_idx(self, species_idx)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: species_idx
-    character(len=*), intent(in) :: bound
-    integer :: res
-    character(len=*), parameter :: subname = 'range_bounds'
+    integer :: res(100)
+    character(len=*), parameter :: subname = 'spec_range_idx'
 
-    if (bound == 'upper') then
-        res = self%aer_spec_prop(species_idx)%range_idx(2)
-    else if (bound == 'lower') then
-        res = self%aer_spec_prop(species_idx)%range_idx(1)
-    else
-        call endrun(subname//' Error: bound must be "upper" or "lower"')
-    endif
+    res = self%aer_spec_prop(species_idx)%range_idx
 
   end function spec_range_idx
 
   !------------------------------------------------------------------------------
+  ! returns the upper or lower range idx TODO: change to array of idices?
+  !------------------------------------------------------------------------------
+  function spec_bin_idx(self, species_idx)  result(res)
+    ! TODO: needed?
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+    integer :: ibin
+    integer :: res(100)
+    character(len=*), parameter :: subname = 'spec_bin_idx'
+
+    res = self%aer_spec_prop(species_idx)%bin_idx
+
+  end function spec_bin_idx
+
+  !------------------------------------------------------------------------------
+  ! returns the upper or lower range idx TODO: change to array of idices?
+  !------------------------------------------------------------------------------
+  function spec_nrange(self, species_idx)  result(res)
+    ! TODO: needed?
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+    integer :: res
+    character(len=*), parameter :: subname = 'spec_nrange'
+
+    res = self%aer_spec_prop(species_idx)%nrange
+
+  end function spec_nrange
+
+  !------------------------------------------------------------------------------
+  ! returns number of bins containing species
+  !------------------------------------------------------------------------------
+  function spec_nbin(self, species_idx)  result(res)
+    ! TODO: needed?
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+    integer :: res
+    character(len=*), parameter :: subname = 'spec_nbin'
+
+    res = self%aer_spec_prop(species_idx)%nbin
+
+  end function spec_nbin
+
+  !------------------------------------------------------------------------------
+  ! returns number of bins containing species
+  !------------------------------------------------------------------------------
+  function spec_tracernames(self, species_idx)  result(res)
+    ! TODO: needed?
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+    character(len=10) :: res(100)
+    character(len=*), parameter :: subname = 'spec_tracernames'
+
+    res = self%aer_spec_prop(species_idx)%tracernames
+
+  end function spec_tracernames
+
+  !------------------------------------------------------------------------------
   ! returns the total number of species objects
   !------------------------------------------------------------------------------
-  function bins2ranges(self, nbin)  result(res)
+  function bins2ranges(self, nbin)  result(res) ! TODO: nbin?
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in)         :: nbin
-    integer,dimension(nbin)     :: res
+    integer                     :: res(nbin)
     character(len=*), parameter :: subname = 'bins2ranges'
 
     res = self%bins2ranges_

@@ -52,20 +52,6 @@ module aero_model
   real(r8) :: aer_sol_factb(pcnst) ! below-cloud solubility factor
   real(r8) :: aer_scav_coef(pcnst)
 
-
-  ! sectional_aerosol_properties_nl variables
-  integer                               :: oslo_sectional_nbins
-  integer                               :: oslo_sectional_nranges
-  integer                               :: oslo_sectional_nspecies
-
-  character(len=50), dimension(500)                 :: oslo_sectional_bin_centers
-  character(len=50), dimension(500)                 :: oslo_sectional_bin_bounds
-  character(len=50), dimension(500)                 :: oslo_sectional_range_bounds
-
-  real(r8), dimension(:), allocatable       :: oslo_sectional_bin_centers_list
-  real(r8), dimension(:,:), allocatable     :: oslo_sectional_bin_bounds_list
-  integer, dimension(:,:), allocatable  :: oslo_sectional_range_bounds_list
-
   integer :: fracis_idx = 0
 
   type(sectional_aerosol_properties), pointer :: aero_props=>null()
@@ -77,11 +63,6 @@ contains
   ! reads aerosol namelist options
   !=============================================================================
   subroutine aero_model_readnl(nlfile)
-    use mpi,             only: mpi_integer, mpi_real8, mpi_character, MPI_SUCCESS
-    use spmd_utils,      only: mstrid=>masterprocid, mpicom
-    use string_utils,    only: int2str
-    use namelist_utils,  only: find_group_name
-
     use dust_model,      only: dust_readnl
 
     use oslo_aero_control, only: oslo_aero_ctl_readnl ! TODO: use the file in oslo_aero directly? currently this is a copy in the local chemistry.F90
@@ -101,7 +82,7 @@ contains
     call oslo_aero_ctl_readnl(nlfile)
 
     call dust_readnl(nlfile)
-    !return
+
   end subroutine aero_model_readnl
 
   !=============================================================================
@@ -115,8 +96,9 @@ contains
     ! TODO: find out how to get tracer indices -> part of constructor?
 
     if (masterproc) then
-        write(iulog,*) subname//' nothing to do here..'
+        write(iulog,*) subname//' nothing to do here yet..'
     end if
+
   end subroutine aero_model_register
 
   !=============================================================================
@@ -126,7 +108,9 @@ contains
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
-    use dust_model,     only: dust_init, dust_names
+    use dust_model,     only: dust_init
+    use mo_setsox,   only : setsox, has_sox
+
     !use aer_drydep_mod, only: inidrydep
     !use wetdep,         only: wetdep_init
 
@@ -137,7 +121,7 @@ contains
 
     ! local vars
     character(len=12), parameter :: subname = 'aero_model_init'
-    integer :: m, id, ierr
+    integer :: m, id, ierr, ibin, ispec
     character(len=20) :: dummy
     logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical  :: history_dust    ! Output dust
@@ -155,11 +139,10 @@ contains
     aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
 
     call dust_init(aero_props)
-
     fracis_idx = pbuf_get_index('FRACIS')
 
-    ! if (dust_active) then
-        do m = 1, 2!len(dust_names)
+    if (dust_active) then
+        do m = 1, dust_nrange !TODO CHECK!!
           dummy = trim(dust_names(m)) // 'SF'
           call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dust_names(m))//' dust surface emission')
           if (history_aerosol.or.history_chemistry) then
@@ -178,20 +161,20 @@ contains
        if (history_aerosol) then
           call add_default (dummy, 1, ' ')
        endif
-    ! endif
+    endif
 
-    if (masterproc) then
-        write(iulog,*) 'aero_model_init done'
-    end if
+    ! TODO add aq chem (if has_sox ...)
+
+    ! call aero_wetdep_init()
   end subroutine aero_model_init
 
   !=============================================================================
   !=============================================================================
   subroutine aero_model_drydep  ( state, pbuf, obklen, ustar, cam_in, dt, cam_out, ptend )
 
-    use dust_sediment_mod, only: dust_sediment_tend
+  !  use dust_sediment_mod, only: dust_sediment_tend
     use aer_drydep_mod,    only: d3ddflux, calcram
-    use dust_model,        only: dust_depvel, dust_names, dust_nbin
+    use dust_model,        only: dust_names, dust_nbin
     use seasalt_model,     only: sslt_depvel=>seasalt_depvel, sslt_nbin=>seasalt_nbin, sslt_names=>seasalt_names
 
     ! args
@@ -432,9 +415,9 @@ contains
   !  if (sslt_active) then
   !     call outfld( 'SSTSFWET', sflx_tot_slt, pcols, lchnk)
   !  endif
-  !  if (dust_active) then
-  !     call outfld( 'DSTSFWET', sflx_tot_dst, pcols, lchnk)
-  !  endif
+    if (dust_active) then
+       call outfld( 'DSTSFWET', sflx_tot_dst, pcols, lchnk)
+    endif
 
   endsubroutine aero_model_wetdep
 
@@ -518,234 +501,19 @@ contains
 
     call endrun(subname//":: is not yet implemented")
 
-
-    data table_rh(1:7)        / 0.0_r8, 0.5_r8, 0.7_r8, 0.8_r8, 0.9_r8, 0.95_r8, 0.99_r8/
-    data table_rfac_sulf(1:7) / 1.0_r8, 1.4_r8, 1.5_r8, 1.6_r8, 1.8_r8, 1.9_r8,  2.2_r8/
-    data table_rfac_oc(1:7)   / 1.0_r8, 1.2_r8, 1.4_r8, 1.5_r8, 1.6_r8, 1.8_r8,  2.2_r8/
-    data table_rfac_bc(1:7)   / 1.0_r8, 1.0_r8, 1.0_r8, 1.2_r8, 1.4_r8, 1.5_r8,  1.9_r8/
-    data table_rfac_ss(1:7)   / 1.0_r8, 1.6_r8, 1.8_r8, 2.0_r8, 2.4_r8, 2.9_r8,  4.8_r8/
-
-    !-----------------------------------------------------------------
-    ! 	... exponent for calculating number density
-    !-----------------------------------------------------------------
-    n_exp = exp( -4.5_r8*log(sd_sulf)*log(sd_sulf) )
-
-    dm_sulf = 2._r8 * rm_sulf
-    dm_orgc = 2._r8 * rm_orgc
-    dm_bc   = 2._r8 * rm_bc
-
-    log_sd_sulf = log(sd_sulf)
-    log_sd_orgc = log(sd_orgc)
-    log_sd_bc   = log(sd_bc)
-
-    reff_trop(:,:) = 0._r8
-
-    ver_loop: do k = 1,pver
-       col_loop: do i = 1,ncol
-          !-------------------------------------------------------------------------
-          ! 	... air density (kg/m3)
-          !-------------------------------------------------------------------------
-          rho_air = pmid(i,k)/(temp(i,k)*287.04_r8)
-          !-------------------------------------------------------------------------
-          !       ... aerosol growth interpolated from M.Chin's table
-          !-------------------------------------------------------------------------
-          if (relhum(i,k) >= table_rh(7)) then
-             rfac_sulf = table_rfac_sulf(7)
-             rfac_oc = table_rfac_oc(7)
-             rfac_bc = table_rfac_bc(7)
-          else
-             do irh = 2,7
-                if (relhum(i,k) <= table_rh(irh)) then
-                   exit
-                end if
-             end do
-             rh_l = irh-1
-             rh_u = irh
-
-             factor = (relhum(i,k) - table_rh(rh_l))/(table_rh(rh_u) - table_rh(rh_l))
-
-             rfac_sulf = table_rfac_sulf(rh_l) + factor*(table_rfac_sulf(rh_u) - table_rfac_sulf(rh_l))
-             rfac_oc = table_rfac_oc(rh_u) + factor*(table_rfac_oc(rh_u) - table_rfac_oc(rh_l))
-             rfac_bc = table_rfac_bc(rh_u) + factor*(table_rfac_bc(rh_u) - table_rfac_bc(rh_l))
-          end if
-
-          dm_sulf_wet = dm_sulf * rfac_sulf
-          dm_orgc_wet = dm_orgc * rfac_oc
-          dm_bc_wet = dm_bc * rfac_bc
-
-          dm_bc_wet   = min(dm_bc_wet  ,50.e-6_r8) ! maximum size is 0.5 micron (Chin)
-          dm_orgc_wet = min(dm_orgc_wet,50.e-6_r8) ! maximum size is 0.5 micron (Chin)
-
-
-          !-------------------------------------------------------------------------
-          ! 	... sulfate aerosols
-          !-------------------------------------------------------------------------
-          zero_aerosols = k < ltrop(i)
-          if ( abs( dlat(i) ) > 50._r8 ) then
-             zero_aerosols = pmid(i,k) < 30000._r8
-          endif
-          !-------------------------------------------------------------------------
-          !       ... use ubvals climatology for stratospheric sulfate surface area density
-          !-------------------------------------------------------------------------
-          if( zero_aerosols ) then
-             sfc_sulf = strato_sad(i,k)
-             if ( het1_ndx > 0 ) then
-                sfc_sulf = 0._r8        ! reaction already taken into account in mo_strato_rates.F90
-             end if
-             sfc_nit = 0._r8
-             sfc_soa = 0._r8
-             sfc_oc  = 0._r8
-             sfc_bc  = 0._r8
-          else
-
-             if( so4_ndx > 0 ) then
-                !-------------------------------------------------------------------------
-                ! convert mass mixing ratio of aerosol to cm3/cm3 (cm^3_aerosol/cm^3_air)
-                ! v=volume density (m^3/m^3)
-                ! rho_aer=density of aerosol (kg/m^3)
-                ! v=m*rho_air/rho_aer   [kg/kg * (kg/m3)_air/(kg/m3)_aer]
-                !-------------------------------------------------------------------------
-                v = mmr(i,k,so4_ndx) * rho_air/rho_sulf
-                !-------------------------------------------------------------------------
-                ! calculate the number density of aerosol (aerosols/cm3)
-                ! assuming a lognormal distribution
-                ! n  = (aerosols/cm3)
-                ! dm = geometric mean diameter
-                !
-                ! because only the dry mass of the aerosols is known, we
-                ! use the mean dry radius
-                !-------------------------------------------------------------------------
-                n  = v * (6._r8/pi)*(1._r8/(dm_sulf**3._r8))*n_exp
-                !-------------------------------------------------------------------------
-                ! find surface area of aerosols using dm_wet, log_sd
-                !  (increase of sd due to RH is negligible)
-                ! and number density calculated above as distribution
-                ! parameters
-                ! sfc = surface area of wet aerosols (cm^2/cm^3)
-                !-------------------------------------------------------------------------
-                s_exp    = exp(2._r8*log_sd_sulf*log_sd_sulf)
-                sfc_sulf = n * pi * (dm_sulf_wet**2._r8) * s_exp
-
-             else
-                !-------------------------------------------------------------------------
-                !  if so4 not simulated, use off-line sulfate and calculate as above
-                !  convert sulfate vmr to volume density of aerosol (cm^3_aerosol/cm^3_air)
-                !-------------------------------------------------------------------------
-                v = sulfate(i,k) * m(i,k) * mw_so4 / (avo * rho_sulf) *1.e6_r8
-                n  = v * (6._r8/pi)*(1._r8/(dm_sulf**3._r8))*n_exp
-                s_exp    = exp(2._r8*log_sd_sulf*log_sd_sulf)
-                sfc_sulf = n * pi * (dm_sulf_wet**2._r8) * s_exp
-
-             end if
-
-             !-------------------------------------------------------------------------
-             ! ammonium nitrate (follow same procedure as sulfate, using size and density of sulfate)
-             !-------------------------------------------------------------------------
-             if( nit_ndx > 0 ) then
-                v = mmr(i,k,nit_ndx) * rho_air/rho_sulf
-                n  = v * (6._r8/pi)*(1._r8/(dm_sulf**3._r8))*n_exp
-                s_exp   = exp(2._r8*log_sd_sulf*log_sd_sulf)
-                sfc_nit = n * pi * (dm_sulf_wet**2._r8) * s_exp
-             else
-                sfc_nit = 0._r8
-             end if
-
-             !-------------------------------------------------------------------------
-             ! hydrophylic organic carbon (follow same procedure as sulfate)
-             !-------------------------------------------------------------------------
-             if( oc2_ndx > 0 ) then
-                v = mmr(i,k,oc2_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3))*n_exp
-                s_exp    = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_oc   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_oc = 0._r8
-             end if
-
-             !-------------------------------------------------------------------------
-             ! secondary organic carbon (follow same procedure as sulfate)
-             !-------------------------------------------------------------------------
-             if( soa_ndx > 0 ) then
-                v = mmr(i,k,soa_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soa   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soa = 0._r8
-             end if
-
-             !-------------------------------------------------------------------------
-             ! black carbon (follow same procedure as sulfate)
-             !-------------------------------------------------------------------------
-             if( cb2_ndx > 0 ) then
-                v = mmr(i,k,cb2_ndx) * rho_air/rho_bc
-                n  = v * (6._r8/pi)*(1._r8/(dm_bc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_bc*log_sd_bc)
-                sfc_bc   = n * pi * (dm_bc_wet**2._r8) * s_exp
-             else
-                sfc_bc = 0._r8
-             end if
-             if( soai_ndx > 0 ) then
-                v = mmr(i,k,soai_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soai   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soai = 0._r8
-             end if
-             if( soam_ndx > 0 ) then
-                v = mmr(i,k,soam_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soam   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soam = 0._r8
-             end if
-             if( soab_ndx > 0 ) then
-                v = mmr(i,k,soab_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soab   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soab = 0._r8
-             end if
-             if( soat_ndx > 0 ) then
-                v = mmr(i,k,soat_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soat   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soat = 0._r8
-             end if
-             if( soax_ndx > 0 ) then
-                v = mmr(i,k,soax_ndx) * rho_air/rho_orgc
-                n  = v * (6._r8/pi)*(1._r8/(dm_orgc**3._r8))*n_exp
-                s_exp     = exp(2._r8*log_sd_orgc*log_sd_orgc)
-                sfc_soax   = n * pi * (dm_orgc_wet**2._r8) * s_exp
-             else
-                sfc_soax = 0._r8
-             end if
-             sfc_soa = sfc_soa + sfc_soai + sfc_soam + sfc_soab + sfc_soat + sfc_soax
-
-          end if
-
-          sfc(i,k,:) = (/ sfc_sulf, sfc_nit, sfc_oc, sfc_soa, sfc_bc /)
-          dm_aer(i,k,:) = (/ dm_sulf_wet,dm_sulf_wet,dm_orgc_wet,dm_orgc_wet,dm_bc_wet /)
-
-          !-------------------------------------------------------------------------
-          !  	... add up total surface area density for output
-          !-------------------------------------------------------------------------
-          sad_total(i,k) = sfc_sulf + sfc_nit + sfc_oc + sfc_soa + sfc_bc
-
-       enddo col_loop
-    enddo ver_loop
-
   end subroutine aero_model_surfarea
 
   !-------------------------------------------------------------------------
   ! stub
   !-------------------------------------------------------------------------
   subroutine aero_model_strat_surfarea( state, ncol, mmr, pmid, temp, ltrop, pbuf, strato_sad, reff_strat )
+
+    !-------------------------------------------------------------------------
+    ! provides WET stratospheric aerosol surface area info for modal aerosols
+    ! if modal_strat_sulfate = TRUE -- called from mo_gas_phase_chemdr
+    ! Copied from bulk_aero
+    !-------------------------------------------------------------------------
+
     ! dummy args
     type(physics_state), intent(in) :: state           ! Physics state variables
     integer,  intent(in)    :: ncol
@@ -758,8 +526,6 @@ contains
     real(r8), intent(out)   :: reff_strat(:,:)
 
     character(len=*), parameter :: subname = 'aero_model_strat_surfarea'
-
-    call endrun(subname//":: is not yet implemented")
 
     strato_sad(:,:) = 0._r8
     reff_strat(:,:) = 0._r8
@@ -821,7 +587,41 @@ contains
 
     character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
-    call endrun(subname//":: is not yet implemented")
+   ! nstep = get_nstep()
+
+    ! Get height of boundary layer (needed for boundary layer nucleation)
+   ! call pbuf_get_field(pbuf, pblh_idx, pblh)
+
+    ! calculate tendency due to gas phase chemistry and processes
+   ! dvmrdt(:ncol,:,:) = (vmr(:ncol,:,:) - vmr0(:ncol,:,:)) / delt
+   ! do icnst = 1, gas_pcnst
+   !    wrk(:) = 0._r8
+   !    do ilev = 1,pver
+   !       wrk(:ncol) = wrk(:ncol) + dvmrdt(:ncol,ilev,icnst)*adv_mass(icnst)/mbar(:ncol,ilev)*pdel(:ncol,ilev)/gravit
+   !    end do
+   !    name = 'GS_'//trim(solsym(icnst))
+   !    call outfld( name, wrk(:ncol), ncol, lchnk )
+   ! enddo
+
+! vmr2mmr (oslo_aero and carma)
+! call to qqcw2tvmr (oslo_aero and mam)
+! dvmrdt and dvmrcwdt (all)
+
+!
+    ! save h2so4 change by gas phase chem (for later new particle nucleation)
+ !   if (ndx_h2so4 > 0) then
+ !      del_h2so4_gasprod(1:ncol,:) = vmr(1:ncol,:,ndx_h2so4) - vmr0(1:ncol,:,ndx_h2so4)
+ !   endif
+
+! TODO: aq chem setsox (all)
+
+!
+
+    !call endrun(subname//":: is not yet implemented")
+
+    if (masterproc) then
+        write(iulog,*) subname, ":: is not yet implemented"
+    end if
 
   end subroutine aero_model_gasaerexch
 
@@ -829,9 +629,9 @@ contains
   !=============================================================================
   subroutine aero_model_emissions( state, cam_in )
      !use oslo_aero_control, only: dms_from_ocn ! DMS
-     use constituents     , only: cnst_get_ind, sflxnam
+     use constituents,      only: cnst_get_ind, sflxnam
      !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
-     use dust_model, only: dust_emis, dust_names, dust_nbin, dust_nrange
+     use dust_model,        only: dust_active, dust_emis, dust_names, dust_nbin, dust_nrange
 
      ! Arguments:
 
@@ -844,24 +644,27 @@ contains
     integer  :: m, mm
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: sflx(pcols)   ! accumulate over all bins for output
-    integer  :: pndx_fdms  ! DMS surface flux physics index
+    !integer  :: pndx_fdms  ! DMS surface flux physics index
 
     character(len=*), parameter :: subname = 'aero_model_emissions'
 
-    ! if (dust_active) then
-        call dust_emis( ncol, lchnk, cam_in%dstflx, cam_in%cflx, soil_erod_tmp )
+    lchnk = state%lchnk
+    ncol  = state%ncol
+
+    if (dust_active) then
+
+        call dust_emis( lchnk, ncol, cam_in%dstflx, cam_in%cflx )
 
        ! some dust emis diagnostics ...
        sflx(:)=0._r8
-       do m=1,dust_nrange
+        do m=1,dust_nrange
           if (m<=dust_nrange) sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m) ! TODO: check indices
           call outfld(trim(dust_names(m))//'SF',cam_in%cflx(:,m),pcols, lchnk)
        enddo
        call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
        call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
-    !endif
-!    call endrun(subname//":: is not yet implemented")
-
+    endif
+    call endrun(subname//":: is not yet implemented")
   end subroutine aero_model_emissions
 
 end module aero_model
