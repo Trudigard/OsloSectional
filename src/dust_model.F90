@@ -239,6 +239,7 @@ end subroutine dust_init
    !     real(r8), parameter  :: lambda = 12000.0d0   ! (nm)
    !     real(8)              :: dV_dlogD
 
+    ! Use iterative trapezoidal -> iterate until stable or if final sum known until error small
     !    dV_dlogD = (D_d / c_V) * (1.0d0 + erf(log(D_d/D_s) / (sqrt(2.0d0)*log(sigma)))) * exp(-1.0d0 * (D_d / lambda)**3)
 
     !end function dust_distribution
@@ -255,6 +256,7 @@ end subroutine dust_init
   use pio,              only: file_desc_t,pio_inq_dimid,pio_inq_dimlen,pio_get_var,pio_inq_varid, PIO_NOWRITE
   use phys_grid,        only: get_ncols_p, get_rlat_all_p, get_rlon_all_p
   use interpolate_data, only: lininterp_init, lininterp, lininterp_finish, interp_type
+  use mo_constants,     only: pi, d2r
 
     ! arguments
     real(r8),         intent(in) :: dust_emis_fact
