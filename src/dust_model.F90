@@ -41,7 +41,7 @@ module dust_model
 !  real(r8) :: dust_stk_crc(dust_nbin)
 
   ! TODO: get proper distribution & map onto bins, 11 dust bins currently (e.g. Kok et al 2011) see dust_emis
-  real(r8), parameter :: emis_fraction_in_bin(11) = (/0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.1_r8/)
+ ! real(r8), parameter :: emis_fraction_in_bin(11) = (/0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.1_r8/)
 
   logical :: dust_active = .false.
   class(aerosol_properties), pointer :: aero_props=>null()
@@ -165,7 +165,7 @@ end subroutine dust_init
   !==============================================================================
   !==============================================================================
 
-  subroutine dust_emis( lchnk, ncol, dstflx, cflx )
+  subroutine dust_emis( lchnk, ncol, dstflx, cflx, aero_props )
     !-----------------------------------------------------------------------
     ! Purpose: Interface to emission of all dusts.
     ! Notice that the mobilization is calculated in the land model and
@@ -176,6 +176,7 @@ end subroutine dust_init
     use constituents,    only: pcnst
 
     ! Arguments:
+    type(sectional_aerosol_properties), intent(in) :: aero_props
     integer  , intent(in)    :: lchnk
     integer  , intent(in)    :: ncol
     real(r8) , intent(in)    :: dstflx(pcols,4)
@@ -184,10 +185,18 @@ end subroutine dust_init
     ! Local variables
     integer  :: icol, ibin, irange
     integer  :: dust_ind
+    real(r8) :: dust_bin_bounds(2, dust_nbin), bin_bounds(2, 500)
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: totalEmissionFlux(pcols)    ! sum emission flux over all sizes
     character(len=*), parameter :: subname = 'dust_emis'
+    real(r8) :: emis_fraction_in_bin(dust_nbin) ! TODO: dust_nbin properly initialized?
 
+    bin_bounds = aero_props%bin_bounds()
+    dust_bin_bounds = bin_bounds(:, dust_bin_idx(:dust_nbin))
+
+    call dust_emis_fraction_bin(dust_nbin, dust_bin_bounds, emis_fraction_in_bin)
+
+    write(iulog,emis_fraction_in_bin)
     ! Filter away unreasonable values for soil erodibility
     ! (using low values e.g. gives emissions in greenland..)
     where(soil_erodibility(:,lchnk) < 0.1_r8)
@@ -219,30 +228,76 @@ end subroutine dust_init
 
     contains
 
-   ! function dust_emis_fraction_bin()
-    ! TODO: fix initial dust distribution
-    ! QUESTION: how to integrate nicely?
-        !type(sectional_aerosol_properties), intent(in) :: aero_props
-   !     dust_total_volume
-   !     dust_bin_volume
-   !     dust_bin_fraction
-   ! end function dust_emis_fraction_bin
+    subroutine dust_emis_fraction_bin(nbin, bin_bounds, vol_frac)
+        use string_utils,      only: int2str
 
-  !  function dust_emis_distribution(D_d) result(dV_dlogD)
-    ! see Kok et al 2011, equation 6
+        implicit none
 
-   !     implicit none
-   !     real(r8), intent(in) :: D_d =
-   !     real(r8), parameter  :: c_N = 12620.0d0      ! normalization constant volume (nm)
-   !     real(r8), parameter  :: D_s = 3400.0d0       ! (nm)
-   !     real(r8), parameter  :: sigma = 3.0d0
-   !     real(r8), parameter  :: lambda = 12000.0d0   ! (nm)
-   !     real(8)              :: dV_dlogD
+        ! input
+        integer, intent(in)  :: nbin
+        real(r8), intent(in) :: bin_bounds(2,nbin)
 
-    ! Use iterative trapezoidal -> iterate until stable or if final sum known until error small
-    !    dV_dlogD = (D_d / c_V) * (1.0d0 + erf(log(D_d/D_s) / (sqrt(2.0d0)*log(sigma)))) * exp(-1.0d0 * (D_d / lambda)**3)
+        ! local variables
+        real(r8)             :: vol(nbin)
+        real(r8)             :: D1, D2
+        real(r8)             :: h, vol_old
+        real(r8)             :: err=0.0001, rel_err ! TODO: better error measure?
+        integer              :: ibin, i, j, n
 
-    !end function dust_distribution
+        ! output
+        real(r8)             :: vol_frac(nbin)
+
+        do ibin = 1, nbin
+            ! integrate function in log space for each bin diameter
+            n = 2
+            vol_old = 0.0d0
+
+            D1 = log( bin_bounds(1,ibin) /500 ) ! transform to diameter and um
+            D2 = log( bin_bounds(2,ibin) /500 )
+
+            do i = 1, 1000
+                h = (D2 - D1) / n ! with of each subinterval
+                vol(ibin) = 0.5 * (dust_dist(D1) + dust_dist(D2)) ! at bounds -> only half of the trapezoid counts
+
+                do j = 1, n-1 ! calc volume for each sub-increment
+                    vol(ibin) = vol(ibin) + dust_dist(D1 + i*h)
+                end do
+                vol(ibin) = h*vol(ibin)
+
+            ! check for convergence
+            rel_err = abs(vol(ibin) - vol_old) / (abs(vol(ibin)) )
+            if ( rel_err < err ) then
+                exit
+            end if
+
+            n = n*2
+            vol_old = vol(ibin)
+            end do
+
+            if (j == 1000) write(iulog,*) 'bin', int2str(ibin), ' did not converge'
+
+            write(iulog,*) 'soil_erod_mod: soil erodibility dataset: ', trim(soil_erod_file)
+        end do
+
+    vol_frac = vol / sum(vol)
+
+    end subroutine dust_emis_fraction_bin
+
+    real(r8) function dust_dist(logD_d)
+    ! Size distribution of emitted dust
+    ! local parameters and volume size distribution from Kok et al. (2011) eq. 6
+        implicit none
+        real(r8), intent(in) :: logD_d      ! (um) size (within one bin)
+        real(r8), parameter  :: c_V = 12.62 ! (um) normalization constant volume
+        real(r8), parameter  :: D_s = 3.5   ! (um) median diameter by volume
+        real(r8), parameter  :: lambda = 12 ! (um) crack propagation length
+        real(r8), parameter  :: sigma = 3   ! geometric stndard deviation
+
+        dust_dist = (exp(logD_d) / c_V) * (1.0d0 + erf(log(exp(logD_d)/D_s) / (sqrt(2.0d0)*log(sigma)))) &
+                    * exp(-1.0d0 * (exp(logD_d) / lambda)**3)
+
+    end function dust_dist
+
   end subroutine dust_emis
 
   !=============================================================================

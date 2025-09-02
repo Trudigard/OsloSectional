@@ -54,6 +54,7 @@ module sectional_aerosol_properties_mod
      procedure :: nbins_rlist
      procedure :: nspecies_tot
      procedure :: nranges
+     procedure :: bin_bounds
      procedure :: spec_range_idx !TODO merge the spec_ into one subroutine?
      procedure :: spec_bin_idx
      procedure :: spec_nrange
@@ -965,6 +966,18 @@ contains
     res = self%nranges_
 
   end function nranges
+
+  !------------------------------------------------------------------------------
+  ! returns bin bounds
+  !------------------------------------------------------------------------------
+  function bin_bounds(self) result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    real(r8) :: res(2,500)
+    character(len=*), parameter :: subname = 'bin_bounds'
+
+    res = self%bin_bounds_
+
+  end function bin_bounds
 
   !------------------------------------------------------------------------------
   ! returns the upper or lower range idx TODO: change to array of idices?

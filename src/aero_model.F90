@@ -653,7 +653,7 @@ contains
 
     if (dust_active) then
 
-        call dust_emis( lchnk, ncol, cam_in%dstflx, cam_in%cflx )
+        call dust_emis( lchnk, ncol, cam_in%dstflx, cam_in%cflx, aero_props )
 
        ! some dust emis diagnostics ...
        sflx(:)=0._r8
