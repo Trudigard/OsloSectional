@@ -170,6 +170,11 @@ contains
         end if
     end if
 
+    call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
+    if ( ierr /= MPI_SUCCESS ) then
+        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
+    end if
+
  !    allocate array for species objects
     allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
     if(ierr/=0) then
@@ -232,10 +237,7 @@ contains
 ! Broadcast
 !==================================================================================================
 
-    call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
-    end if
+
 
     call MPI_Bcast(oslo_sectional_nspecies, 1, mpi_integer, mstrid, mpicom, ierr)
     if ( ierr /= MPI_SUCCESS ) then
@@ -376,21 +378,21 @@ contains
 
     ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
     do ibin=1,oslo_sectional_nbins
-        read(oslo_sectional_bin_centers(ibin),'(D)') bin_centers(ibin)
+        read(oslo_sectional_bin_centers(ibin),'(F10.5)') bin_centers(ibin)
         tmp = oslo_sectional_bin_bounds(ibin)
         pos = index(tmp, ':')
-        read(tmp(1:pos-1), '(D)') bin_bounds(ibin,1)
-        read(tmp(pos+1:), '(D)') bin_bounds(ibin,2)
+        read(tmp(1:pos-1), '(F10.5)') bin_bounds(ibin,1)
+        read(tmp(pos+1:), '(F10.5)') bin_bounds(ibin,2)
     end do
 
     ! parse range bounds
     do irange=1,oslo_sectional_nranges
         tmp = oslo_sectional_range_bounds(irange)
         pos = index(tmp, ':')
-        read(tmp(1:pos-1), '(I)') range_bounds(irange,1)
-        read(tmp(pos+1:), '(I)') range_bounds(irange,2)
+        read(tmp(1:pos-1), '(I3)') range_bounds(irange,1)
+        read(tmp(pos+1:), '(I3)') range_bounds(irange,2)
     end do
-    read(oslo_sectional_nspecies,'(I)') range_nspecies
+    read(oslo_sectional_nspecies,'(I3)') range_nspecies
 
     ncnst_tot = oslo_sectional_nbins + sum(range_nspecies) ! nbins + sum(nspecies)
 
