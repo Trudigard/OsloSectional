@@ -113,7 +113,7 @@ contains
     use shr_mem_mod,      only: shr_mem_getusage
     use mpi,              only: MPI_REAL8, MPI_MAX
       use spmd_utils,      only: mpicom, masterprocid, masterproc
-
+   use shr_mpi_mod,       only: shr_mpi_barrier
     !use aer_drydep_mod, only: inidrydep
     !use wetdep,         only: wetdep_init
 
@@ -135,7 +135,10 @@ contains
     logical  :: history_chemistry ! Output Chemistry
 
     character(len=*), intent(in) :: nlfile
-
+    mem_hw_beg = 0.0
+    mem_hw_end = 0.0
+    mem_beg = 0.0
+    mem_end = 0.0
     !call oslo_aero_ocean_init() ! DMS
 !    if (calc_memory_increase) then
        call shr_mem_getusage(mem_hw_beg, mem_beg)
@@ -176,6 +179,7 @@ contains
     temp = 0.0
     call shr_mem_getusage(mem_hw_end, mem_end)
          temp = mem_end - mem_beg
+         call MPI_barrier(mpicom, ierr)
          call MPI_reduce(temp, mem_end, 1, MPI_REAL8, MPI_MAX, masterprocid,  &
               mpicom, ierr)
          if (masterproc) then
@@ -183,6 +187,7 @@ contains
                  mem_end, ' (MB)'
          end if
          temp = mem_hw_end - mem_hw_beg
+         call MPI_barrier(mpicom, ierr)
          call MPI_reduce(temp, mem_hw_end, 1, MPI_REAL8, MPI_MAX,             &
               masterprocid, mpicom, ierr)
          if (masterproc) then
