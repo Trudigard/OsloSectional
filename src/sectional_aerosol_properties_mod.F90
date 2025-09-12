@@ -90,7 +90,6 @@ contains
     use namelist_utils,    only: find_group_name
     use infnan,            only: nan, assignment(=)
 
-
     type(sectional_aerosol_properties), pointer :: newobj
 
     character(len=*), intent(in) :: nlfile
@@ -132,7 +131,8 @@ contains
 !==================================================================================================
 ! Read Namelists
 !==================================================================================================
-    ! Namelists (constructed in bin_config.py)
+
+      ! Namelists (constructed in bin_config.py)
     namelist /oslo_sectional_properties_nl/ oslo_sectional_nspecies_tot, &
                                             oslo_sectional_nspecies, &
                                             oslo_sectional_nbins, &
@@ -170,74 +170,13 @@ contains
         end if
     end if
 
+!==================================================================================================
+! Broadcast oslo_sectional_properties
+!==================================================================================================
     call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
     if ( ierr /= MPI_SUCCESS ) then
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
     end if
-
- !    allocate array for species objects
-    allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
-    if(ierr/=0) then
-        if (masterproc) close(unitn)
-        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties")
-    end if
-
-    ! read aerosol species properties namelists in sequence
-    if (masterproc) then
-        do ispec=1,oslo_sectional_nspecies_tot
-            ! namelist variables
-            oslo_sectional_aerosol_name = ''
-            oslo_sectional_aerosol_range = ''
-            oslo_sectional_aerosol_mixed = .false.
-            oslo_sectional_species_properties(ispec)%range_idx = 0
-            oslo_sectional_species_properties(ispec)%specname = ''
-            oslo_sectional_species_properties(ispec)%mixed = .false.
-            ! other object variables
-            oslo_sectional_species_properties(ispec)%bin_idx = 0
-            oslo_sectional_species_properties(ispec)%nbin = 0
-            oslo_sectional_species_properties(ispec)%nrange = 0
-            oslo_sectional_species_properties(ispec)%tracernames = ''
-
-            lower = 0
-            upper = 0
-
-            call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
-            if (ierr /= 0) then
-                close(unitn)
-                call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_aerosol_nl'")
-            end if
-
-            read(unitn, oslo_sectional_properties_aerosol_nl, iostat=ierr)
-            if (ierr /= 0) then
-                close(unitn)
-                call endrun(subname // ':: ERROR reading oslo_sectional_properties_aerosol_nl')
-            end if
-
-            pos = index(oslo_sectional_aerosol_range, ':')
-            if ( pos == 0 ) then
-                close(unitn)
-                call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
-            end if
-
-            read(oslo_sectional_aerosol_range(1:pos-1), *) lower
-            read(oslo_sectional_aerosol_range(pos+1:), *) upper
-            do ind = 1, (upper - lower + 1)
-                oslo_sectional_species_properties(ispec)%range_idx(ind) = lower + ind - 1
-            end do
-            !oslo_sectional_species_properties(ispec)%range_idx =  [(ind, ind=lower, upper)]
-            oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
-            oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
-            oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
-
-        end do
-        close(unitn)
-    end if
-
-!==================================================================================================
-! Broadcast
-!==================================================================================================
-
-
 
     call MPI_Bcast(oslo_sectional_nspecies, 1, mpi_integer, mstrid, mpicom, ierr)
     if ( ierr /= MPI_SUCCESS ) then
@@ -268,44 +207,89 @@ contains
     if ( ierr /= MPI_SUCCESS ) then
         call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds")
     end if
-    ! broadcast species variables
+
+
+!==================================================================================================
+! Read and broadcast aerosol species properties namelist in sequence
+!==================================================================================================
+
+ !    allocate array for species objects
+    allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
+    if(ierr/=0) then
+        if (masterproc) close(unitn)
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties")
+    end if
+
     do ispec=1,oslo_sectional_nspecies_tot
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%specname, 1, mpi_character, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'species_name'")
+
+        ! namelist variables
+        oslo_sectional_aerosol_name = ''
+        oslo_sectional_aerosol_range = ''
+        oslo_sectional_aerosol_mixed = .false.
+        lower = 0
+        upper = 0
+
+        ! read namelist
+        if (masterproc) then
+            call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
+            if (ierr /= 0) then
+                close(unitn)
+                call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_aerosol_nl'")
+            end if
+
+            read(unitn, oslo_sectional_properties_aerosol_nl, iostat=ierr)
+            if (ierr /= 0) then
+                close(unitn)
+                call endrun(subname // ":: ERROR reading 'oslo_sectional_properties_aerosol_nl'")
+            end if
+
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%range_idx, 100, mpi_integer, mstrid, mpicom, ierr)
+        ! broadcast
+        call MPI_Bcast(oslo_sectional_aerosol_name, 1, mpi_character, mstrid, mpicom, ierr)
         if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'range_idx'")
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_name'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+        call MPI_Bcast(oslo_sectional_aerosol_range, len(oslo_sectional_aerosol_range), mpi_character, mstrid, mpicom, ierr)
         if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'mixed'")
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_range'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%bin_idx, 100, mpi_integer, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'bin_index'")
+        call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+        if ( ierr/= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%nbin, 1, mpi_integer, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'nbin'")
+        ! initialize properties object variables
+        oslo_sectional_species_properties(ispec)%range_idx = 0
+        oslo_sectional_species_properties(ispec)%specname = ''
+        oslo_sectional_species_properties(ispec)%mixed = .false.
+        oslo_sectional_species_properties(ispec)%bin_idx = 0
+        oslo_sectional_species_properties(ispec)%nbin = 0
+        oslo_sectional_species_properties(ispec)%nrange = 0
+        oslo_sectional_species_properties(ispec)%tracernames = ''
+
+        pos = index(oslo_sectional_aerosol_range, ':')
+
+        if ( pos == 0 ) then
+           call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
         end if
 
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%nrange, 1, mpi_integer, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'nrange'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_species_properties(ispec)%tracernames, 100, mpi_character, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting species 'tracernames'")
-        end if
+        read(oslo_sectional_aerosol_range(1:pos-1), *) lower
+        read(oslo_sectional_aerosol_range(pos+1:), *) upper
+        do ind = 1, (upper - lower + 1)
+            oslo_sectional_species_properties(ispec)%range_idx(ind) = lower + ind - 1
+        end do
+        oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
+        oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
+        oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
 
     end do
+
+    if (masterproc) then
+        close(unitn)
+    end if
 
 !==================================================================================================
 ! Allocate local arrays
@@ -493,7 +477,6 @@ contains
     if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
 
     call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
-
 !==================================================================================================
 ! Report
 !==================================================================================================
@@ -548,6 +531,8 @@ contains
             write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
        end do
     end if
+
+!call endrun("DEBUG: HERE WE ARE")
 
     ! deallocate local variables
     if (allocated(nspecies)) deallocate(nspecies)
