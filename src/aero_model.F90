@@ -40,8 +40,8 @@ module aero_model
   integer :: soa_ndx, soai_ndx, soam_ndx, soab_ndx, soat_ndx, soax_ndx
 
   ! aerosol_nl Namelist variables
-  character(len=16), allocatable :: wetdep_list(:)
-  character(len=16), allocatable :: drydep_list(:)
+!  character(len=16), allocatable :: wetdep_list(:)
+!  character(len=16), allocatable :: drydep_list(:)
 
   integer :: ndrydep = 0
   integer :: nwetdep = 0
@@ -110,18 +110,10 @@ contains
     use phys_control,   only: phys_getopts
     use dust_model,     only: dust_init
     use mo_setsox,   only : setsox, has_sox
-    use shr_mem_mod,      only: shr_mem_getusage
-    use mpi,              only: MPI_REAL8, MPI_MAX
-      use spmd_utils,      only: mpicom, masterprocid, masterproc
-   use shr_mpi_mod,       only: shr_mpi_barrier
     !use aer_drydep_mod, only: inidrydep
     !use wetdep,         only: wetdep_init
 
     !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
-   logical :: calc_memory_increase = .true.
-    real(r8)                            :: mem_hw_beg, mem_hw_end
-    real(r8)                            :: mem_beg, mem_end
-      real(r8)                            :: temp ! For MPI
 
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
@@ -135,14 +127,9 @@ contains
     logical  :: history_chemistry ! Output Chemistry
 
     character(len=*), intent(in) :: nlfile
-    mem_hw_beg = 0.0
-    mem_hw_end = 0.0
-    mem_beg = 0.0
-    mem_end = 0.0
+
     !call oslo_aero_ocean_init() ! DMS
-!    if (calc_memory_increase) then
-       call shr_mem_getusage(mem_hw_beg, mem_beg)
-!    end if
+
     ! TODO: fix this :)
     call phys_getopts( history_aerosol_out   = history_aerosol, &
                        history_dust_out      = history_dust,    &
@@ -175,26 +162,6 @@ contains
        endif
     endif
 
- !     if (calc_memory_increase) then
-    temp = 0.0
-    call shr_mem_getusage(mem_hw_end, mem_end)
-         temp = mem_end - mem_beg
-         call MPI_barrier(mpicom, ierr)
-         call MPI_reduce(temp, mem_end, 1, MPI_REAL8, MPI_MAX, masterprocid,  &
-              mpicom, ierr)
-         if (masterproc) then
-            write(iulog, *) subname, ': Increase in memory usage = ',    &
-                 mem_end, ' (MB)'
-         end if
-         temp = mem_hw_end - mem_hw_beg
-         call MPI_barrier(mpicom, ierr)
-         call MPI_reduce(temp, mem_hw_end, 1, MPI_REAL8, MPI_MAX,             &
-              masterprocid, mpicom, ierr)
-         if (masterproc) then
-            write(iulog, *) subname, 'Increase in memory highwater = ',       &
-                 mem_hw_end, ' (MB)'
-         end if
- !     end if
     ! TODO add aq chem (if has_sox ...)
 
     ! call aero_wetdep_init()
@@ -696,7 +663,7 @@ contains
        call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
        call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
     endif
-    call endrun(subname//":: is not yet implemented")
+    !call endrun(subname//":: is not yet implemented")
   end subroutine aero_model_emissions
 
 end module aero_model
