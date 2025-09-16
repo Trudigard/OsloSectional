@@ -279,9 +279,9 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     f.write(f"{len(range_specs.range_bnds)-1} \n")
     f.write(" oslo_sectional_nspecies       =  ")
     for i in range(0, len(range_specs.range_bnds)-1):
-        f.write(f"'{range_specs.nspecies[i]}' ")
+        f.write(f"{range_specs.nspecies[i]}")
         if i != len(range_specs.range_bnds)-2:
-            f.write(', ')
+            f.write(',')
     f.write("\n")
     f.write(" oslo_sectional_bin_bounds     =  ")
     for i in range(bin_specs.N):
