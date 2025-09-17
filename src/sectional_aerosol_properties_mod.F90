@@ -476,10 +476,7 @@ contains
         write(iulog,*) 'nranges = ', newobj%nranges_
         write(iulog,*) 'ncnst_tot = ', newobj%ncnst_tot()
         write(iulog,*) 'nspecies_tot = ', newobj%nspecies_tot_
-
-        do ibin=1,oslo_sectional_nbins,5
-            write(iulog,*) 'nspecies = ', newobj%nspecies()
-        end do
+        write(iulog,*) 'nspecies = ', newobj%nspecies()
 
         do irange=1,oslo_sectional_nranges,5
             write(iulog,*) 'range_nspecies = ', newobj%range_nspecies_(irange:min(irange+4, oslo_sectional_nranges))
@@ -499,12 +496,12 @@ contains
         ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
 
         do ibin=1,oslo_sectional_nbins
-            write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(oslo_sectional_nbins,1), &
-                                     ' : ', newobj%bin_bounds_(oslo_sectional_nbins,2)
+            write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(ibin,1), &
+                                     ' : ', newobj%bin_bounds_(ibin,2)
         end do
         do irange=1,oslo_sectional_nranges !TODO FIX format
-            write(iulog,*) 'range_bounds = ', newobj%range_bounds_(oslo_sectional_nranges,1), &
-                                       ' : ', newobj%range_bounds_(oslo_sectional_nranges,2)
+            write(iulog,*) 'range_bounds = ', newobj%range_bounds_(irange,1), &
+                                       ' : ', newobj%range_bounds_(irange,2)
         end do
 
         do ind = 1,oslo_sectional_nspecies_tot

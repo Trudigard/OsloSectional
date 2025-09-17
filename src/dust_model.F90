@@ -41,7 +41,8 @@ module dust_model
 !  real(r8) :: dust_stk_crc(dust_nbin)
 
   ! TODO: get proper distribution & map onto bins, 11 dust bins currently (e.g. Kok et al 2011) see dust_emis
- ! real(r8), parameter :: emis_fraction_in_bin(11) = (/0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.09_r8,0.1_r8/)
+  real(r8), allocatable :: emis_fraction_in_bin(:)
+
 
   logical :: dust_active = .false.
   class(aerosol_properties), pointer :: aero_props=>null()
@@ -66,7 +67,7 @@ contains
     character(len=*), intent(in) :: nlfile  ! filepath for file containing namelist input
 
     ! Local variables
-    integer :: unitn, ierr
+    integer                     :: unitn, ierr
     character(len=*), parameter :: subname = 'dust_readnl'
 
     namelist /dust_nl/ dust_emis_fact, soil_erod_file
@@ -87,11 +88,11 @@ contains
     end if
 
     ! Broadcast namelist variables
-    call mpibcast(dust_emis_fact, 1,                   mpi_real8,     mstrid, mpicom, ierr)
+    call MPI_Bcast(dust_emis_fact, 1, mpi_real8, mstrid, mpicom, ierr)
     if (ierr/=MPI_SUCCESS) then
         call endrun(subname//' ERROR: Broadcasting dust_emis_fact')
     end if
-    call mpibcast(soil_erod_file, len(soil_erod_file), mpi_character, mstrid, mpicom, ierr)
+    call MPI_Bcast(soil_erod_file, len(soil_erod_file), mpi_character, mstrid, mpicom, ierr)
     if (ierr/=MPI_SUCCESS) then
         call endrun(subname//' ERROR: Broadcasting soil_erod_file')
     end if
@@ -110,21 +111,20 @@ contains
 
   subroutine dust_init(aero_props)
 
-    use constituents,  only: cnst_get_ind
+    use constituents,  only: cnst_get_ind !TODO, these are currently not used..
     use chem_mods,     only: gas_pcnst
     use mo_tracname,   only: solsym
    ! use soil_erod_mod, only: soil_erod_init ! TODO, QUESTION: Oslo_aero has its own nearly identical version, why?
-
-      use spmd_utils,      only: mpicom, masterprocid, masterproc
-
 
     type(sectional_aerosol_properties), intent(in) :: aero_props
 
     ! local variables
     character(len=6) :: dust_name_list(100)
-    integer :: n, dust_nspecies
-    integer :: ispec, ibin, ndst, nbin, ind, istat, ierr
+    integer :: dust_nspecies
+    integer :: ispec, ind, istat
     character(len=6) :: name
+    real(r8), allocatable :: dust_bin_bounds(:,:)
+    real(r8), allocatable :: bin_bounds(:,:)
 
     character(len=*), parameter :: subname = 'dust_init'
 
@@ -146,23 +146,41 @@ contains
     ! find ndst from aero_props species props or nr of DU_ tracers
     allocate( dust_names(dust_nrange), stat=istat )
     if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could allocate 'dust_names'")
+        call endrun(subname//":: ERROR could not allocate 'dust_names'")
+    end if
+    allocate(dust_indices(dust_nrange), stat=istat )
+    if ( istat /= 0 ) then
+        call endrun(subname//":: ERROR could not allocate 'dust_nrange'")
+    end if
+    allocate(bin_bounds(aero_props%nbins(), 2), stat=istat)
+    if ( istat /= 0 ) then
+        call endrun(subname//":: ERROR could not allocate 'bin_bounds'")
+    end if
+    allocate(dust_bin_bounds(dust_nbin, 2), stat=istat)
+    if ( istat /= 0 ) then
+        call endrun(subname//":: ERROR could not allocate 'dust_bin_bounds'")
+    end if
+    allocate(emis_fraction_in_bin(dust_nbin), stat=istat)
+    if (istat/=0) then
+        call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
 
     dust_names = dust_name_list(:dust_nrange)
-
-    allocate(dust_indices(dust_nrange), stat=istat )
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could allocate 'dust_nrange'")
-    end if
-
     dust_active = dust_nrange > 0
-    call MPI_barrier(mpicom, ierr)
-
     if (.not.dust_active) return ! TODO: THIS SEEMS to make it hang -> check allocations in sectional_aerosol_properties_mod
 
     call soil_erod_init( dust_emis_fact, soil_erod_file )
 
+    ! calculate emission fraction per bin
+
+    bin_bounds = aero_props%bin_bounds(aero_props%nbins())
+    dust_bin_bounds(:,1) = bin_bounds(dust_bin_idx(:dust_nbin),1)
+    dust_bin_bounds(:,2) = bin_bounds(dust_bin_idx(:dust_nbin),2)
+
+    call dust_emis_fraction_bin(dust_nbin, dust_bin_bounds, emis_fraction_in_bin)
+
+    deallocate(bin_bounds)
+    deallocate(dust_bin_bounds)
   end subroutine dust_init
 
   !==============================================================================
@@ -186,29 +204,12 @@ contains
     real(r8) , intent(inout) :: cflx(pcols,pcnst) ! Surface fluxes
 
     ! Local variables
-    integer  :: icol, ibin, irange, ierr, istat
+    integer  :: icol, ibin, irange
     integer  :: dust_ind
-    real(r8) :: dust_bin_bounds(dust_nbin,2)
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: totalEmissionFlux(pcols)    ! sum emission flux over all sizes
-    real(r8) :: emis_fraction_in_bin(dust_nbin) ! TODO: dust_nbin properly initialized?
-    real(r8), allocatable :: bin_bounds(:,:)
 
     character(len=*), parameter :: subname = 'dust_emis'
-
-    allocate(bin_bounds(aero_props%nbins(), 2))
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could allocate 'bin_bounds'")
-    end if
-
-    bin_bounds = aero_props%bin_bounds(aero_props%nbins())
-    dust_bin_bounds = bin_bounds(dust_bin_idx(:dust_nbin),:)
-
-    call dust_emis_fraction_bin(dust_nbin, dust_bin_bounds, emis_fraction_in_bin)
-
-    if (masterproc) then
-        write(iulog,*) "dust_emis_fraction_bin: ", emis_fraction_in_bin
-    end if
 
     ! Filter away unreasonable values for soil erodibility
     ! (using low values e.g. gives emissions in greenland..)
@@ -238,8 +239,6 @@ contains
         cflx(:ncol, dust_ind) = -1.0_r8*emis_fraction_in_bin(ibin) & !TODO: fix emis_fraction_in_bin
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
     end do
-
-    deallocate(bin_bounds)
 
   end subroutine dust_emis
   !=============================================================================
@@ -365,28 +364,30 @@ contains
 
     ! input
     integer, intent(in)  :: nbin
-    real(r8), intent(in) :: bin_bounds(2,nbin)
+    real(r8), intent(in) :: bin_bounds(nbin,2)
 
     ! local variables
     real(r8)             :: vol(nbin)
     real(r8)             :: D1, D2
     real(r8)             :: h, vol_old
-    real(r8)             :: err=0.0001, rel_err ! TODO: better error measure?
+    real(r8)             :: err=0.0001_r8, rel_err ! TODO: better error measure?
     integer              :: ibin, i, j, n
 
     ! output
-    real(r8)             :: vol_frac(nbin)
+    real(r8), intent(out):: vol_frac(nbin)
 
     do ibin = 1, nbin
         ! integrate function in log space for each bin diameter
-        n = 2
-        vol_old = 0.0d0
+        n = 10
+        vol_old = 0.0_r8
 
-        D1 = log( bin_bounds(1,ibin) /500 ) ! transform to diameter and um
-        D2 = log( bin_bounds(2,ibin) /500 )
+        ! TODO: FIX THESE VALUES?
+        D1 = log( bin_bounds(ibin,1) /500._r8 ) ! transform to diameter and um
+        D2 = log( bin_bounds(ibin,2) /500._r8 )
+
         do i = 1, 1000
             h = (D2 - D1) / n ! with of each subinterval
-            vol(ibin) = 0.5 * (dust_dist(D1) + dust_dist(D2)) ! at bounds -> only half of the trapezoid counts
+            vol(ibin) = 0.5d0 * (dust_dist(D1) + dust_dist(D2)) ! at bounds -> only half of the trapezoid counts
 
             do j = 1, n-1 ! calc volume for each sub-increment
                 vol(ibin) = vol(ibin) + dust_dist(D1 + i*h)
@@ -405,7 +406,6 @@ contains
 
         if (j == 1000) write(iulog,*) 'bin', int2str(ibin), ' did not converge'
 
-        write(iulog,*) 'soil_erod_mod: soil erodibility dataset: ', trim(soil_erod_file)
     end do
 
     vol_frac = vol / sum(vol)
@@ -419,15 +419,16 @@ contains
     ! Size distribution of emitted dust
     ! local parameters and volume size distribution from Kok et al. (2011) eq. 6
         implicit none
-        real(r8), intent(in) :: logD_d      ! (um) size (within one bin)
-        real(r8), parameter  :: c_V = 12.62 ! (um) normalization constant volume
-        real(r8), parameter  :: D_s = 3.5   ! (um) median diameter by volume
-        real(r8), parameter  :: lambda = 12 ! (um) crack propagation length
-        real(r8), parameter  :: sigma = 3   ! geometric stndard deviation
+        real(r8), intent(in) :: logD_d           ! (um) size (within one bin)
+        real(r8), parameter  :: c_V = 12.62_r8   ! (um) normalization constant volume
+        real(r8), parameter  :: D_s = 3.5_r8     ! (um) median diameter by volume
+        real(r8), parameter  :: lambda = 12.0_r8 ! (um) crack propagation length
+        real(r8), parameter  :: sigma = 3.0_r8   ! geometric stndard deviation
 
-        dust_dist = (exp(logD_d) / c_V) * (1.0d0 + erf(log(exp(logD_d)/D_s) / (sqrt(2.0d0)*log(sigma)))) &
-                    * exp(-1.0d0 * (exp(logD_d) / lambda)**3)
+        dust_dist = (exp(logD_d) / c_V) * (1._r8 + erf(log(exp(logD_d)/D_s) / (sqrt(2._r8)*log(sigma)))) &
+                    * exp(-1._r8 * (exp(logD_d) / lambda)**3)
 
+        ! TODO: cut-off to set very small values to 0?
   end function dust_dist
 
 end module dust_model
