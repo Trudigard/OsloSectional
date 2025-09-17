@@ -5,7 +5,7 @@ module mo_aerosols
   ! using the formulation by Seinfeld and Pandis (p531, 1998)
   ! with the simplification of activity coefficients and
   ! aerosol molality using the parameterizations
-  ! from Metzger et al. (JGR, ACH-16, 107(D16), 2002) 
+  ! from Metzger et al. (JGR, ACH-16, 107(D16), 2002)
   !
   ! written by Jean-Francois Lamarque (April 2004)
   ! adapted for CAM (May 2004)
@@ -15,7 +15,9 @@ module mo_aerosols
   use shr_kind_mod, only : r8 => shr_kind_r8
   use ppgrid,       only : pver
   use cam_logfile,  only: iulog
-
+    use abortutils, only: endrun
+  use cam_logfile,      only : iulog
+  use spmd_utils,       only : masterproc
   private
   public :: aerosols_inti,aerosols_formation
   public :: has_aerosols
@@ -45,6 +47,11 @@ contains
     ! 	... local variables
     !-----------------------------------------------------------------
     integer :: m
+    character(len=*), parameter :: subname='aerosols_inti'
+
+    if (masterproc) then
+        write(iulog, * ) ' calling aerosols_inti'
+    end if
 
     nh3_ndx    => spc_ndx(1)
     nh4no3_ndx => spc_ndx(2)
@@ -86,7 +93,7 @@ contains
     end if
 
     !
-    ! define parameters 
+    ! define parameters
     !
     ! ammonium nitrate (NH4NO3)
     !
@@ -104,13 +111,13 @@ contains
 
     return
   end subroutine aerosols_inti
-  
+
   subroutine aerosols_formation( ncol, lchnk, tfld, rh, qin)
 
     use ppgrid, only        : pcols, pver
     use chem_mods,  only    : gas_pcnst, adv_mass
     use cam_history, only   : outfld
-    
+
     implicit none
     !
     ! input arguments
@@ -145,6 +152,12 @@ contains
     real(r8) :: log_t
     real(r8) :: ti
     real(r8) :: xnh4no3
+
+        character(len=*), parameter :: subname='aerosols_formation'
+    if (masterproc) then
+        write(iulog, * ) ' calling aerosols_formation'
+    end if
+    call endrun(subname//' not fixed yet')
 
     do k=1,pver
        do i=1,ncol

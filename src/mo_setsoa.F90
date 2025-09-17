@@ -62,7 +62,7 @@ subroutine setsoa( ncol, lchnk, dt, reaction_rates, tfld, xhnm, vmr, pbuf)
   !-----------------------------------------------------------------------
   !      ... dummy arguments
   !-----------------------------------------------------------------------
-  integer, intent(in)      :: ncol                   ! number columns in chunkx  
+  integer, intent(in)      :: ncol                   ! number columns in chunkx
   integer, intent(in)      :: lchnk                  ! chunk index
   real(r8), intent(in)     :: dt                     ! time step
   real(r8), intent(in)     :: reaction_rates(:,:,:)  ! reaction rates
@@ -89,16 +89,16 @@ subroutine soa_inti_old
 
   implicit none
 
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 ! 	... check if this is an aerosol simulation
-!-----------------------------------------------------------------------      
-  if( .not. has_soa ) then 
+!-----------------------------------------------------------------------
+  if( .not. has_soa ) then
     return
   end if
-  
-  !-----------------------------------------------------------------------      
+
+  !-----------------------------------------------------------------------
   ! 	... set reaction indicies
-  !-----------------------------------------------------------------------      
+  !-----------------------------------------------------------------------
   rxn_soa(1) = get_rxt_ndx( 'soa1' )
   if ( rxn_soa(1) <= 0 ) then
      rxn_soa(1) = get_rxt_ndx( 'C10H16_O3' )
@@ -115,7 +115,7 @@ subroutine soa_inti_old
   if ( rxn_soa(4) <= 0 ) then
      rxn_soa(4) = get_rxt_ndx( 'TOLUENE_OH' )
   end if
-  rxn_soa(5) = get_rxt_ndx( 'soa4' ) ! TOLUENE is a lumped species and there are two sets of pathways 
+  rxn_soa(5) = get_rxt_ndx( 'soa4' ) ! TOLUENE is a lumped species and there are two sets of pathways
   if ( rxn_soa(5) <= 0 ) then
      rxn_soa(5) = get_rxt_ndx( 'TOLUENE_OH' )
   end if
@@ -176,7 +176,7 @@ subroutine soa_inti_old
   k_om (2,2)    = 0.0043_r8
   fraction(2)   = 1._r8
   bulk_yield(2) = 762._r8
-! 
+!
 ! c10h16 + no3 (from Chung and Seinfeld, JGR, 107, 2002)
 !
   alpha(3,1)    = 1.000_r8
@@ -241,7 +241,7 @@ subroutine setsoa_old(dt,reaction_rates,tfld,vmr,xhnm,ncol,lchnk)
 !-----------------------------------------------------------------------
 !      ... dummy arguments
 !-----------------------------------------------------------------------
-  integer, intent(in)      :: ncol                   ! number columns in chunkx  
+  integer, intent(in)      :: ncol                   ! number columns in chunkx
   integer, intent(in)      :: lchnk                  ! chunk index
   real(r8), intent(in)     :: dt                     ! time step
   real(r8), intent(in)     :: reaction_rates(:,:,:)  ! reaction rates
@@ -264,7 +264,7 @@ subroutine setsoa_old(dt,reaction_rates,tfld,vmr,xhnm,ncol,lchnk)
   do k=1,pver
     do i=1,ncol
 !
-! calculate initial mass of organic aerosols from OC1 and OC2 
+! calculate initial mass of organic aerosols from OC1 and OC2
 ! and convert to ug/m3
 !
       m_0 = (vmr(i,k,oc1_ndx)+vmr(i,k,oc2_ndx)) * xhnm(i,k) * adv_mass(oc1_ndx)/avogadro * 1.e12_r8
@@ -316,7 +316,7 @@ subroutine setsoa_old(dt,reaction_rates,tfld,vmr,xhnm,ncol,lchnk)
           prod  = reaction_rates(i,k,rxn_soa(n)) * fraction(n) &
                 * vmr(i,k,react_ndx(n,1)) * vmr(i,k,react_ndx(n,2)) * dt
 !
-! convert from mixing ratio to mass (ug/m3)       
+! convert from mixing ratio to mass (ug/m3)
 !
           prod = prod * xhnm(i,k) * mw_soa/avogadro * 1.e12_r8
 !
@@ -352,7 +352,7 @@ real(r8) function soa_yield(m_0,xalpha,xk)
   real(r8), intent(in), dimension(2) :: xalpha, xk
 !
   soa_yield = m_0 * ( ((xalpha(1)*xk(1))/(1._r8+xk(1)*m_0)) &
-                  +   ((xalpha(2)*xk(2))/(1._r8+xk(2)*m_0)) ) 
+                  +   ((xalpha(2)*xk(2))/(1._r8+xk(2)*m_0)) )
 !
   return
 end function soa_yield
@@ -364,9 +364,9 @@ end function soa_yield
     use physics_buffer, only : pbuf_add_field, dtype_r8
     use mo_chem_utls,   only : get_spc_ndx
 
-    !-----------------------------------------------------------------------      
+    !-----------------------------------------------------------------------
     !       ... set species indices
-    !-----------------------------------------------------------------------      
+    !-----------------------------------------------------------------------
 
     oc1_ndx     => spc_ndx(1)
     oc2_ndx     => spc_ndx(2)
@@ -479,16 +479,16 @@ end function soa_yield
     real(r8), pointer :: fracsog(:,:,:,:)  ! mass fraction of each SOA class from each reaction
     real(r8), pointer :: fracsoa(:,:,:,:)  ! mass fraction of each SOG class from each reaction
 
-    !-----------------------------------------------------------------------      
+    !-----------------------------------------------------------------------
     !       ... check if this is an aerosol simulation
-    !-----------------------------------------------------------------------      
-    if( .not. has_soa ) then 
+    !-----------------------------------------------------------------------
+    if( .not. has_soa ) then
        return
     end if
 
-    !-----------------------------------------------------------------------      
+    !-----------------------------------------------------------------------
     !       ... set reaction indicies
-    !-----------------------------------------------------------------------      
+    !-----------------------------------------------------------------------
     rxn_soa(1) = get_rxt_ndx( 'C10H16_O3' )
     rxn_soa(2) = get_rxt_ndx( 'C10H16_OH' )
     rxn_soa(3) = get_rxt_ndx( 'C10H16_NO3' )
@@ -564,7 +564,7 @@ end function soa_yield
     k_om(2,2)     = 0.0043_r8
     T1(2)         = 310._r8
     delH(2)       = 42.e3_r8
-    ! 
+    !
     ! c10h16 + no3 (from Chung and Seinfeld, JGR, 107, 2002)
     !
     alpha(3,1)    = 1.000_r8
@@ -592,7 +592,7 @@ end function soa_yield
     T1(4)         = 295._r8
     delH(4)       = 42.e3_r8
     !
-    ! toluene + oh (pers comm Seinfeld and Henze): low NOx (TOLO2 + HO2) 
+    ! toluene + oh (pers comm Seinfeld and Henze): low NOx (TOLO2 + HO2)
     !
     alpha(5,1)    = 0.2349_r8
     alpha(5,2)    = 0.0_r8
@@ -601,7 +601,7 @@ end function soa_yield
     T1(5)         = 295._r8
     delH(5)       = 42.e3_r8
     !
-    ! toluene + oh (pers comm Seinfeld and Henze): high NOx (TOLO2 + NO) 
+    ! toluene + oh (pers comm Seinfeld and Henze): high NOx (TOLO2 + NO)
     !
     alpha(6,1)    = 0.0378_r8
     alpha(6,2)    = 0.0737_r8
@@ -610,7 +610,7 @@ end function soa_yield
     T1(6)         = 295._r8
     delH(6)       = 42.e3_r8
     !
-    ! benzene + oh (pers comm Seinfeld and Henze): low NOx (BENO2 + HO2) 
+    ! benzene + oh (pers comm Seinfeld and Henze): low NOx (BENO2 + HO2)
     !
     alpha(7,1)    = 0.2272_r8
     alpha(7,2)    = 0.0_r8
@@ -619,7 +619,7 @@ end function soa_yield
     T1(7)         = 295._r8
     delH(7)       = 42.e3_r8
     !
-    ! benzene + oh (pers comm Seinfeld and Henze): high NOx (BENO2 + NO) 
+    ! benzene + oh (pers comm Seinfeld and Henze): high NOx (BENO2 + NO)
     !
     alpha(8,1)    = 0.0442_r8
     alpha(8,2)    = 0.5454_r8
@@ -628,7 +628,7 @@ end function soa_yield
     T1(8)         = 295._r8
     delH(8)       = 42.e3_r8
     !
-    ! xylene + oh (pers comm Seinfeld and Henze): low NOx (XYLO2 + HO2) 
+    ! xylene + oh (pers comm Seinfeld and Henze): low NOx (XYLO2 + HO2)
     !
     alpha(9,1)    = 0.2052_r8
     alpha(9,2)    = 0.0_r8
@@ -637,7 +637,7 @@ end function soa_yield
     T1(9)         = 295._r8
     delH(9)       = 42.e3_r8
     !
-    ! xylene + oh (pers comm Seinfeld and Henze): high NOx (XYLO2 + NO) 
+    ! xylene + oh (pers comm Seinfeld and Henze): high NOx (XYLO2 + NO)
     !
     alpha(10,1)    = 0.0212_r8
     alpha(10,2)    = 0.0615_r8
@@ -676,14 +676,14 @@ end function soa_yield
     fracsog_init(5,2)=0._r8
     fracsog_init(7,2)=0._r8
     fracsog_init(9,2)=0._r8
-    
+
     if (initial_run) then
        do c=begchunk, endchunk
           pbuf_ptr=>pbuf_get_chunk(pbuf2d, c)
           call pbuf_get_field(pbuf_ptr, fracsoa_ndx, fracsoa )
           call pbuf_get_field(pbuf_ptr, fracsog_ndx, fracsog )
           do i = 1,pcols
-             do k = 1,pver   
+             do k = 1,pver
                 fracsoa( i,k, :,: ) = fracsoa_init(:,:)
                 fracsog( i,k, :,: ) = fracsog_init(:,:)
              enddo
@@ -707,7 +707,7 @@ end function soa_yield
   !===============================================================================
   subroutine setsoa_equil(dt,reaction_rates,tfld,vmr,xhnm,ncol,lchnk,pbuf)
     !
-    ! updated SOA mechanism 
+    ! updated SOA mechanism
     ! based on Chung and Seinfeld, JGR, 2002
     !
     ! implemented in CAM by Colette Heald (summer 2007)
@@ -722,7 +722,7 @@ end function soa_yield
     !-----------------------------------------------------------------------
     !      ... dummy arguments
     !-----------------------------------------------------------------------
-    integer, intent(in)      :: ncol                   ! number columns in chunkx  
+    integer, intent(in)      :: ncol                   ! number columns in chunkx
     integer, intent(in)      :: lchnk                  ! chunk index
     real(r8), intent(in)     :: dt                     ! time step
     real(r8), intent(in)     :: reaction_rates(:,:,:)  ! reaction rates
@@ -747,10 +747,10 @@ end function soa_yield
     real(r8), dimension(pcols,pver) :: soam_mass,soai_mass,soat_mass,soab_mass,soax_mass
     real(r8), dimension(pcols,pver) :: sogm_mass,sogi_mass,sogt_mass,sogb_mass,sogx_mass
     real(r8) :: soam_prod(ncol,pver), soai_prod(ncol,pver),soat_prod(ncol,pver),soab_prod(ncol,pver),soax_prod(ncol,pver)
-    
+
     real(r8), pointer, dimension(:,:,:,:) :: fracsog  ! mass fraction of each SOA class from each reaction
     real(r8), pointer, dimension(:,:,:,:) :: fracsoa  ! mass fraction of each SOG class from each reaction
-    
+
     soam_mass(:,:)=0._r8
     soai_mass(:,:)=0._r8
     soat_mass(:,:)=0._r8
@@ -774,7 +774,7 @@ end function soa_yield
           m_air = xhnm(i,k)*28.966_r8/avogadro*1.e12_r8
           !
           !       calculate initial mass of POA from OC1 and OC2 (in ug/m3)
-          poa = (vmr(i,k,oc1_ndx)+vmr(i,k,oc2_ndx)) * OMscale * xhnm(i,k) * adv_mass(oc1_ndx)/avogadro * 1.e12_r8 
+          poa = (vmr(i,k,oc1_ndx)+vmr(i,k,oc2_ndx)) * OMscale * xhnm(i,k) * adv_mass(oc1_ndx)/avogadro * 1.e12_r8
           !
           !       specify pre-existing SOG/SOA for each class (in ug/m3)
 
@@ -884,7 +884,7 @@ end function soa_yield
                    enddo
                 enddo
                 !              if numerator is less than 1 then MNEW must be zero
-                if (numer <= 1._r8) then 
+                if (numer <= 1._r8) then
                    mnew=0._r8
                    iter=0
                 else
@@ -904,13 +904,13 @@ end function soa_yield
                 maxM = poa+sumorg
                 minM = poa
                 tol = 1.e-4_r8
-                mnew = zeroin(minM,maxM,tol,poa,soa0,orggas,k_om_T,sumorg,iter) 
+                mnew = zeroin(minM,maxM,tol,poa,soa0,orggas,k_om_T,sumorg,iter)
              end if
              !
              !
              !           Now equilibrium partitioning with new MNEW
              !           If no MNEW then all the SOA evaporates to gas-phase
-             if (mnew > 0._r8) then 
+             if (mnew > 0._r8) then
                 do n=1,NRX
                    do p=1,NPR
                       soa(n,p)=k_om_T(n,p)*mnew*(orggas(n,p)+soa0(n,p))/(1._r8+k_om_T(n,p)*mnew)
@@ -922,7 +922,7 @@ end function soa_yield
                    enddo
                 enddo
 
-             else 
+             else
                 do n=1,NRX
                    do p=1,NPR
                       sog(n,p)=orggas(n,p)+soa0(n,p)
@@ -1077,7 +1077,7 @@ end function soa_yield
           !
           !--------------------------------------------------------------
           !
-          ! calculate NET production in kg/kg/s (subtract initial mass) 
+          ! calculate NET production in kg/kg/s (subtract initial mass)
           !
           soam_prod(i,k) = ( soam_mass(i,k)*1.e-12_r8*avogadro/(adv_mass(soam_ndx)*xhnm(i,k)) - &
                            vmr(i,k,soam_ndx) )/dt
@@ -1132,7 +1132,7 @@ end function soa_yield
     integer             :: iter
     real(r8),intent(in) :: x1, x2                      ! min/max of interval
     real(r8),intent(in) :: tol                         ! tolerance (interval of uncertainty)
-    real(r8),intent(in) :: poa,totorg                         
+    real(r8),intent(in) :: poa,totorg
     real(r8),intent(in) :: aer(NRX,NPR), gas(NRX,NPR)  ! aerosol and gas phase concentrations
     real(r8),intent(in) :: k(NRX,NPR)                  ! partitioning coeff
     ! local vars
@@ -1146,9 +1146,9 @@ end function soa_yield
     !
     ! check that functions have opposite signs
     if (fa >= 0._r8) then
-       if (fb >=0._r8) then 
+       if (fb >=0._r8) then
           write(iulog,*) 'ABORT IN ZEROIN: SAME SIGN ON FUNCTION',poa,totorg,x1,x2,fa,fb,aer,gas,k
-          write(iulog,*) 'ABORT IN ZEROIN: ERROR1: fa, fb ',fa, fb 
+          write(iulog,*) 'ABORT IN ZEROIN: ERROR1: fa, fb ',fa, fb
           write(iulog,*) 'ABORT IN ZEROIN: ERROR1: maxval(aer),minval(aer),maxval(gas),minval(gas) ',&
                                                    maxval(aer),minval(aer),maxval(gas),minval(gas)
           call endrun('ABORT IN ZEROIN: ERROR1')
@@ -1156,7 +1156,7 @@ end function soa_yield
     else
        if (fb <=0._r8) then
           write(iulog,*) 'ABORT IN ZEROIN: SAME SIGN ON FUNCTION',poa,totorg,x1,x2,fa,fb,aer,gas,k
-          write(iulog,*) 'ABORT IN ZEROIN: ERROR2: fa, fb ',fa, fb 
+          write(iulog,*) 'ABORT IN ZEROIN: ERROR2: fa, fb ',fa, fb
           write(iulog,*) 'ABORT IN ZEROIN: ERROR2: maxval(aer),minval(aer),maxval(gas),minval(gas) ',&
                                                    maxval(aer),minval(aer),maxval(gas),minval(gas)
           call endrun('ABORT IN ZEROIN: ERROR2')
@@ -1168,7 +1168,7 @@ end function soa_yield
        xm=(xa+xb)/2
        fm=soa_function(xm,poa,aer,gas,k)
        if (fa >=0._r8) then
-          if (fm >=0._r8) then 
+          if (fm >=0._r8) then
              xa=xm
              fa=fm
           else
@@ -1184,7 +1184,7 @@ end function soa_yield
              fb=fm
           end if
        end if
-       iter=iter+1        
+       iter=iter+1
     enddo
     !
     zeroin = (xa+xb)/2
@@ -1198,7 +1198,7 @@ end function soa_yield
     !
     implicit none
     !
-    real(r8),intent(in) :: m0,poa                         
+    real(r8),intent(in) :: m0,poa
     real(r8),intent(in) :: aer(NRX,NPR), gas(NRX,NPR)  ! aerosol and gas phase concentrations
     real(r8),intent(in) :: k(NRX,NPR)                  ! partitioning coeff
     ! local vars

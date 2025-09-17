@@ -1,8 +1,5 @@
 module aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
-  use spmd_utils,     only: masterproc
-  use cam_abortutils, only: endrun
-  use cam_logfile,    only: iulog
   implicit none
 
   private
@@ -462,63 +459,48 @@ contains
     real(r8), parameter :: spechygro_pom = 0.1_r8            ! POM hygroscopicity
 
     ierr = 0
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing nspecies_'
-    endif
+
     allocate(self%nspecies_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing nmasses_'
-    endif
     allocate(self%nmasses_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing alogsig_'
-    endif
     allocate(self%alogsig_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing f1'
-    endif
     allocate(self%f1_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-        if (masterproc) then
-        write(iulog,*) prefix//' calling initializing f2'
-    endif
     allocate(self%f2_(nbin),stat=ierr)
     if( ierr /= 0 ) then
        return
     end if
-    if (masterproc) then
-        write(iulog,*) prefix//' calling initializing indexer'
-    endif
-    allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
-    if( ierr /= 0 ) then
-       return
-    end if
+
+    !allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
+    !if( ierr /= 0 ) then
+    !   return
+    !end if
 
     ! Local indexing compresses the mode and number/mass indices into one index.
     ! This indexing is used by the pointer arrays used to reference state and pbuf
     ! fields. We add number = 0, total mass = 1 (if available), and mass from each
     ! constituency into mm.
 
-    self%indexer_ = -1
-    indx = 0
+    !self%indexer_ = -1
 
-    do ibin=1,nbin
-       do imas = 0,nmasses(ibin)
-          indx = indx+1
-          self%indexer_(ibin,imas) = indx
-       end do
-    end do
+    !indx = 0
+
+    !do ibin=1,nbin
+    !   do imas = 0,nmasses(ibin)
+    !      indx = indx+1
+    !      self%indexer_(ibin,imas) = indx
+    !   end do
+    !end do
 
     self%nbins_ = nbin
     self%ncnst_tot_ = ncnst
