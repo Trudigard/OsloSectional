@@ -33,6 +33,7 @@ module dust_model
   integer :: dust_nrange = 0
   integer :: dust_bin_idx(100)
   character(len=6), protected, allocatable :: dust_names(:)
+  character(len=10), allocatable :: dust_bin_names(:)
 
   real(r8), allocatable :: dust_dmt_grd(:) ! TODO: ?? diameter?
 
@@ -111,18 +112,20 @@ contains
 
   subroutine dust_init(aero_props)
 
-    use constituents,  only: cnst_get_ind !TODO, these are currently not used..
-    use chem_mods,     only: gas_pcnst
-    use mo_tracname,   only: solsym
+    use constituents,  only: cnst_get_ind
+    use chem_mods,     only: gas_pcnst !TODO,currently not used..
+    use mo_tracname,   only: solsym !TODO, currently not used..
+    use string_utils,      only: int2str
+
    ! use soil_erod_mod, only: soil_erod_init ! TODO, QUESTION: Oslo_aero has its own nearly identical version, why?
 
     type(sectional_aerosol_properties), intent(in) :: aero_props
 
     ! local variables
-    character(len=6) :: dust_name_list(100)
-    integer :: dust_nspecies
-    integer :: ispec, ind, istat
-    character(len=6) :: name
+    character(len=6)      :: dust_name_list(100)
+    integer               :: dust_nspecies
+    integer               :: ispec, ind, istat, ibin
+    character(len=6)      :: name
     real(r8), allocatable :: dust_bin_bounds(:,:)
     real(r8), allocatable :: bin_bounds(:,:)
 
@@ -132,7 +135,7 @@ contains
     dust_nrange = 0
     dust_nbin = 0
 
-    do ispec = 1, aero_props%nspecies_tot()
+    do ispec = 1, aero_props%nspecies_tot() !TODO: currently this just works with one dust species
         call aero_props%get(1, ispec, specname=name)
         if (trim(name) == 'DU') then
             dust_nspecies = dust_nspecies + 1
@@ -148,7 +151,11 @@ contains
     if ( istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_names'")
     end if
-    allocate(dust_indices(dust_nrange), stat=istat )
+    allocate( dust_bin_names(dust_nbin), stat=istat )
+    if (istat /= 0 ) then
+        call endrun(subname//":: ERROR could not allocate 'dust_bin_names'")
+    end if
+    allocate(dust_indices(dust_nbin), stat=istat )
     if ( istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_nrange'")
     end if
@@ -166,6 +173,11 @@ contains
     end if
 
     dust_names = dust_name_list(:dust_nrange)
+    do ibin = 1, dust_nbin
+        dust_bin_names(ibin) = 'num_'//int2str(dust_bin_idx(ibin))
+        call cnst_get_ind(dust_bin_names(ibin), dust_indices(ibin))
+    end do
+
     dust_active = dust_nrange > 0
     if (.not.dust_active) return ! TODO: THIS SEEMS to make it hang -> check allocations in sectional_aerosol_properties_mod
 
@@ -233,11 +245,14 @@ contains
 
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-    ! TODO: units??
+    ! TODO: units?? [kg/m2/s] ?
     do ibin = 1, dust_nbin ! TODO: change to dust_nbin and num_ -> add to dust_nrange after
-        dust_ind = dust_bin_idx(ibin)
-        cflx(:ncol, dust_ind) = -1.0_r8*emis_fraction_in_bin(ibin) & !TODO: fix emis_fraction_in_bin
+        dust_ind = dust_indices(ibin) !dust_bin_idx(ibin) ! TODO: URGENT get indices of bins that contain dust -> get idx from constituents, these are just some random ones
+        cflx(:ncol, dust_ind) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux -> TODO: find out where this flux is put
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
+    if (masterproc) then
+        write(iulog,*) "DEBUG: dust_indices ", dust_indices
+    end if
     end do
 
   end subroutine dust_emis

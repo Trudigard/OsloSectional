@@ -619,7 +619,7 @@ contains
     !call endrun(subname//":: is not yet implemented")
 
     if (masterproc) then
-        write(iulog,*) subname, ":: is not yet implemented"
+        write(iulog,*) subname, ":: is not yet implemented, no SO4 or Nitrate has been added"
     end if
 
   end subroutine aero_model_gasaerexch
