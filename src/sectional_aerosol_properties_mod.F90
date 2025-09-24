@@ -20,6 +20,8 @@ module sectional_aerosol_properties_mod
      integer                 :: nrange          ! nr of ranges containing species
      integer                 :: range_idx(100)  ! indices of ranges containing species
      integer                 :: bin_idx(100)    ! bin indices containing species
+     real(r8)                :: density
+     real(r8)                :: molecular_weight
      logical                 :: mixed           ! true if internally mixed
      ! integer               :: idx             ! indices of species tracers
      character(len=10)       :: tracernames(100) ! e.g. DU_R3
@@ -34,12 +36,14 @@ module sectional_aerosol_properties_mod
      real(r8), allocatable :: bin_bounds_(:,:)! radii at bin bounds (nm)
      integer, allocatable  :: range_bounds_(:,:) ! index of bins at range bounds
      integer, allocatable  :: bins2ranges_(:) ! range index for each bin
+     real(r8), allocatable :: particle_volume_(:) ! volume of a particle in a bin
      type(aerosol_species_properties), allocatable :: aer_spec_prop(:)
 
    contains
      procedure :: number_transported
      procedure :: get
      procedure :: amcube
+     procedure :: density
      procedure :: actfracs
      procedure :: num_names
      procedure :: mmr_names
@@ -54,8 +58,10 @@ module sectional_aerosol_properties_mod
      procedure :: nbins_rlist
      procedure :: nspecies_tot
      procedure :: nranges
+     procedure :: bin_centers
      procedure :: bin_bounds
-     procedure :: spec_range_idx !TODO merge the spec_ into one subroutine?
+     procedure :: particle_volume
+     procedure :: spec_range_idx
      procedure :: spec_bin_idx
      procedure :: spec_nrange
      procedure :: spec_nbin
@@ -122,6 +128,8 @@ contains
     type(aerosol_species_properties), allocatable :: oslo_sectional_species_properties(:)
     character(len=10)                     :: oslo_sectional_aerosol_name
     character(len=10)                     :: oslo_sectional_aerosol_range
+    real(r8)                              :: oslo_sectional_aerosol_density
+    real(r8)                              :: oslo_sectional_aerosol_weight
     logical                               :: oslo_sectional_aerosol_mixed
 
     character(len=aero_name_len) :: spectype
@@ -143,6 +151,8 @@ contains
 
     namelist /oslo_sectional_properties_aerosol_nl/ oslo_sectional_aerosol_name, &
                                             oslo_sectional_aerosol_range, &
+                                            oslo_sectional_aerosol_density, &
+                                            oslo_sectional_aerosol_weight, &
                                             oslo_sectional_aerosol_mixed
 
     ! initialize variables
@@ -223,6 +233,8 @@ contains
         ! namelist variables
         oslo_sectional_aerosol_name = ''
         oslo_sectional_aerosol_range = ''
+        oslo_sectional_aerosol_density = 0.0_r8
+        oslo_sectional_aerosol_weight = 0.0_r8
         oslo_sectional_aerosol_mixed = .false.
         lower = 0
         upper = 0
@@ -254,6 +266,16 @@ contains
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_range'")
         end if
 
+        call MPI_Bcast(oslo_sectional_aerosol_density, 1, mpi_real8, mstrid, mpicom, ierr)
+        if ( ierr/= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_density'")
+        end if
+
+        call MPI_Bcast(oslo_sectional_aerosol_weight, 1, mpi_real8, mstrid, mpicom, ierr)
+        if ( ierr/= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_weight'")
+        end if
+
         call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
         if ( ierr/= MPI_SUCCESS ) then
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
@@ -262,6 +284,8 @@ contains
         ! initialize properties object variables
         oslo_sectional_species_properties(ispec)%range_idx = 0
         oslo_sectional_species_properties(ispec)%specname = ''
+        oslo_sectional_species_properties(ispec)%density = 0.0_r8
+        oslo_sectional_species_properties(ispec)%molecular_weight = 0.0_r8
         oslo_sectional_species_properties(ispec)%mixed = .false.
         oslo_sectional_species_properties(ispec)%bin_idx = 0
         oslo_sectional_species_properties(ispec)%nbin = 0
@@ -281,6 +305,8 @@ contains
         end do
         oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
         oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
+        oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
+        oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
         oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
 
     end do
@@ -448,6 +474,12 @@ contains
         return
     end if
 
+    allocate(newobj%particle_volume_(oslo_sectional_nbins), stat=ierr)
+    if( ierr /=0 ) then
+        nullify(newobj)
+        return
+    end if
+
     newobj%bins2ranges_ = bins2ranges
     newobj%nranges_ = oslo_sectional_nranges
     newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
@@ -457,6 +489,7 @@ contains
     newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
     newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
 
+    newobj%particle_volume_ = 4/3*pi*newobj%bin_centers_**3
 
     ! deallocate local variables
     if (allocated(bin_centers)) deallocate(bin_centers)
@@ -509,6 +542,8 @@ contains
             write(iulog ,*) 'sectional aerosol species properties: '
             write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
             write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_idx(1), ' : ', newobj%aer_spec_prop(ind)%range_idx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
+            write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
+            write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
             write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
             write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
             write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
@@ -705,8 +740,19 @@ contains
     amcube = -1.0_r8
     ! TODO: do we need this? cannot call endrun, due to "pure elemental"
 
-
   end function amcube
+
+  !------------------------------------------------------------------------------
+  ! returns density for a species
+  !------------------------------------------------------------------------------
+  real(r8) function density(self, species_idx)
+
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_idx
+
+    density = self%aer_spec_prop(species_idx)%density
+
+  end function density
 
   !------------------------------------------------------------------------------
   ! returns mass and number activation fractions
@@ -926,7 +972,7 @@ contains
   end function nspecies_tot
 
   !------------------------------------------------------------------------------
-  ! returns the total number of species objects
+  ! returns the total number of ranges
   !------------------------------------------------------------------------------
   function nranges(self)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
@@ -936,6 +982,19 @@ contains
     res = self%nranges_
 
   end function nranges
+
+  !------------------------------------------------------------------------------
+  ! returns bin centers
+  !------------------------------------------------------------------------------
+  function bin_centers(self, nbins) result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: nbins
+    real(r8) :: res(nbins)
+    character(len=*), parameter :: subname = 'bin_centers'
+
+    res = self%bin_centers_
+
+  end function bin_centers
 
   !------------------------------------------------------------------------------
   ! returns bin bounds
@@ -950,6 +1009,18 @@ contains
 
   end function bin_bounds
 
+  !------------------------------------------------------------------------------
+  ! returns volume of a particle in a bin
+  !------------------------------------------------------------------------------
+  function particle_volume(self, ibin) result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: ibin
+    real(r8) :: res
+    character(len=*), parameter :: subname = 'particle_volume'
+
+    res = self%particle_volume_(ibin)
+
+  end function particle_volume
   !------------------------------------------------------------------------------
   ! returns the upper or lower range idx TODO: change to array of idices?
   !------------------------------------------------------------------------------
@@ -1023,7 +1094,8 @@ contains
   !------------------------------------------------------------------------------
   ! returns the total number of species objects
   !------------------------------------------------------------------------------
-  function bins2ranges(self, nbin)  result(res) ! TODO: nbin?
+
+  function bins2ranges(self, nbin)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in)         :: nbin
     integer                     :: res(nbin)

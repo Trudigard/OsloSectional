@@ -481,26 +481,26 @@ contains
        return
     end if
 
-    !allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
-    !if( ierr /= 0 ) then
-    !   return
-    !end if
+    allocate( self%indexer_(nbin,0:maxval(nmasses)),stat=ierr )
+    if( ierr /= 0 ) then
+       return
+    end if
 
     ! Local indexing compresses the mode and number/mass indices into one index.
     ! This indexing is used by the pointer arrays used to reference state and pbuf
     ! fields. We add number = 0, total mass = 1 (if available), and mass from each
     ! constituency into mm.
 
-    !self%indexer_ = -1
+    self%indexer_ = -1
 
-    !indx = 0
+    indx = 0
 
-    !do ibin=1,nbin
-    !   do imas = 0,nmasses(ibin)
-    !      indx = indx+1
-    !      self%indexer_(ibin,imas) = indx
-    !   end do
-    !end do
+    do ibin=1,nbin
+       do imas = 0,nmasses(ibin)
+          indx = indx+1
+          self%indexer_(ibin,imas) = indx
+       end do
+    end do
 
     self%nbins_ = nbin
     self%ncnst_tot_ = ncnst

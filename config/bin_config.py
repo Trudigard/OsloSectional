@@ -63,6 +63,8 @@ class _AerosolSpecies:
             self.short_name = config.get(species, 'short_name')
             self.long_name = config.get(species, 'long_name', fallback=self.short_name)
             self.composition = config.get(species, 'composition')
+            self.density = config.get(species, 'density')
+            self.molecular_weight = config.get(species, 'molecular_weight')
             self.mixed = config.getboolean(species, 'mixed', fallback=True)
             self.range_bnds = _parse_range(config, species, 'range_bounds')
         except:
@@ -309,9 +311,11 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
         if species.active:
             f.write("&oslo_sectional_properties_aerosol_nl\n")
             f.write(f" oslo_sectional_aerosol_name      =  '{species.short_name}' \n")
-            f.write(" oslo_sectional_aerosol_range      =  ")
+            f.write(" oslo_sectional_aerosol_range       =  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
-            f.write(f" oslo_sectional_aerosol_mixed       =  .{species.mixed}. \n")
+            f.write(f" oslo_sectional_aerosol_mixed     =  .{species.mixed}. \n")
+            f.write(f" oslo_sectional_aerosol_density   =  {species.density} \n")
+            f.write(f" oslo_sectional_aerosol_weight    =  {species.molecular_weight} \n")
             f.write("/\n")
     f.close()
 
