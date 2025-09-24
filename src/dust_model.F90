@@ -13,17 +13,19 @@ module dust_model
   implicit none
   private
 
-  ! Public data (TODO: move to object?)
+  ! Public data (TODO: move to object?) also, we have index-mania now!
   public :: dust_names   ! names of dust tracers (dust_nrange)
   public :: dust_nbin    ! nr bins containing dust
   public :: dust_nrange  ! nr of ranges containing dust
-  public :: dust_indices ! indices of dust tracers
+  public :: dust_bin_tracer_idx ! indices of num_ tracers containing dust (from const_get_ind)
+  public :: dust_range_tracer_idx ! indices of DU_ tracers (from const_get_ind)
+  public :: dust_species_idx ! index in the species object array
+  public :: dust_active
 
   ! Public procedures
   public :: dust_emis
   public :: dust_readnl
   public :: dust_init
-  public :: dust_active
 
   ! private routines (previously in soil_erod_mod in CAM)
   private :: soil_erod_init
@@ -31,19 +33,18 @@ module dust_model
   ! TODO: move to object?
   integer :: dust_nbin = 0
   integer :: dust_nrange = 0
-  integer :: dust_bin_idx(100)
+  integer :: dust_bin_idx(100) ! object internal bin index (array index for bins containing dust)
+  integer :: dust_range_idx(100) ! object internal bin index (array index for bins containing dust)
+  integer :: dust_species_idx = 0 ! object internal index
   character(len=6), protected, allocatable :: dust_names(:)
   character(len=10), allocatable :: dust_bin_names(:)
 
-  real(r8), allocatable :: dust_dmt_grd(:) ! TODO: ?? diameter?
-
-  integer, protected, allocatable :: dust_indices(:)
-!  real(r8) :: dust_dmt_vwr(dust_nbin) !TODO: wet diameter??
-!  real(r8) :: dust_stk_crc(dust_nbin)
+  ! TODO: move to obj somehow, currently the format in the base obj. is too rigid?
+  integer, protected, allocatable :: dust_bin_tracer_idx(:)
+  integer, protected, allocatable :: dust_range_tracer_idx(:)
 
   ! TODO: get proper distribution & map onto bins, 11 dust bins currently (e.g. Kok et al 2011) see dust_emis
   real(r8), allocatable :: emis_fraction_in_bin(:)
-
 
   logical :: dust_active = .false.
   class(aerosol_properties), pointer :: aero_props=>null()
@@ -124,7 +125,7 @@ contains
     ! local variables
     character(len=6)      :: dust_name_list(100)
     integer               :: dust_nspecies
-    integer               :: ispec, ind, istat, ibin
+    integer               :: ispec, ind, istat, ibin, irange
     character(len=6)      :: name
     real(r8), allocatable :: dust_bin_bounds(:,:)
     real(r8), allocatable :: bin_bounds(:,:)
@@ -138,15 +139,17 @@ contains
     do ispec = 1, aero_props%nspecies_tot() !TODO: currently this just works with one dust species
         call aero_props%get(1, ispec, specname=name)
         if (trim(name) == 'DU') then
+            dust_species_idx = ispec
             dust_nspecies = dust_nspecies + 1
             dust_nrange = aero_props%spec_nrange(ispec)
             dust_nbin = aero_props%spec_nbin(ispec)
             dust_bin_idx = aero_props%spec_bin_idx(ispec)
+            dust_range_idx = aero_props%spec_range_idx(ispec)
             dust_name_list = aero_props%spec_tracernames(ispec) !TODO, Question: make part of "get" routine?
         end if
     end do
 
-    ! find ndst from aero_props species props or nr of DU_ tracers
+    ! find ndst from aero_props species props or nr of DU_ tracers -> move these to sectional_aerosol_properties?
     allocate( dust_names(dust_nrange), stat=istat )
     if ( istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_names'")
@@ -155,9 +158,13 @@ contains
     if (istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_bin_names'")
     end if
-    allocate(dust_indices(dust_nbin), stat=istat )
+    allocate(dust_bin_tracer_idx(dust_nbin), stat=istat )
     if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_nrange'")
+        call endrun(subname//":: ERROR could not allocate 'dust_bin_tracer_idx'")
+    end if
+    allocate(dust_range_tracer_idx(dust_nrange), stat=istat )
+    if ( istat /= 0) then
+        call endrun(subname//":: ERROR could not allocate 'dust_range_tracer_idx'")
     end if
     allocate(bin_bounds(aero_props%nbins(), 2), stat=istat)
     if ( istat /= 0 ) then
@@ -175,11 +182,14 @@ contains
     dust_names = dust_name_list(:dust_nrange)
     do ibin = 1, dust_nbin
         dust_bin_names(ibin) = 'num_'//int2str(dust_bin_idx(ibin))
-        call cnst_get_ind(dust_bin_names(ibin), dust_indices(ibin))
+        call cnst_get_ind(dust_bin_names(ibin), dust_bin_tracer_idx(ibin))
+    end do
+    do irange = 1, dust_nrange
+        call cnst_get_ind(dust_names(irange), dust_range_tracer_idx(irange))
     end do
 
     dust_active = dust_nrange > 0
-    if (.not.dust_active) return ! TODO: THIS SEEMS to make it hang -> check allocations in sectional_aerosol_properties_mod
+    if (.not.dust_active) return
 
     call soil_erod_init( dust_emis_fact, soil_erod_file )
 
@@ -217,12 +227,13 @@ contains
 
     ! Local variables
     integer  :: icol, ibin, irange
-    integer  :: dust_ind
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: totalEmissionFlux(pcols)    ! sum emission flux over all sizes
-
+    real(r8) :: cflx_tmp(pcols,dust_nbin)
+    integer  :: bins2ranges(aero_props%nbins())
     character(len=*), parameter :: subname = 'dust_emis'
 
+    bins2ranges = aero_props%bins2ranges(aero_props%nbins())
     ! Filter away unreasonable values for soil erodibility
     ! (using low values e.g. gives emissions in greenland..)
     where(soil_erodibility(:,lchnk) < 0.1_r8)
@@ -245,14 +256,17 @@ contains
 
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-    ! TODO: units?? [kg/m2/s] ?
-    do ibin = 1, dust_nbin ! TODO: change to dust_nbin and num_ -> add to dust_nrange after
-        dust_ind = dust_indices(ibin) !dust_bin_idx(ibin) ! TODO: URGENT get indices of bins that contain dust -> get idx from constituents, these are just some random ones
-        cflx(:ncol, dust_ind) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux -> TODO: find out where this flux is put
+
+    do ibin = 1, dust_nbin
+        cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
-    if (masterproc) then
-        write(iulog,*) "DEBUG: dust_indices ", dust_indices
-    end if
+        cflx(:ncol, dust_bin_tracer_idx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_idx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
+        do irange = 1, dust_nrange
+            ! emissions in kg/m2/s to ranges
+            if (bins2ranges(dust_bin_idx(ibin)) == dust_range_idx(irange)) then
+                cflx(:ncol, dust_range_tracer_idx(irange)) = cflx(:ncol, dust_range_tracer_idx(irange)) + cflx_tmp(:ncol, ibin)
+            end if
+        end do
     end do
 
   end subroutine dust_emis
@@ -396,7 +410,6 @@ contains
         n = 10
         vol_old = 0.0_r8
 
-        ! TODO: FIX THESE VALUES?
         D1 = log( bin_bounds(ibin,1) /500._r8 ) ! transform to diameter and um
         D2 = log( bin_bounds(ibin,2) /500._r8 )
 
