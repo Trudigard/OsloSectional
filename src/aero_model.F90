@@ -53,6 +53,7 @@ module aero_model
   real(r8) :: aer_scav_coef(pcnst)
 
   integer :: fracis_idx = 0
+  integer :: prain_idx  = 0
 
   type(sectional_aerosol_properties), pointer :: aero_props=>null()
 
@@ -109,24 +110,30 @@ contains
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
     use dust_model,     only: dust_init
-    use mo_setsox,   only : setsox, has_sox
-    !use aer_drydep_mod, only: inidrydep
-    !use wetdep,         only: wetdep_init
+    use string_utils,   only: int2str
+    use mo_setsox,      only : setsox, has_sox
 
     !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
+    character(len=*), intent(in) :: nlfile
 
     ! local vars
-    character(len=12), parameter :: subname = 'aero_model_init'
-    integer :: m, id, ierr, ibin, ispec
+    integer           :: m, id, ierr, ibin, ispec
+    integer           :: specrange(100), spec_nrange, ind, irange
+    logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
+    logical           :: history_dust    ! Output dust
+    logical           :: history_chemistry ! Output Chemistry
+    character(len=2)  :: unit_basename ! Units 'kg' or '1'
+    character(len=10) :: aerosol_names(500), spec_names(100)
     character(len=20) :: dummy
-    logical  :: history_aerosol ! Output MAM or SECT aerosol tendencies
-    logical  :: history_dust    ! Output dust
-    logical  :: history_chemistry ! Output Chemistry
 
-    character(len=*), intent(in) :: nlfile
+    character(len=12), parameter :: subname = 'aero_model_init'
+
+
+    fracis_idx      = pbuf_get_index('FRACIS')
+    prain_idx       = pbuf_get_index('PRAIN')
 
     !call oslo_aero_ocean_init() ! DMS
 
@@ -135,10 +142,24 @@ contains
                        history_dust_out      = history_dust,    &
                        history_chemistry_out = history_chemistry   )
 
-    aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
+    if (.not. aerodep_flx_prescribed()) then
+        aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
+!        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
+    end if
 
     call dust_init(aero_props)
-    fracis_idx = pbuf_get_index('FRACIS')
+
+! TODO: if drydep active:
+    dummy = 'RAM1'
+    call addfld (dummy,horiz_only, 'A','frac','RAM1')
+    if ( history_aerosol ) then
+        call add_default (dummy, 1, ' ')
+    endif
+    dummy = 'airFV'
+    call addfld (dummy,horiz_only, 'A','frac','FV')
+    if ( history_aerosol ) then
+        call add_default (dummy, 1, ' ')
+    endif
 
     if (dust_active) then
         do m = 1, dust_nrange !TODO CHECK!!
@@ -161,8 +182,51 @@ contains
           call add_default (dummy, 1, ' ')
        endif
     endif
+aerosol_names = ''
+ind = 0
+do ispec = 1, aero_props%nspecies_tot()
+    specrange = aero_props%spec_range_idx(ispec)
+    spec_nrange = aero_props%spec_nrange(ispec)
+    spec_names = aero_props%spec_tracernames(ispec)
+    do irange = specrange(1), specrange(spec_nrange)
+        ind = ind+1
+        aerosol_names(ind) = spec_names(ind)
+    end do
+end do
 
-    ! TODO add aq chem (if has_sox ...)
+do ibin = 1, aero_props%nbins()
+    aerosol_names(ind + ibin) = "num_"//int2str(ibin)
+end do
+
+    do m = 1,ibin+ind
+
+       ! units
+       if (aerosol_names(m)(1:3) == 'num') then
+          unit_basename = '1'
+       else
+          unit_basename = 'kg'
+       endif
+
+       call addfld (trim(aerosol_names(m))//'DDF', horiz_only,  'A',unit_basename//'/m2/s ', &
+            trim(aerosol_names(m))//' dry deposition flux at bottom (grav + turb)')
+       call addfld (trim(aerosol_names(m))//'TBF', horiz_only,  'A',unit_basename//'/m2/s',  &
+            trim(aerosol_names(m))//' turbulent dry deposition flux')
+       call addfld (trim(aerosol_names(m))//'GVF', horiz_only,  'A',unit_basename//'/m2/s ', &
+            trim(aerosol_names(m))//' gravitational dry deposition flux')
+       call addfld (trim(aerosol_names(m))//'DTQ', (/ 'lev' /), 'A',unit_basename//'/kg/s ', &
+            trim(aerosol_names(m))//' dry deposition')
+       call addfld (trim(aerosol_names(m))//'DDV', (/ 'lev' /), 'A','m/s',                   &
+            trim(aerosol_names(m))//' deposition velocity')
+
+       if ( history_aerosol.or.history_chemistry ) then
+          call add_default (trim(aerosol_names(m))//'DDF', 1, ' ')
+       endif
+       if ( history_aerosol ) then
+          call add_default (trim(aerosol_names(m))//'TBF', 1, ' ')
+          call add_default (trim(aerosol_names(m))//'GVF', 1, ' ')
+       endif
+
+    enddo
 
     ! call aero_wetdep_init()
   end subroutine aero_model_init
