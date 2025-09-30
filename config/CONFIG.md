@@ -14,7 +14,7 @@ The general workflow is:
 - **sectional_aerosol_species_properties * nspecies** : Species specific namelists, one per aerosol species in atm_in (CASEDIR)
 - **chem_mech.in** : Edited chem_mech.in including all aerosol tracers (CASEDIR)
 
-## User input options
+## User input options *.ini
 E.g. dust_oslo_sectional.ini.
 Specifies the bin configuration, aerosol species and their properties.
 
@@ -43,3 +43,55 @@ Each species needs all the properties specified below:
 
 
 ## bin_config.py
+
+### Features
+- Reads and processes the configuration settings in the *.ini file described above
+- Calculates bin specifications for the aerosol size distribution
+- Generates species specifig settings for the aerosol tracers
+- Outputs necessary files for the sectional aerosol model in NorESM (namelists and chem_mech)
+
+The script contains two main functions: *bin_config* and *add_oslo_sectional_nl* that called by *buildnml*.
+*bin_config* is called by buildnml before the chemical pre-processor to set the aerosol configuration.
+*add_oslo_sectional_nl* is called by buildnml after the namelist file atm_in has been created and attaches the new sectional aerosol namelists to it.
+
+### Input files
+- **Aerosol Configuration file (*.ini)**: The aerosol configuration file described above.
+- **Chemistry mechanism file path (chem_mech.in)**: The original chemistry mechanism file for NorESM, which will be updated with aerosol tracers. Usually a chem_mech.in from an existing pp_folder, or a -usr_mech_infile from the runscript.
+- **Atmospheric namelist file (atm_in**): The original CAM namelist required for NorESM, which will be modified to include the sectional aerosol namelists generated in bin_config
+
+### Output files
+- **Namelist file (oslo_sectional_nl)**: This temporary file contains the sectional aerosol settings for NorESM and is inserted into atm_in via  the *add_oslo_sectional_nl* call in buildnml following alphabetical order for namelists.
+
+     #### oslo_sectional_properties_nl
+    - **oslo_sectional_nspecies_tot**: Number of species in the model. This corresponds to the number of sections in the *.ini file describing an aerosol species
+    - **oslo_sectional_nbins**: Number of bins from the *.ini file
+    - **oslo_sectional_nranges**: Number of chemical ranges
+    - **oslo_sectional_nspecies**: Number of species in each range
+    - **oslo_sectional_bin_bounds**: The boundary radii for each bin (nm)
+    - **oslo_sectional_bin_centers**: The center radius for each bin (nm)
+    - **oslo_sectional_range_bounds**: A list of the indices of smallest:largest bin in a range
+
+     #### oslo_sectional_properties_aerosol_nl (one per species)
+    - **oslo_sectional_aerosol_name**: Short name of the aerosol species (e.g. "DU")
+    - **oslo_sectional_aerosol_range**: Indices of the smallest:largest range including the species
+    - **oslo_sectional_aerosol_mixed**: True if internally mixed
+    - **oslo_sectional_aerosol_density**: Density of the aerosol species ()
+    - **oslo_sectional_aerosol_weight**: Molecular weight of the aerosol species ()
+
+- **Updated chemistry mechanism file (my_chem_mech.in)**: The modified version of chem_mech.in, now including aerosol tracers in the form of e.g. *num_1, num_2, ..., DU_R3, DU_R4*
+Modified chem_mech.in file
+
+## Usage instructions
+*buildnml* will automatically call bin_config.py, if a sectional aerosol configuration file is defined either via user input or by using an oslo_sectional compset.
+
+### Running from command line
+**Arguments**
+- --aerconf: Path to the aerosol configuration file (*.ini)
+- --chem_mech: Path to the chemistry mechanism file (chem_mech.in)
+- --chem_mech_new: Path where the modified chemistry mechanism_file should be saved
+- --atm_in: Path to the original namelist file
+- --atm_in_new: Path where the new atm_in file should be saved
+
+**Example**
+
+`python aerosol_config.py --aerconf config.ini --chem_mech chem_mech.in --chem_mech_new my_chem_mech.in --atm_in atm_in --atm_in_new atm_in_new`
