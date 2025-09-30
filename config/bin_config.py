@@ -134,7 +134,8 @@ class _BinSpecs:
     def calc_bins(self):
         ''' Calculates the actual bin specifications with the given number of bins and radius
         information from the sectional aerosol configuration file using the
-        volume ratio approach.
+        volume ratio approach described in Jacobson, M. Z. (2005). Fundamentals of Atmospheric Modeling.
+        Cambridge University Press., p. 451 ff.
 
         Attributes:
             N (int) : Total number of bins read from the sectional aerosol configuration file
@@ -143,14 +144,14 @@ class _BinSpecs:
             r list(float) : List of center radii of all bins (nm)
             r_bnds list(float) : list of radii at bin boundaries (nm)
         '''
-        V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1))       # calculate volume ratio
-        v_0 = 4/3 * math.pi * (self.r_1) ** 3 # # calculate smallest volume
-        v = [v_0 * V_rat ** i for i in range(self.N)]
-        v_lo = [(2*v[i]) / (1+V_rat) for i in range(self.N)] # lower radius bounds
-        v_hi = V_rat*v_lo[-1] # upper bnd for largest bin
-        v_bnds = v_lo + [v_hi] #
-        self.r = [(v[i]*3/(4*math.pi))**(1/3) for i in range(self.N)] # calculate radii
-        self.r_bnds = [(v_bnds[i]*4/(3*math.pi))**(1/3) for i in range(self.N+1)] # calculate radius bounds from volume
+        V_rat = (self.r_N / self.r_1) ** (3 / (self.N-1))             # volume ratio - Formula (13.3) in Jacobson
+        v_0 = 4/3 * math.pi * (self.r_1) ** 3                         # smallest volume - sperical volume for smallest center bin
+        v = [v_0 * V_rat ** i for i in range(self.N)]                 # All volumes - Formula (13.2) in Jacobson
+        v_lo = [(2*v[i]) / (1+V_rat) for i in range(self.N)]          # lower radius bounds - Formula (13.7) in Jacobson
+        v_hi = V_rat*v_lo[-1]                                         # upper bnd for largest bin - Formula (13.6) in Jacobson
+        v_bnds = v_lo + [v_hi]                                        # all bounds to one array
+        self.r = [(v[i]*3/(4*math.pi))**(1/3) for i in range(self.N)] # center radii - from volumes
+        self.r_bnds = [(v_bnds[i]*4/(3*math.pi))**(1/3) for i in range(self.N+1)] # radius bounds - from volumes
 
 class _RangeSpecs:
     ''' Class representing all attributes associated with a chemical composition range in the
