@@ -49,14 +49,6 @@ class _AerosolSpecies:
         Parameters:
             config : Instance of ConfigParser class (aerosol config file)
             species (str) : Section with aerosol name of the config.ini file in [] that should be read
-        Attributes:
-            active (bool) : whether the species should be included in the simulation
-            short_name (str) : short name of the aerosol species
-            long_name (str) : long name of the aerosol species
-            composition (str) : composition to trace aerosol mass
-            mixed (bool) : True for internally mixed, false for externally mixed aerosol
-            range_bnds (list(float)) : range bounds within which the species exists
-            range_idx (list(int)) : indices of ranges within which the species exists
         '''
         try:
             self.active = config.getboolean(species, 'active', fallback=False)
@@ -68,6 +60,7 @@ class _AerosolSpecies:
             self.mixed = config.getboolean(species, 'mixed', fallback=True)
             self.range_bnds = _parse_range(config, species, 'range_bounds')
         except:
+            raise
             sys.exit('Error: Species attributes in configuration file missing')
         self.range_idx = []
 
@@ -118,12 +111,6 @@ class _BinSpecs:
 
         Parameters:
             config : Instance of ConfigParser class (aerosol config file)
-        Attributes:
-            N (int) : Total number of bins read from the sectional aerosol configuration file
-            r_1 (float) : Center radius of the smallest bin (nm)
-            r_N (float) : Center radius of the largest bin (nm)
-            r (list(float)) : list of the center radii of all bins (nm)
-            r_bnds (list(float)) : list of the radii at bin boundaries (nm)
         '''
         self.N = config.getint('BIN SPECS', 'nbin')
         self.r_1 = config.getfloat('BIN SPECS', 'radius_1')
@@ -168,11 +155,6 @@ class _RangeSpecs:
 
         Parameters:
             config : Instance of ConfigParser class (aerosol config file)
-        Attributes:
-            ranges (bool) : True if the model should average the chemistry for a range of bins
-            range_bnds (list(float)) : The radii at the range boundaries (nm)
-            range_bnd_bin_idx (list(int)) : Indices of bins within a range
-            nspecies (list(int)) : number of species in each range
         '''
         self.ranges = config.getboolean('RANGE SPECS', 'ranges')
         self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
@@ -364,7 +346,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
                     pass
                 else:
                     modified_chem.append(f"{composition_list[i]}\n")
-   	# add species for advection
+    # add species for advection
         if 'Implicit' in line and not 'End' in line:
             for i in range(len(implicit_list)):
                 if any(chemline == f"{implicit_list[i]}\n" for chemline in lines):

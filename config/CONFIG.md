@@ -24,7 +24,7 @@ Specifies the bin configuration, aerosol species and their properties.
 - **radius_N**: *Center* radius of the largest bin [nm]
 
 ### Range specs
-- **ranges**: Boolean indicating whether size resolution for chemical species should be lower than total aerosol number concentration
+- **ranges**: Boolean indicating whether size resolution for chemical species should be lower than total aerosol number concentration. If ranges == True: The bins (aerosol number concentration) and ranges (chemical composition) have different size resolutions. The composition in a number of adjacent bins (one range) is averaged. If ranges == False: The scheme works like a classical sectional scheme where each species has one tracer per bin.
 - **range_bounds**: The *boundary* radii for the ranges [nm]. These range bounds get adjusted to the closest bin bound, once they are calculated in bin_config.py
 
 ### Species
@@ -32,14 +32,14 @@ All species have their own section. bin_config.py will assume that every section
 Each species needs all the properties specified below:
 
 - **[NAME]**                      : The name for the species, this is only relevant in bin_config.py
-- **active** = True/False       : Is this species an active component or not. If set to true, the corresponding tracers are added to chem_mech.in and the oslo_sectional_aerosol_properties_nl namelist in atm_in
-- **short_name** = XX           : A short string identifier for each species, e.g. *DU* or *SO4*
-- **long_name** = some string   : A long name for the species, e.g. *Dust aerosol*
-- **range_bounds** = 0.5, 10000 : The *boundary* radii for this species. These should be the same as two values in range_bounds, in order to avoid species ending up in unexpected bins.
-- **composition** = X2Yy3       : Chemical formula for the compound, this is used for the tracer specification in chem_mech.in
+- **active** = \<True>/\<False>       : Is this species an active component or not. If set to true, the corresponding tracers are added to chem_mech.in and the oslo_sectional_aerosol_properties_nl namelist in atm_in
+- **short_name** = \<XX>           : A short string identifier for each species, e.g. *DU* or *SO4*
+- **long_name** = \<some string>   : A long name for the species, e.g. *Dust aerosol*
+- **range_bounds** = \<lower>, \<upper> : The *boundary* radii for this species. These should be the same as two values in range_bounds, in order to avoid species ending up in unexpected bins.
+- **composition** = \<X2Yy3>       : Chemical formula for the compound, this is used for the tracer specification in chem_mech.in
 - **density** = 0.0             : Density of the aerosol species [kg/m3]
 - **molecular_weight** = 0.0    : Molecular weight of the aerosol species in [kg/kmol]
-- **mixed** = True/False        : When True, the aerosol is internally mixed with all other aerosol of this kind. False means only externally mixed.
+- **mixed** = \<True>/\<False>     : When True, the aerosol is internally mixed with all other aerosol of this kind. False means only externally mixed.
 
 
 ## bin_config.py
