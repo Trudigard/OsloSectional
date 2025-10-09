@@ -1,5 +1,6 @@
 module aerosol_properties_mod
   use shr_kind_mod, only: r8 => shr_kind_r8
+
   implicit none
 
   private
@@ -492,7 +493,6 @@ contains
     ! constituency into mm.
 
     self%indexer_ = -1
-
     indx = 0
 
     do ibin=1,nbin

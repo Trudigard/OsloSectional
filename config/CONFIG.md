@@ -24,7 +24,7 @@ Specifies the bin configuration, aerosol species and their properties.
 - **radius_N**: *Center* radius of the largest bin [nm]
 
 ### Range specs
-- **ranges**: Boolean indicating whether size resolution for chemical species should be lower than total aerosol number concentration. If ranges == True: The bins (aerosol number concentration) and ranges (chemical composition) have different size resolutions. The composition in a number of adjacent bins (one range) is averaged. If ranges == False: The scheme works like a classical sectional scheme where each species has one tracer per bin.
+- **ranges**: Boolean indicating whether size resolution for chemical species should be lower than total aerosol number concentration. If `ranges == True`: The bins (aerosol number concentration) and ranges (chemical composition) have different size resolutions. The composition in a number of adjacent bins (one range) is averaged. If `ranges == False`: The scheme works like a classical sectional scheme where each species has one tracer per bin.
 - **range_bounds**: The *boundary* radii for the ranges [nm]. These range bounds get adjusted to the closest bin bound, once they are calculated in bin_config.py
 
 ### Species
@@ -67,8 +67,8 @@ The script contains two main functions: *bin_config* and *add_oslo_sectional_nl*
     - **oslo_sectional_nbins**: Number of bins from the *.ini file
     - **oslo_sectional_nranges**: Number of chemical ranges
     - **oslo_sectional_nspecies**: Number of species in each range
-    - **oslo_sectional_bin_bounds**: The boundary radii for each bin (nm)
-    - **oslo_sectional_bin_centers**: The center radius for each bin (nm)
+    - **oslo_sectional_bin_bounds**: The boundary radii for each bin [nm]
+    - **oslo_sectional_bin_centers**: The center radius for each bin [nm]
     - **oslo_sectional_range_bounds**: A list of the indices of smallest:largest bin in a range
 
      #### oslo_sectional_properties_aerosol_nl (one per species)
@@ -94,4 +94,4 @@ Modified chem_mech.in file
 
 **Example**
 
-`python aerosol_config.py --aerconf config.ini --chem_mech chem_mech.in --chem_mech_new my_chem_mech.in --atm_in atm_in --atm_in_new atm_in_new`
+`python bin_config.py --aerconf config.ini --chem_mech chem_mech.in --chem_mech_new my_chem_mech.in --atm_in atm_in --atm_in_new atm_in_new`

@@ -15,8 +15,7 @@ module mo_aerosols
   use shr_kind_mod, only : r8 => shr_kind_r8
   use ppgrid,       only : pver
   use cam_logfile,  only: iulog
-    use abortutils, only: endrun
-  use cam_logfile,      only : iulog
+  use abortutils,   only: endrun
   use spmd_utils,       only : masterproc
   private
   public :: aerosols_inti,aerosols_formation
@@ -49,9 +48,6 @@ contains
     integer :: m
     character(len=*), parameter :: subname='aerosols_inti'
 
-    if (masterproc) then
-        write(iulog, * ) ' calling aerosols_inti'
-    end if
 
     nh3_ndx    => spc_ndx(1)
     nh4no3_ndx => spc_ndx(2)
@@ -153,10 +149,8 @@ contains
     real(r8) :: ti
     real(r8) :: xnh4no3
 
-        character(len=*), parameter :: subname='aerosols_formation'
-    if (masterproc) then
-        write(iulog, * ) ' calling aerosols_formation'
-    end if
+    character(len=*), parameter :: subname='aerosols_formation'
+
     call endrun(subname//' not fixed yet')
 
     do k=1,pver

@@ -6,12 +6,17 @@
 # my_chem_mech.in: edited to contain aerosol tracers
 # ==============================================================================
 
-import sys
 import os
 import logging
 import configparser
 import argparse
 import math
+
+#logging.basicConfig(level=logging.INFO) # basic level would be "warning"
+logger = logging.getLogger("bin_config")
+
+class AeroConfigError(Exception):
+    pass
 
 def _parse_range(config, section, variable):
     ''' Parse a range from the config file and make a list
@@ -59,10 +64,12 @@ class _AerosolSpecies:
             self.molecular_weight = config.get(species, 'molecular_weight')
             self.mixed = config.getboolean(species, 'mixed', fallback=True)
             self.range_bnds = _parse_range(config, species, 'range_bounds')
-        except:
-            raise
-            sys.exit('Error: Species attributes in configuration file missing')
+            logger.info(f"Successfully parsed species attributes for '{species}'")
+        except Exception as e:
+            logger.error(f"Error parsing species attributes for '{species}': {e}")
+            raise AeroConfigError("ERROR: Species attributes in configuration file missing")
         self.range_idx = []
+
 
     def check_range_bnds(self, range_bnds):
         ''' Check whether range bounds for the individual species
@@ -72,7 +79,9 @@ class _AerosolSpecies:
         Parameters:
             range_bnds (list(float)) : list of range bounds read from the config file
         '''
-        expect(all(i in range_bounds for i in self.range_bnds), 'ERROR: Species range bound not equal to range bounds')
+        if not all(i in range_bounds for i in self.range_bnds):
+            logger.error(f"Invalid range bounds: {self.range_bnds}")
+            raise AeroConfigError(f"ERROR: Species range bound not equal to range bounds")
 
     def get_range_idx(self, range_bnds):
         ''' Adjust the species bounds to the new range bounds
@@ -156,7 +165,7 @@ class _RangeSpecs:
         Parameters:
             config : Instance of ConfigParser class (aerosol config file)
         '''
-        self.ranges = config.getboolean('RANGE SPECS', 'ranges')
+        self.ranges = config.getboolean('RANGE SPECS', 'ranges', fallback=True)
         self.range_bnds = _parse_range(config, 'RANGE SPECS', 'range_bounds')
         self.range_bnd_bin_idx = []
         self.nspecies = []
@@ -212,6 +221,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
                              is written out. This file is deleted in buildnml after the contents are added
                              to atm_in
     '''
+
     # ==============================================================================
     # Read input from config file
     # ==============================================================================
@@ -220,7 +230,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
     try:
         config.read(aerconf_file)
     except:
-        sys.exit('Error: Config file does not exist or bad file format')
+        raise AeroConfigError('ERROR: Config file does not exist or bad file format')
 
     # ==============================================================================
     # Initialize
@@ -315,12 +325,12 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
 
     for species in species_obj_list:
         if species.active:
-            for i in range(len(species.range_idx)):
+            for range_idx in species.range_idx:
                 composition_list.append(
-                    f"{species.short_name}_R{species.range_idx[i]} -> {species.composition}"
+                    f"{species.short_name}_R{range_idx} -> {species.composition}"
                     ) # test
                 implicit_list.append(
-                    f"{species.short_name}_R{species.range_idx[i]}"
+                    f"{species.short_name}_R{range_idx}"
                     )
 
     for i in range(1,bin_specs.N+1):
@@ -341,18 +351,18 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
         modified_chem.append(line)
     # add species composition
         if 'Solution' in line and not 'End' in line and not 'Classes' in line:
-            for i in range(len(composition_list)):
-                if any(chemline == f"{composition_list[i]}\n" for chemline in lines): # check if the lines have already been added to chem_mech
+            for composition in composition_list:
+                if any(chemline == f"{composition}\n" for chemline in lines): # check if the lines have already been added to chem_mech
                     pass
                 else:
-                    modified_chem.append(f"{composition_list[i]}\n")
+                    modified_chem.append(f"{composition}\n")
     # add species for advection
         if 'Implicit' in line and not 'End' in line:
-            for i in range(len(implicit_list)):
-                if any(chemline == f"{implicit_list[i]}\n" for chemline in lines):
+            for implicit in implicit_list:
+                if any(chemline == f"{implicit}\n" for chemline in lines):
                     pass
                 else:
-                    modified_chem.append(f"{implicit_list[i]}\n")
+                    modified_chem.append(f"{implicit}\n")
     # write out to my_chem_mech.in
     with open(chem_infile, 'w') as file:
         file.writelines(modified_chem)
@@ -366,7 +376,7 @@ def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfile):
 
     Parameters:
         oslo_atm_nlfile : full path to the original atm_in file, temporarily moved to oslo_atm_in
-        oslo_sectional_in : full path to the oslo sectional namelists created in bin_config bin_config
+        oslo_sectional_in : full path to the oslo sectional namelists created in bin_config.bin_config
         atm_nlfile : full path to the final atm_in, combined oslo_atm_nlfile and oslo_sectional_in
     '''
     modified_atm_in = []
@@ -380,7 +390,7 @@ def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfile):
         if "&" in line and line > lines_oslo_sec[0]:        # write entries before oslo_sectional nl
             break
         else:
-            modified_atm_in.append(f"{line}")
+            modified_atm_in.append(line)
             idx += 1
     for line_oslo in lines_oslo_sec:                        # write oslo sectional nl
         modified_atm_in.append(f"{line_oslo}")
@@ -391,8 +401,8 @@ def add_oslo_sectional_nl(oslo_atm_nlfile, oslo_sectional_in, atm_nlfile):
         atm_infile.writelines(modified_atm_in)
 
 def _main_func():
-    parser = argparse.ArgumentParser(description="Process aerosol configuration for the" \
-    "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry.")
+    parser = argparse.ArgumentParser(description=("Process aerosol configuration for the"
+    "sectional aerosol scheme in NorESM, write the namelist and add the tracers to chemistry."))
     parser.add_argument('--aerconf', required=True, help='Path to the aerosol configuration file')
     parser.add_argument('--chem_mech', required=True, help='Path to the initial chem_mech.in file')
     parser.add_argument('--chem_mech_new', required=True, help='Path to the modified chem_mech.in file')
@@ -402,12 +412,16 @@ def _main_func():
 
     oslo_sectional_in = 'oslo_sectional_in' # temporary nl file with sectional info
 
-    if not os.path.isfile(args.aerconf):
-        sys.exit('Error: Specified aerosol configuration file does not exist')
-    if not os.path.isfile(args.chem_mech):
-        sys.exit('Error: Specified chem_mech.in file does not exist')
-    if not os.path.isfile(args.atm_in):
-        sys.exit('Error: Specified atm_in file does not exist')
+    try:
+        if not os.path.isfile(args.aerconf):
+            raise AeroConfigError('ERROR: Specified aerosol configuration file does not exist')
+        if not os.path.isfile(args.chem_mech):
+            raise AeroConfigError('ERROR: Specified chem_mech.in file does not exist')
+        if not os.path.isfile(args.atm_in):
+            raise AeroConfigError('ERROR: Specified atm_in file does not exist')
+    except AeroConfigError as errmsg:
+        logger.error(errmsg)
+
 
     bin_config(args.aerconf, args.chem_mech, args.chem_mech_new, oslo_sectional_in)
     add_oslo_sectional_nl(args.atm_in, oslo_sectional_in, args.atm_in_new)
