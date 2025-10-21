@@ -33,8 +33,8 @@ module dust_model
   ! TODO: move to object?
   integer :: dust_nbin = 0
   integer :: dust_nrange = 0
-  integer :: dust_bin_idx(100) ! object internal bin index (array index for bins containing dust)
-  integer :: dust_range_idx(100) ! object internal bin index (array index for bins containing dust)
+  integer, allocatable :: dust_bin_idx(:) ! object internal bin index (array index for bins containing dust)
+  integer, allocatable :: dust_range_idx(:) ! object internal bin index (array index for bins containing dust)
   integer :: dust_species_idx = 0 ! object internal index
   character(len=6), protected, allocatable :: dust_names(:)
   character(len=10), allocatable :: dust_bin_names(:)
@@ -123,7 +123,6 @@ contains
     type(sectional_aerosol_properties), intent(in) :: aero_props
 
     ! local variables
-    character(len=6)      :: dust_name_list(100)
     integer               :: dust_nspecies
     integer               :: ispec, ind, istat, ibin, irange
     character(len=6)      :: name
@@ -143,17 +142,22 @@ contains
             dust_nspecies = dust_nspecies + 1
             dust_nrange = aero_props%spec_nrange(ispec)
             dust_nbin = aero_props%spec_nbin(ispec)
-            dust_bin_idx = aero_props%spec_bin_idx(ispec)
-            dust_range_idx = aero_props%spec_range_idx(ispec)
-            dust_name_list = aero_props%spec_tracernames(ispec) !TODO, Question: make part of "get" routine?
+
+            allocate(dust_bin_idx(dust_nbin), dust_range_idx(dust_nrange), dust_names(dust_nrange))
+
+            dust_bin_idx = aero_props%spec_bin_idx(ispec, dust_nbin)
+            dust_range_idx = aero_props%spec_range_idx(ispec, dust_nrange)
+            dust_names = aero_props%spec_tracernames(ispec, dust_nrange)
+
+            exit ! TODO: Change this to allow for more dust species
         end if
     end do
 
     ! find ndst from aero_props species props or nr of DU_ tracers -> move these to sectional_aerosol_properties?
-    allocate( dust_names(dust_nrange), stat=istat )
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_names'")
-    end if
+    !allocate( dust_names(dust_nrange), stat=istat )
+    !if ( istat /= 0 ) then
+    !    call endrun(subname//":: ERROR could not allocate 'dust_names'")
+    !end if
     allocate( dust_bin_names(dust_nbin), stat=istat )
     if (istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_bin_names'")
@@ -179,7 +183,6 @@ contains
         call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
 
-    dust_names = dust_name_list(:dust_nrange)
     do ibin = 1, dust_nbin
         dust_bin_names(ibin) = 'num_'//int2str(dust_bin_idx(ibin))
         call cnst_get_ind(dust_bin_names(ibin), dust_bin_tracer_idx(ibin))

@@ -121,12 +121,14 @@ contains
 
     ! local vars
     integer           :: m, id, ierr, ibin, ispec
-    integer           :: specrange(100), spec_nrange, ind, irange
+    integer           :: spec_nrange, ind, irange
+    integer, allocatable :: specrange(:)
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical           :: history_dust    ! Output dust
     logical           :: history_chemistry ! Output Chemistry
     character(len=2)  :: unit_basename ! Units 'kg' or '1'
-    character(len=10) :: aerosol_names(500), spec_names(100)
+    character(len=10) :: aerosol_names(500)
+    character(len=10), allocatable :: spec_names(:)
     character(len=20) :: dummy
 
     character(len=12), parameter :: subname = 'aero_model_init'
@@ -185,13 +187,15 @@ contains
 aerosol_names = ''
 ind = 0
 do ispec = 1, aero_props%nspecies_tot()
-    specrange = aero_props%spec_range_idx(ispec)
     spec_nrange = aero_props%spec_nrange(ispec)
-    spec_names = aero_props%spec_tracernames(ispec)
+    allocate(specrange(spec_nrange), spec_names(spec_nrange))
+    specrange = aero_props%spec_range_idx(ispec, spec_nrange)
+    spec_names = aero_props%spec_tracernames(ispec, spec_nrange)
     do irange = specrange(1), specrange(spec_nrange)
         ind = ind+1
         aerosol_names(ind) = spec_names(ind)
     end do
+    deallocate(specrange, spec_names)
 end do
 
 do ibin = 1, aero_props%nbins()
