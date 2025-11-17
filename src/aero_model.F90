@@ -239,11 +239,27 @@ end do
   !=============================================================================
   subroutine aero_model_drydep  ( state, pbuf, obklen, ustar, cam_in, dt, cam_out, ptend )
 
-  !  use dust_sediment_mod, only: dust_sediment_tend
+    use dust_sediment_mod, only: dust_sediment_tend
     use aer_drydep_mod,    only: d3ddflux, calcram
-    use dust_model,        only: dust_names, dust_nbin
-    use seasalt_model,     only: sslt_depvel=>seasalt_depvel, sslt_nbin=>seasalt_nbin, sslt_names=>seasalt_names
 
+!    use modal_aero_data,   only: qqcw_get_field -> access to pbuf..??
+!    use modal_aero_data,   only: cnst_name_cw -> names for cw??
+!    use modal_aero_data,   only: alnsg_amode -> log(sigma_amode)
+!    use modal_aero_data,   only: sigmag_amode -> geometric stdev for each mode
+!    use modal_aero_data,   only: nspec_amode -> species in each mode
+!    use modal_aero_data,   only: numptr_amode -> r-array index for nr mixing ratio for aerosol
+!    use modal_aero_data,   only: numptrcw_amode -Y r-array index for the number mixing ratio
+!       (particles/mole-air) for aerosol mode m
+!    use modal_aero_data,   only: lmassptr_amode -> r-array index for the mixing ratio
+!       (moles-x/mole-air) for chemical species l in aerosol mode m
+!       that is in clear air or interstitial air (but not in cloud water)
+!    use modal_aero_data,   only: lmassptrcw_amode -> r-array index for the mixing ratio
+!       (moles-x/mole-air) for chemical species l in aerosol mode m
+!       that is currently bound/dissolved in cloud water
+
+    use dust_model,        only: dust_names, dust_nbin
+
+! TODO: move out state, cam_in, cam_out, ptend, pbuf -> e.g. move to different subroutine for now
     ! args
     type(physics_state),    intent(in)    :: state     ! Physics state variables
     real(r8),               intent(in)    :: obklen(:)
@@ -266,9 +282,10 @@ end do
 
      ! local decarations
 
-    integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start (from bulk aero)
+  !  integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start (from bulk aero)
 
-    integer :: ncol, lchnk
+    integer :: lchnk                   ! chunk identifier
+    integer :: ncol                    ! number of atmospheric columns
 
 
     real(r8) :: tsflx_dst(pcols)
@@ -318,6 +335,11 @@ end do
     tsflx_dst(:)=0._r8
     tsflx_slt(:)=0._r8
 
+! get deposition velocities
+
+!
+
+! TODO: delete bulk stuff below
     ! do drydep for each of the bins of dust and seasalt
     do m=1,ndrydep
 
@@ -733,5 +755,176 @@ end do
     endif
     !call endrun(subname//":: is not yet implemented")
   end subroutine aero_model_emissions
+
+subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,  &
+                                     radius_part, density_part, lchnk )
+
+!    calculates surface deposition velocity of particles
+!    L. Zhang, S. Gong, J. Padro, and L. Barrie
+!    A size-seggregated particle dry deposition scheme for an atmospheric aerosol module
+!    Atmospheric Environment, 35, 549-560, 2001.
+!
+!    Authors: X. Liu
+
+    !
+    ! !USES
+    !
+    use physconst,     only: pi,boltz, gravit, rair
+    use mo_drydep,     only: n_land_type, fraction_landuse
+
+    ! !ARGUMENTS:
+    !
+    implicit none
+    !
+    real(r8), intent(in) :: t(pcols,pver)       !atm temperature (K)
+    real(r8), intent(in) :: pmid(pcols,pver)    !atm pressure (Pa)
+    real(r8), intent(in) :: fv(pcols)           !friction velocity (m/s)
+    real(r8), intent(in) :: ram1(pcols)         !aerodynamical resistance (s/m)
+    real(r8), intent(in) :: radius_part(pcols,pver)    ! mean (volume/number) particle radius (m)
+    real(r8), intent(in) :: density_part(pcols,pver)   ! density of particle material (kg/m3)
+    integer,  intent(in) :: ncol
+    integer,  intent(in) :: lchnk
+
+    real(r8), intent(out) :: vlc_trb(pcols)       !Turbulent deposn velocity (m/s)
+    real(r8), intent(out) :: vlc_grv(pcols,pver)       !grav deposn velocity (m/s)
+    real(r8), intent(out) :: vlc_dry(pcols,pver)       !dry deposn velocity (m/s)
+    !------------------------------------------------------------------------
+
+    !------------------------------------------------------------------------
+    ! Local Variables
+    integer  :: m,i,k,ix                !indices
+    real(r8) :: rho     !atm density (kg/m**3)
+    real(r8) :: vsc_dyn_atm(pcols,pver)   ![kg m-1 s-1] Dynamic viscosity of air
+    real(r8) :: vsc_knm_atm(pcols,pver)   ![m2 s-1] Kinematic viscosity of atmosphere
+    real(r8) :: shm_nbr       ![frc] Schmidt number
+    real(r8) :: stk_nbr       ![frc] Stokes number
+    real(r8) :: mfp_atm(pcols,pver)       ![m] Mean free path of air
+    real(r8) :: dff_aer       ![m2 s-1] Brownian diffusivity of particle
+    real(r8) :: slp_crc(pcols,pver) ![frc] Slip correction factor
+    real(r8) :: rss_trb       ![s m-1] Resistance to turbulent deposition
+    real(r8) :: rss_lmn       ![s m-1] Quasi-laminar layer resistance
+    real(r8) :: brownian      ! collection efficiency for Browning diffusion
+    real(r8) :: impaction     ! collection efficiency for impaction
+    real(r8) :: interception  ! collection efficiency for interception
+    real(r8) :: stickfrac     ! fraction of particles sticking to surface
+
+
+    integer  :: lt
+    real(r8) :: lnd_frc
+    real(r8) :: wrk1, wrk2, wrk3
+
+    ! constants
+    real(r8) gamma(11)      ! exponent of schmidt number
+!   data gamma/0.54d+00,  0.56d+00,  0.57d+00,  0.54d+00,  0.54d+00, &
+!              0.56d+00,  0.54d+00,  0.54d+00,  0.54d+00,  0.56d+00, &
+!              0.50d+00/
+    data gamma/0.56e+00_r8,  0.54e+00_r8,  0.54e+00_r8,  0.56e+00_r8,  0.56e+00_r8, &
+               0.56e+00_r8,  0.50e+00_r8,  0.54e+00_r8,  0.54e+00_r8,  0.54e+00_r8, &
+               0.54e+00_r8/
+    save gamma
+
+    real(r8) alpha(11)      ! parameter for impaction
+!   data alpha/50.00d+00,  0.95d+00,  0.80d+00,  1.20d+00,  1.30d+00, &
+!               0.80d+00, 50.00d+00, 50.00d+00,  2.00d+00,  1.50d+00, &
+!             100.00d+00/
+    data alpha/1.50e+00_r8,   1.20e+00_r8,  1.20e+00_r8,  0.80e+00_r8,  1.00e+00_r8, &
+               0.80e+00_r8, 100.00e+00_r8, 50.00e+00_r8,  2.00e+00_r8,  1.20e+00_r8, &
+              50.00e+00_r8/
+    save alpha
+
+    real(r8) radius_collector(11) ! radius (m) of surface collectors
+!   data radius_collector/-1.00d+00,  5.10d-03,  3.50d-03,  3.20d-03, 10.00d-03, &
+!                          5.00d-03, -1.00d+00, -1.00d+00, 10.00d-03, 10.00d-03, &
+!                         -1.00d+00/
+    data radius_collector/10.00e-03_r8,  3.50e-03_r8,  3.50e-03_r8,  5.10e-03_r8,  2.00e-03_r8, &
+                           5.00e-03_r8, -1.00e+00_r8, -1.00e+00_r8, 10.00e-03_r8,  3.50e-03_r8, &
+                          -1.00e+00_r8/
+    save radius_collector
+
+    integer            :: iwet(11) ! flag for wet surface = 1, otherwise = -1
+!   data iwet/1,   -1,   -1,   -1,   -1,  &
+!            -1,   -1,   -1,    1,   -1,  &
+!             1/
+    data iwet/-1,  -1,   -1,   -1,   -1,  &
+              -1,   1,   -1,    1,   -1,  &
+              -1/
+    save iwet
+
+
+    vlc_trb = 0._r8
+    vlc_grv = 0._r8
+    vlc_dry = 0._r8
+
+    !------------------------------------------------------------------------
+    do k=top_lev,pver ! radius_part is not defined above top_lev
+       do i=1,ncol
+
+! use a maximum radius of 50 microns when calculating deposition velocity
+! TODO: limit max radius??
+! no dispersion for sectional
+
+          rho=pmid(i,k)/rair/t(i,k)
+
+          ! Quasi-laminar layer resistance: call rss_lmn_get
+          ! Size-independent thermokinetic properties
+          vsc_dyn_atm(i,k) = 1.72e-5_r8 * ((t(i,k)/273.0_r8)**1.5_r8) * 393.0_r8 / &
+               (t(i,k)+120.0_r8)      ![kg m-1 s-1] RoY94 p. 102
+          mfp_atm(i,k) = 2.0_r8 * vsc_dyn_atm(i,k) / &   ![m] SeP97 p. 455
+               (pmid(i,k)*sqrt(8.0_r8/(pi*rair*t(i,k))))
+          vsc_knm_atm(i,k) = vsc_dyn_atm(i,k) / rho ![m2 s-1] Kinematic viscosity of air
+
+          slp_crc(i,k) = 1.0_r8 + mfp_atm(i,k) * &
+                  (1.257_r8+0.4_r8*exp(-1.1_r8*radius_part(i,k)/(mfp_atm(i,k)))) / &
+                  radius_part(i,k)   ![frc] Slip correction factor SeP97 p. 464
+
+          vlc_grv(i,k) = (4.0_r8/18.0_r8) * radius_part(i,k)*radius_part(i,k)*density_part(i,k)* &
+                  gravit*slp_crc(i,k) / vsc_dyn_atm(i,k) ![m s-1] Stokes' settling velocity SeP97 p. 466
+
+          vlc_dry(i,k)=vlc_grv(i,k)
+       enddo
+    enddo
+    k=pver  ! only look at bottom level for next part
+    do i=1,ncol
+       dff_aer = boltz * t(i,k) * slp_crc(i,k) / &    ![m2 s-1]
+                 (6.0_r8*pi*vsc_dyn_atm(i,k)*radius_part(i,k)) !SeP97 p.474
+       shm_nbr = vsc_knm_atm(i,k) / dff_aer                        ![frc] SeP97 p.972
+
+       wrk2 = 0._r8
+       wrk3 = 0._r8
+       do lt = 1,n_land_type
+          lnd_frc = fraction_landuse(i,lt,lchnk)
+          if ( lnd_frc /= 0._r8 ) then
+             brownian = shm_nbr**(-gamma(lt))
+             if (radius_collector(lt) > 0.0_r8) then
+!       vegetated surface
+                stk_nbr = vlc_grv(i,k) * fv(i) / (gravit*radius_collector(lt))
+                interception = 2.0_r8*(radius_part(i,k)/radius_collector(lt))**2.0_r8
+             else
+!       non-vegetated surface
+                stk_nbr = vlc_grv(i,k) * fv(i) * fv(i) / (gravit*vsc_knm_atm(i,k))  ![frc] SeP97 p.965
+                interception = 0.0_r8
+             endif
+             impaction = (stk_nbr/(alpha(lt)+stk_nbr))**2.0_r8
+
+             if (iwet(lt) > 0) then
+                stickfrac = 1.0_r8
+             else
+                stickfrac = exp(-sqrt(stk_nbr))
+                if (stickfrac < 1.0e-10_r8) stickfrac = 1.0e-10_r8
+             endif
+             rss_lmn = 1.0_r8 / (3.0_r8 * fv(i) * stickfrac * (brownian+interception+impaction))
+             rss_trb = ram1(i) + rss_lmn + ram1(i)*rss_lmn*vlc_grv(i,k)
+
+             wrk1 = 1.0_r8 / rss_trb
+             wrk2 = wrk2 + lnd_frc*( wrk1 )
+             wrk3 = wrk3 + lnd_frc*( wrk1 + vlc_grv(i,k) )
+          endif
+       enddo  ! n_land_type
+       vlc_trb(i) = wrk2
+       vlc_dry(i,k) = wrk3
+    enddo !ncol
+
+    return
+  end subroutine aero_depvel_part
 
 end module aero_model
