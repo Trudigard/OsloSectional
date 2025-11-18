@@ -22,6 +22,7 @@ module sectional_aerosol_properties_mod
      real(r8)                :: density
      real(r8)                :: molecular_weight
      logical                 :: mixed           ! true if internally mixed
+     !TODO: add hydrophilic/phobic
      ! integer               :: idx             ! indices of species tracers
      character(len=10), allocatable :: tracernames(:) ! e.g. DU_R3
      end type aerosol_species_properties
@@ -116,7 +117,7 @@ contains
     integer               :: oslo_sectional_nbins
     integer               :: oslo_sectional_nranges
     integer               :: oslo_sectional_nspecies_tot
-    integer               :: oslo_sectional_nspecies(500) ! range_nspecies
+    integer               :: oslo_sectional_nspecies(500) ! range_nspecies TODO: make allocatable!!
     integer, parameter    :: strlen=50
 
     character(len=strlen) :: oslo_sectional_bin_centers(500)

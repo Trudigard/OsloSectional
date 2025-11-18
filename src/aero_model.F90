@@ -241,22 +241,14 @@ end do
 
     use dust_sediment_mod, only: dust_sediment_tend
     use aer_drydep_mod,    only: d3ddflux, calcram
+! TODO: add cw stuff
+! TODO: use ndrydep/nwetdep?
 
-!    use modal_aero_data,   only: qqcw_get_field -> access to pbuf..??
-!    use modal_aero_data,   only: cnst_name_cw -> names for cw??
-!    use modal_aero_data,   only: alnsg_amode -> log(sigma_amode)
-!    use modal_aero_data,   only: sigmag_amode -> geometric stdev for each mode
 !    use modal_aero_data,   only: nspec_amode -> species in each mode
 !    use modal_aero_data,   only: numptr_amode -> r-array index for nr mixing ratio for aerosol
-!    use modal_aero_data,   only: numptrcw_amode -Y r-array index for the number mixing ratio
-!       (particles/mole-air) for aerosol mode m
 !    use modal_aero_data,   only: lmassptr_amode -> r-array index for the mixing ratio
 !       (moles-x/mole-air) for chemical species l in aerosol mode m
 !       that is in clear air or interstitial air (but not in cloud water)
-!    use modal_aero_data,   only: lmassptrcw_amode -> r-array index for the mixing ratio
-!       (moles-x/mole-air) for chemical species l in aerosol mode m
-!       that is currently bound/dissolved in cloud water
-
     use dust_model,        only: dust_names, dust_nbin
 
 ! TODO: move out state, cam_in, cam_out, ptend, pbuf -> e.g. move to different subroutine for now
@@ -282,27 +274,42 @@ end do
 
      ! local decarations
 
-  !  integer, parameter :: begdst = 1 ! TODO now: index in aeronames where dust names start (from bulk aero)
-
     integer :: lchnk                   ! chunk identifier
     integer :: ncol                    ! number of atmospheric columns
+    integer :: jvlc                    ! index for last dimension of vlc_xxx arrays
+    integer :: lphase                  ! index for interstitial / cloudborne aerosol
+    integer :: lspec                   ! index for aerosol number / chem-mass / water-mass
+    integer :: m                       ! aerosol mode index
+    integer :: mm                      ! tracer index
+    integer :: i
 
-
-    real(r8) :: tsflx_dst(pcols)
-    real(r8) :: tsflx_slt(pcols)
-    real(r8) :: pvaeros(pcols,pverp)    ! sedimentation velocity in Pa
     real(r8) :: sflx(pcols)
 
     real(r8) :: tvs(pcols,pver)
     real(r8) :: rho(pcols,pver)      ! air density in kg/m3
+  !  real(r8) :: sflx(pcols)          ! deposition flux
+    real(r8) :: dep_trb(pcols)       !kg/m2/s
+    real(r8) :: dep_grv(pcols)       !kg/m2/s (total of grav and trb)
+    real(r8) :: pvmzaer(pcols,pverp) ! sedimentation velocity in Pa
+    real(r8) :: dqdt_tmp(pcols,pver) ! temporary array to hold tendency for 1 species
 
-    integer :: m,mm, i, im
+    real(r8) :: rad_drop(pcols,pver)
+    real(r8) :: dens_drop(pcols,pver)
+    real(r8) :: sg_drop(pcols,pver)
+    real(r8) :: rad_aer(pcols,pver)
+    real(r8) :: dens_aer(pcols,pver)
+    real(r8) :: sg_aer(pcols,pver)
 
+    real(r8) :: vlc_dry(pcols,pver,4)     ! dep velocity
+    real(r8) :: vlc_grv(pcols,pver,4)     ! dep velocity
+    real(r8)::  vlc_trb(pcols,4)          ! dep velocity
+    real(r8) :: aerdepdryis(pcols,pcnst)  ! aerosol dry deposition (interstitial)
+!    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
+!    real(r8), pointer :: fldcw(:,:)
+!    real(r8), pointer :: dgncur_awet(:,:,:)
+!    real(r8), pointer :: wetdens(:,:,:)
+!    real(r8), pointer :: qaerwat(:,:,:)
     character(len=*), parameter :: subname = 'aero_model_drydep'
-
-    if (ndrydep<1) return
-
-    call endrun(subname//":: is not yet implemented")
 
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
@@ -318,59 +325,40 @@ end do
                   ustar,ram1in,ram1,state%t(:,pver),state%pmid(:,pver),&
                   state%pdel(:,pver),fvin,fv)
 
-    !call outfld( 'airFV', fv(:), pcols, lchnk )
-    !call outfld( 'RAM1', ram1(:), pcols, lchnk )
+    call outfld( 'airFV', fv(:), pcols, lchnk )
+    call outfld( 'RAM1', ram1(:), pcols, lchnk )
 
     ! note that tendencies are not only in sfc layer (because of sedimentation)
     ! and that ptend is updated within each subroutine for different species
 
     call physics_ptend_init(ptend, state%psetcols, 'aero_model_drydep', lq=drydep_lq)
 
-    lchnk = state%lchnk
-    ncol  = state%ncol
-
     tvs(:ncol,:) = state%t(:ncol,:)
     rho(:ncol,:) = state%pmid(:ncol,:)/(rair*state%t(:ncol,:))
 
-    tsflx_dst(:)=0._r8
-    tsflx_slt(:)=0._r8
-
-! get deposition velocities
-
+! TODO: get deposition velocities for cloud stuff
+!    rad_drop(:,:) = 5.0e-6_r8
+!    dens_drop(:,:) = rhoh2o
+!    sg_drop(:,:) = 1.46_r8
 !
+ !   dens_aer(:,:) = 0._r8
+ !   bin_centers = aero_props%bin_centers()
 
-! TODO: delete bulk stuff below
-    ! do drydep for each of the bins of dust and seasalt
-    do m=1,ndrydep
+ !   do ibin = 0, nbins  ! main loop over aerosol size bins
+ !       do lphase = 1, 2 ! interstitial/cloud borne forms
+ !           if (lphase == 1) then ! interstitial
 
-       pvaeros(:ncol,1)=0._r8
+! TODO: use WET radius and density in future!!
+ !               rad_aer(1:ncol,:) = bin_centers(ibin)
+ !               dens_aer = aeroprops bin_density -> avg density
+ !               jvlc = 1 ! TODO: what is this?
+ !               call aero_depvel_part
 
-       call outfld( trim(cnst_name(mm))//'DV', pvaeros(:,2:pverp), pcols, lchnk )
+            ! if lphase == 2 then cloud-borne
+  !          end if
+  !      end do
 
-       if(.true.) then ! use phil's method
-          !      convert from meters/sec to pascals/sec
-          pvaeros(:ncol,2:pverp) = pvaeros(:ncol,2:pverp) * rho(:ncol,:)*gravit
-
-       endif
-
-       if ( any( dust_names(:)==trim(cnst_name(mm)) ) ) &
-            tsflx_dst(:ncol)=tsflx_dst(:ncol)+sflx(:ncol)
-
-       ! if the user has specified prescribed aerosol dep fluxes then
-       ! do not set cam_out dep fluxes according to the prognostic aerosols
-       if (.not. aerodep_flx_prescribed()) then
-          ! set deposition in export state
-          if (im==begdst) then
-             cam_out%dstdry1(:ncol) = max(sflx(:ncol), 0._r8)
-          elseif(im==begdst+1) then
-             cam_out%dstdry2(:ncol) = max(sflx(:ncol), 0._r8)
-          elseif(im==begdst+2) then
-             cam_out%dstdry3(:ncol) = max(sflx(:ncol), 0._r8)
-          elseif(im==begdst+3) then
-             cam_out%dstdry4(:ncol) = max(sflx(:ncol), 0._r8)
-          endif
-       endif
-    end do
+   ! end do
 
   endsubroutine aero_model_drydep
 
@@ -771,6 +759,7 @@ subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,
     !
     use physconst,     only: pi,boltz, gravit, rair
     use mo_drydep,     only: n_land_type, fraction_landuse
+    use ref_pres,       only: top_lev => clim_modal_aero_top_lev
 
     ! !ARGUMENTS:
     !

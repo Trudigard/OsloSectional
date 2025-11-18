@@ -211,7 +211,7 @@ contains
   !==============================================================================
   !==============================================================================
 
-  subroutine dust_emis( lchnk, ncol, dstflx, cflx, aero_props )
+  subroutine dust_emis( lchnk, ncol, dust_flux_in, cflx, aero_props )
     !-----------------------------------------------------------------------
     ! Purpose: Interface to emission of all dusts.
     ! Notice that the mobilization is calculated in the land model and
@@ -225,7 +225,7 @@ contains
     type(sectional_aerosol_properties), intent(in) :: aero_props
     integer  , intent(in)    :: lchnk
     integer  , intent(in)    :: ncol
-    real(r8) , intent(in)    :: dstflx(pcols,4)
+    real(r8) , intent(in)    :: dust_flux_in(:,:)   ! Leung emissions (?)
     real(r8) , intent(inout) :: cflx(pcols,pcnst) ! Surface fluxes
 
     ! Local variables
@@ -247,7 +247,7 @@ contains
 
     totalEmissionFlux(:) = 0.0_r8
     do icol=1,ncol
-       totalEmissionFlux(icol) = totalEmissionFlux(icol) + sum(dstflx(icol,:))
+       totalEmissionFlux(icol) = totalEmissionFlux(icol) + sum(dust_flux_in(icol,:))
     end do
 
     ! Note that following CESM use of "dust_emis_fact", the emissions are

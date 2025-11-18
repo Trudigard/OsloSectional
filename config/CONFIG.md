@@ -95,3 +95,15 @@ Modified chem_mech.in file
 **Example**
 
 `python bin_config.py --aerconf config.ini --chem_mech chem_mech.in --chem_mech_new my_chem_mech.in --atm_in atm_in --atm_in_new atm_in_new`
+
+## Integration in NorESM build process
+- `bld/definition.xml` : Defines name of the chemistry $chem for the perl files (e.g. dust_oslo_sectional). Also includes CAM_AEROSOL_CONFIG_HASH in order for it to be cached (?)
+- `bld/build-namelist` : Sets namelist values using the $chem definition -> some of these may need to be extracted to port the aerosol model! E.g. scavenging coefficients, etc.
+- `bld/configure` : add dust_oslo_sectional chemistry, caches cam_aerosol_config_hash to config_cache, give priority to oslo_sectional src paths
+- `bld/namelist_files/use_cases` : Contains use cases for the oslo_sectional compsets, currently only defaults
+- `cime_config/config_component.xml` : Detailed specifications for oslo_sectional compsets, what chemistry to use etc., also xml variable definitions for cam_aerosol_config and cam_aerosol_config_hash
+- `cime_config/config_compsets.xml` : Name and definition for oslo_Sectional compsets
+- `cime_config/buildcpp` : added cam_aerosol_config, and cam_aerosol_config_hash to add hash to cache
+- `cime_config/buildnml` : Checks if aerosol config file xml variable is set. If so, run bin_config.bin_config, buildcpp and cache the hash for aerosol config. Later call bin_config.add_oslo_sectional_nl to add new namelists to atm_in
+- `cime_config/QueryBuildCache.py`: script added to read xml files
+- `src/chemistry/pp_dust_oslo_sectional` : contains initial chem_mech.in and chemistry.F90 files (+ other initial chem files, not needed?)
