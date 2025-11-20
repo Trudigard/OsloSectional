@@ -261,7 +261,7 @@ contains
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
 
     do ibin = 1, dust_nbin
-        cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux
+        cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
         cflx(:ncol, dust_bin_tracer_idx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_idx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
         do irange = 1, dust_nrange

@@ -287,7 +287,6 @@ end do
 
     real(r8) :: tvs(pcols,pver)
     real(r8) :: rho(pcols,pver)      ! air density in kg/m3
-  !  real(r8) :: sflx(pcols)          ! deposition flux
     real(r8) :: dep_trb(pcols)       !kg/m2/s
     real(r8) :: dep_grv(pcols)       !kg/m2/s (total of grav and trb)
     real(r8) :: pvmzaer(pcols,pverp) ! sedimentation velocity in Pa
@@ -341,24 +340,24 @@ end do
 !    dens_drop(:,:) = rhoh2o
 !    sg_drop(:,:) = 1.46_r8
 !
- !   dens_aer(:,:) = 0._r8
- !   bin_centers = aero_props%bin_centers()
+    dens_aer(:,:) = 0._r8
+    bin_centers = aero_props%bin_centers()
 
- !   do ibin = 0, nbins  ! main loop over aerosol size bins
- !       do lphase = 1, 2 ! interstitial/cloud borne forms
- !           if (lphase == 1) then ! interstitial
+    do ibin = 0, nbins  ! main loop over aerosol size bins
+        do lphase = 1, 2 ! interstitial/cloud borne forms
+            if (lphase == 1) then ! interstitial
 
 ! TODO: use WET radius and density in future!!
- !               rad_aer(1:ncol,:) = bin_centers(ibin)
- !               dens_aer = aeroprops bin_density -> avg density
- !               jvlc = 1 ! TODO: what is this?
- !               call aero_depvel_part
+                rad_aer(1:ncol,:) = bin_centers(ibin)
+                !dens_aer = aeroprops bin_density -> avg density ! ranges need to track volume fractions
+                jvlc = 1 ! TODO: what is this?
+                !call aero_depvel_part
 
             ! if lphase == 2 then cloud-borne
-  !          end if
-  !      end do
+            end if
+        end do
 
-   ! end do
+    end do
 
   endsubroutine aero_model_drydep
 
