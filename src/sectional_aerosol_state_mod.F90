@@ -1,10 +1,17 @@
 module sectional_aerosol_state_mod
+
+! TODO: make object to internally hold bin number concentrations and range bulk masses
+! TODO: Range density function/array + set_density and get_density?
+! TODO: Update range function
+! TODO: range_state object: density, mass
+! TODO: bin_state: mmr/number, surface area, hygroscopicity, ...
+
   use shr_kind_mod, only: r8 => shr_kind_r8
   use shr_spfn_mod, only: erf => shr_spfn_erf
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
   use physics_types, only: physics_state
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
-  use physconst,  only: rhoh2o
+  use physconst,  only: rhoh2o, mwh2o
 
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
@@ -18,8 +25,17 @@ module sectional_aerosol_state_mod
 
   public :: sectional_aerosol_state
 
+  type aerosol_range_state ! one instance per range
+     character(len=10), allocatable :: tracernames(:) ! names of the tracers to communicate to host model
+     real(r8)              :: dry_density        ! density of the species mixture in a range without water
+     real(r8)              :: hygroscopicity     ! hygroscopicity of the species mixture
+    ! real(r8) :: volume
+     real(r8), allocatable :: mass       ! mass of each species in this range
+  end type aerosol_range_state
+
   type, extends(aerosol_state) :: sectional_aerosol_state
      private
+     type(aerosol_Range_stae)
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
    contains
@@ -46,6 +62,8 @@ module sectional_aerosol_state_mod
      procedure :: wet_diameter
      procedure :: convcld_actfrac
      procedure :: wgtpct
+     procedure :: density
+     procedure :: update_range
 
      final :: destructor
 
@@ -82,6 +100,9 @@ contains
     newobj%state => state
     newobj%pbuf => pbuf
 
+    ! allocate array for range_state
+    ! allocate internal array for bin_num
+
   end function constructor
 
   !------------------------------------------------------------------------------
@@ -96,6 +117,7 @@ contains
     nullify(self%state)
     nullify(self%pbuf)
 
+    ! deallocate everything
   end subroutine destructor
 
   !------------------------------------------------------------------------------
@@ -110,7 +132,9 @@ contains
     character(len=*), parameter :: subname = 'set_transported'
 
     call endrun(subname//' is not yet implemented')
-
+    ! BEFORE advection time step
+    ! Connect internal arrays for bin_number concentrations to num_1, num_2, ...
+    ! and internal masses for ranges to DU_R3, DU_R4, etc
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -125,6 +149,9 @@ contains
     character(len=*), parameter :: subname = 'get_transported'
 
     call endrun(subname//' is not yet implemented')
+    ! AFTER advection time step
+    ! Retrieve new values for number and masses and put them back into internal array
+
   end subroutine get_transported
 
   !------------------------------------------------------------------------
@@ -143,6 +170,8 @@ contains
 
     call endrun(subname//' is not yet implemented')
 
+    ! bin_num -> convert to mmr using range%density and airdensity
+
   end function ambient_total_bin_mmr
 
   !------------------------------------------------------------------------------
@@ -157,6 +186,9 @@ contains
     character(len=*), parameter :: subname = 'get_ambient_mmr_0list'
 
     call endrun(subname//' is not yet implemented')
+
+    ! use range index instead of bin index here?
+    ! use range species mass and airdens (+num for a single bin)
 
   end subroutine get_ambient_mmr_0list
 
@@ -204,6 +236,7 @@ contains
 
     call endrun(subname//' is not yet implemented')
 
+    ! use bin_num, range_density and range_mass
   end subroutine get_ambient_num
 
   !------------------------------------------------------------------------------
@@ -253,7 +286,7 @@ contains
     character(len=*), parameter :: subname = 'icenuc_size_wght_arr'
 
     call endrun(subname//' is not yet implemented')
-
+! ??
   end subroutine icenuc_size_wght_arr
 
   !------------------------------------------------------------------------------
@@ -315,6 +348,7 @@ contains
 
     call endrun(subname//' is not yet implemented')
 
+    ! bin_num(bin_ndx) = bin_num + tendency
   end subroutine update_bin
 
   !------------------------------------------------------------------------------
@@ -341,6 +375,7 @@ contains
   !------------------------------------------------------------------------------
   subroutine hygroscopicity(self, list_ndx, bin_ndx, kappa)
     class(sectional_aerosol_state), intent(in) :: self
+! TODO: what is list_ndx?
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
     real(r8), intent(out) :: kappa(:,:)                 !
@@ -349,6 +384,7 @@ contains
 
     call endrun(subname//' is not yet implemented')
 
+    ! return value from range_state
   end subroutine hygroscopicity
 
   !------------------------------------------------------------------------------
@@ -395,6 +431,7 @@ contains
     character(len=*), parameter :: subname = 'dry_volume'
 
     call endrun(subname//' is not yet implemented')
+! bin_num * aero_props%volume
 
   end function dry_volume
 
@@ -419,6 +456,7 @@ contains
     character(len=*), parameter :: subname = 'wet_volume'
 
     call endrun(subname//' is not yet implemented')
+! dry_volume + water volume
 
   end function wet_volume
 
@@ -462,6 +500,7 @@ contains
     character(len=*), parameter :: subname = 'wet_diameter'
 
     call endrun(subname//' is not yet implemented')
+! wet_volume/bin_num
 
   end function wet_diameter
 
@@ -496,5 +535,39 @@ contains
     call endrun(subname//' is not yet implemented')
 
   end function wgtpct
+
+  real(r8) function dry_density(self)
+! return range_density
+  end function dry_density
+
+  subroutine update_range(self, mass_tend)
+    class(sectional_aerosol_state), intent(in) :: self
+    real(r8), intent(in) :: mass_tend(:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range))
+    integer              :: irange
+    real(r8)             :: range_dry_volume
+
+! update state of range
+    ! update mass
+    aerosol_range_state%mass = aerosol_range_state%mass + mass_tend
+    ! reset density and hygroscopicity
+    aerosol_range_state%dry_density = 0._r8
+    aerosol_range_state%hygroscopicity = 0._r8
+    do irange = 1, aero_props%nranges()
+        range_dry_volume = sum(dry_volume(lower_bin: upper_bin))
+        aerosol_range_state%dry_density(irange) = aerosol_range_state%mass(:,irange)/range_dry_volume
+        do ispec = 1, max(aero_props%range_nspecies)
+            if ( aerosol_range_state%mass(irange,ispec) /= 0._r8) then ! TODO, is there a nicer way? no dividing by 0 and such.. something like "try"
+                aerosol_range_state%hygroscopicity(irange) = aerosol_range_state%hygroscopicity(irange) + &
+                    mwh2o/rhoh2o * aerosol_range_state%mass(irange, ispec)/sum(aerosol_range_state%irange,:) * &
+                    aero_props%hygroscopicity(ispec) / aero_props%molecular_weight / &
+                    (aerosol_range_state%mass(irange, ispec)/sum(aerosol_range_state%irange,:) / aero_props%density(ispec))
+            end if
+        end do
+    end do
+
+! sum_over_species(V_species/V_tot*species_hygroscopicity)
+    ! mwh2o/rhoh2o * sumoverspecies((mmr_species*hygr/molar_mass_species)) / ( sumoverspecies (mmr_species/dens_species))
+
+  end subroutine update_range
 
 end module sectional_aerosol_state_mod
