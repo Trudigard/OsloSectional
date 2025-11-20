@@ -20,7 +20,8 @@ module sectional_aerosol_properties_mod
      integer, allocatable    :: range_idx(:)    ! indices of ranges containing species
      integer, allocatable    :: bin_idx(:)      ! bin indices containing species
      real(r8)                :: density
-     real(r8)                :: molecular_weight
+     real(r8)                :: molecular_weight ! kg/kmol
+     real(r8)                :: hygroscopicity_parameter
      logical                 :: mixed           ! true if internally mixed
      !TODO: add hydrophilic/phobic
      ! integer               :: idx             ! indices of species tracers
@@ -36,7 +37,7 @@ module sectional_aerosol_properties_mod
      real(r8), allocatable :: bin_bounds_(:,:)! radii at bin bounds (nm)
      integer, allocatable  :: range_bounds_(:,:) ! index of bins at range bounds
      integer, allocatable  :: bins2ranges_(:) ! range index for each bin
-     real(r8), allocatable :: particle_volume_(:) ! volume of a particle in a bin
+     real(r8), allocatable :: particle_volume_(:) ! volume of a single particle in a bin (center radius)
      type(aerosol_species_properties), allocatable :: aer_spec_prop(:)
 
    contains
@@ -130,6 +131,7 @@ contains
     character(len=10)                     :: oslo_sectional_aerosol_range
     real(r8)                              :: oslo_sectional_aerosol_density
     real(r8)                              :: oslo_sectional_aerosol_weight
+    real(r8)                              :: oslo_sectional_aerosol_hygroscopicity_parameter
     logical                               :: oslo_sectional_aerosol_mixed
 
     character(len=aero_name_len) :: spectype
@@ -153,7 +155,8 @@ contains
                                             oslo_sectional_aerosol_range, &
                                             oslo_sectional_aerosol_density, &
                                             oslo_sectional_aerosol_weight, &
-                                            oslo_sectional_aerosol_mixed
+                                            oslo_sectional_aerosol_mixed, &
+                                            oslo_sectional_aerosol_hygroscopicity_parameter
 
     ! initialize variables
     oslo_sectional_nspecies_tot = 0
@@ -235,6 +238,7 @@ contains
         oslo_sectional_aerosol_range = ''
         oslo_sectional_aerosol_density = 0.0_r8
         oslo_sectional_aerosol_weight = 0.0_r8
+        oslo_sectional_aerosol_hygroscopicity_parameter = 0.0_r8
         oslo_sectional_aerosol_mixed = .false.
         lower = 0
         upper = 0
@@ -278,6 +282,11 @@ contains
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_weight'")
         end if
 
+        call MPI_Bcast(oslo_sectional_aerosol_hygroscopicity_parameter, 1, mpi_real8, mstrid, mpicom, ierr)
+        if ( ierr/= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_hygroscopicity_parameter'")
+        end if
+
         call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
         if ( ierr/= MPI_SUCCESS ) then
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
@@ -287,6 +296,7 @@ contains
         oslo_sectional_species_properties(ispec)%specname = ''
         oslo_sectional_species_properties(ispec)%density = 0.0_r8
         oslo_sectional_species_properties(ispec)%molecular_weight = 0.0_r8
+        oslo_sectional_species_properties(ispec)%hygroscopicity_parameter = 0.0_r8
         oslo_sectional_species_properties(ispec)%mixed = .false.
         oslo_sectional_species_properties(ispec)%nbin = 0
         oslo_sectional_species_properties(ispec)%nrange = 0
@@ -304,6 +314,7 @@ contains
         oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
         oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
         oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
+        oslo_sectional_species_properties(ispec)%hygroscopicity_parameter = oslo_sectional_aerosol_hygroscopicity_parameter
         oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
 
         ! allocate and initialize range_idx, and tracernames
@@ -565,6 +576,7 @@ contains
             write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_idx(1), ' : ', newobj%aer_spec_prop(ind)%range_idx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
             write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
             write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
+            write(iulog ,*) 'hygroscopicity_parameter = ', newobj%aer_spec_prop(ind)%hygroscopicity_parameter
             write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
             write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
             write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
