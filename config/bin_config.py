@@ -45,6 +45,8 @@ class _AerosolSpecies:
         mixed (bool) : True for internally mixed, false for externally mixed aerosol
         range_bnds (list(float)) : range bounds within which the species exists
         range_idx (list(int)) : indices of ranges within which the species exists
+        hygroscopicity_param (float) : species specific hygroscopicity parameter
+        molecular_weight (float) : molecular weight of the aerosol species
     '''
 
     def __init__(self, config, species):
@@ -64,6 +66,7 @@ class _AerosolSpecies:
             self.molecular_weight = config.get(species, 'molecular_weight')
             self.mixed = config.getboolean(species, 'mixed', fallback=True)
             self.range_bnds = _parse_range(config, species, 'range_bounds')
+            self.hygroscopicity_param = config.get(species, 'hygroscopicity_param')
             logger.info(f"Successfully parsed species attributes for '{species}'")
         except Exception as e:
             logger.error(f"Error parsing species attributes for '{species}': {e}")
@@ -309,6 +312,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
             f.write(f" oslo_sectional_aerosol_mixed     =  .{species.mixed}. \n")
             f.write(f" oslo_sectional_aerosol_density   =  {species.density} \n")
             f.write(f" oslo_sectional_aerosol_weight    =  {species.molecular_weight} \n")
+            f.write(f" oslo_sectional_aerosol_hygroscopicity_parameter =    {species.hygroscopicity_param} \n")
             f.write("/\n")
     f.close()
 

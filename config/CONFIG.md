@@ -40,6 +40,7 @@ Each species needs all the properties specified below:
 - **density** = 0.0             : Density of the aerosol species [kg/m3]
 - **molecular_weight** = 0.0    : Molecular weight of the aerosol species in [kg/kmol]
 - **mixed** = \<True>/\<False>     : When True, the aerosol is internally mixed with all other aerosol of this kind. False means only externally mixed.
+- **hygroscopicity_param** = 0.0      : Hygroscopicity parameter to get hygroscopicity according to eq. 4 in Abdul-Razzak and Ghan (doi: 10.1029/1999JD901161/), calculated as `nr Ions * osmotic coefficient * soluble mass fraction / molecular weight`
 
 
 ## bin_config.py
