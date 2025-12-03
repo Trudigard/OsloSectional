@@ -73,9 +73,19 @@ module sectional_aerosol_state_mod
 
   end type sectional_aerosol_state
 
- ! interface sectional_aerosol_state
- !    procedure :: constructor
- ! end interface sectional_aerosol_state
+  interface
+    function sas_state_obj_initialize(state, pbuf, aero_props) result(newobj)
+      import :: physics_state, physics_buffer_desc, sectional_aerosol_state, sectional_aerosol_properties
+      type(physics_state), target :: state
+      type(physics_buffer_desc), pointer :: pbuf(:)
+      type(sectional_aerosol_state), pointer :: newobj
+      type(sectional_aerosol_properties), intent(in) :: aero_props
+    end function sas_state_obj_initialize
+  end interface
+  
+  interface sectional_aerosol_state
+     procedure :: constructor(sas_state_obj_initialize)
+  end interface sectional_aerosol_state
 
   real(r8), parameter :: rh2odens = 1._r8/rhoh2o
 
@@ -83,7 +93,7 @@ contains
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
-  function new_sectional_aerosol_state_obj(state,pbuf, aero_props) result(newobj)
+  function constructor(state,pbuf, aero_props) result(newobj)
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
@@ -139,7 +149,7 @@ contains
         return
     end if
 
-  end function new_sectional_aerosol_state_obj
+  end function constructor
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
