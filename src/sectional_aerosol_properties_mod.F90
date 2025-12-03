@@ -17,11 +17,11 @@ module sectional_aerosol_properties_mod
      character(len=:), allocatable :: specname        ! e.g. DU
      integer                 :: nbin            ! number of bins containing species
      integer                 :: nrange          ! nr of ranges containing species
-     integer, allocatable    :: range_idx(:)    ! indices of ranges containing species
-     integer, allocatable    :: bin_idx(:)      ! bin indices containing species
+     integer, allocatable    :: range_ndx(:)    ! indices of ranges containing species
+     integer, allocatable    :: bin_ndx(:)      ! bin indices containing species
      real(r8)                :: density
      real(r8)                :: molecular_weight ! kg/kmol
-     real(r8)                :: hygroscopicity_parameter
+     real(r8)                :: kappa
      logical                 :: mixed           ! true if internally mixed
      !TODO: add hydrophilic/phobic
      ! integer               :: idx             ! indices of species tracers
@@ -58,12 +58,13 @@ module sectional_aerosol_properties_mod
      procedure :: optics_params
      procedure :: nbins_rlist
      procedure :: nspecies_tot
+     procedure :: range_nspecies
      procedure :: nranges
      procedure :: bin_centers
      procedure :: bin_bounds
      procedure :: particle_volume
-     procedure :: spec_range_idx
-     procedure :: spec_bin_idx
+     procedure :: spec_range_ndx
+     procedure :: spec_bin_ndx
      procedure :: spec_nrange
      procedure :: spec_nbin
      procedure :: spec_tracernames
@@ -110,7 +111,7 @@ contains
     real(r8),allocatable         :: bin_bounds(:,:)
     integer,allocatable          :: range_bounds(:,:)
     integer,allocatable          :: bins2ranges(:)
-    integer                      :: bin_idx(100)
+    integer                      :: bin_ndx(100)
     integer                      :: ierr, unitn, pos, lower, upper
     integer                      :: ind, ibin, irange, ispec
 
@@ -131,7 +132,7 @@ contains
     character(len=10)                     :: oslo_sectional_aerosol_range
     real(r8)                              :: oslo_sectional_aerosol_density
     real(r8)                              :: oslo_sectional_aerosol_weight
-    real(r8)                              :: oslo_sectional_aerosol_hygroscopicity_parameter
+    real(r8)                              :: oslo_sectional_aerosol_kappa
     logical                               :: oslo_sectional_aerosol_mixed
 
     character(len=aero_name_len) :: spectype
@@ -156,7 +157,7 @@ contains
                                             oslo_sectional_aerosol_density, &
                                             oslo_sectional_aerosol_weight, &
                                             oslo_sectional_aerosol_mixed, &
-                                            oslo_sectional_aerosol_hygroscopicity_parameter
+                                            oslo_sectional_aerosol_kappa
 
     ! initialize variables
     oslo_sectional_nspecies_tot = 0
@@ -238,7 +239,7 @@ contains
         oslo_sectional_aerosol_range = ''
         oslo_sectional_aerosol_density = 0.0_r8
         oslo_sectional_aerosol_weight = 0.0_r8
-        oslo_sectional_aerosol_hygroscopicity_parameter = 0.0_r8
+        oslo_sectional_aerosol_kappa = 0.0_r8
         oslo_sectional_aerosol_mixed = .false.
         lower = 0
         upper = 0
@@ -282,9 +283,9 @@ contains
             call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_weight'")
         end if
 
-        call MPI_Bcast(oslo_sectional_aerosol_hygroscopicity_parameter, 1, mpi_real8, mstrid, mpicom, ierr)
+        call MPI_Bcast(oslo_sectional_aerosol_kappa, 1, mpi_real8, mstrid, mpicom, ierr)
         if ( ierr/= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_hygroscopicity_parameter'")
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_kappa'")
         end if
 
         call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
@@ -296,7 +297,7 @@ contains
         oslo_sectional_species_properties(ispec)%specname = ''
         oslo_sectional_species_properties(ispec)%density = 0.0_r8
         oslo_sectional_species_properties(ispec)%molecular_weight = 0.0_r8
-        oslo_sectional_species_properties(ispec)%hygroscopicity_parameter = 0.0_r8
+        oslo_sectional_species_properties(ispec)%kappa = 0.0_r8
         oslo_sectional_species_properties(ispec)%mixed = .false.
         oslo_sectional_species_properties(ispec)%nbin = 0
         oslo_sectional_species_properties(ispec)%nrange = 0
@@ -314,18 +315,18 @@ contains
         oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
         oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
         oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
-        oslo_sectional_species_properties(ispec)%hygroscopicity_parameter = oslo_sectional_aerosol_hygroscopicity_parameter
+        oslo_sectional_species_properties(ispec)%kappa = oslo_sectional_aerosol_kappa
         oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
 
-        ! allocate and initialize range_idx, and tracernames
-        allocate(oslo_sectional_species_properties(ispec)%range_idx(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
+        ! allocate and initialize range_ndx, and tracernames
+        allocate(oslo_sectional_species_properties(ispec)%range_ndx(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
         if(ierr/=0) then
-            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties range_idx")
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties range_ndx")
         end if
-        oslo_sectional_species_properties(ispec)%range_idx = 0
+        oslo_sectional_species_properties(ispec)%range_ndx = 0
 
         do ind = 1, (upper - lower + 1)
-            oslo_sectional_species_properties(ispec)%range_idx(ind) = lower + ind - 1
+            oslo_sectional_species_properties(ispec)%range_ndx(ind) = lower + ind - 1
         end do
 
 
@@ -429,22 +430,22 @@ contains
         ind = 0
         oslo_sectional_species_properties(ispec)%nbin = 0
         do ibin = 1, oslo_sectional_nbins
-            if (bins2ranges(ibin) >= oslo_sectional_species_properties(ispec)%range_idx(1) .and. &
-                bins2ranges(ibin) <= maxval(oslo_sectional_species_properties(ispec)%range_idx)) then
+            if (bins2ranges(ibin) >= oslo_sectional_species_properties(ispec)%range_ndx(1) .and. &
+                bins2ranges(ibin) <= maxval(oslo_sectional_species_properties(ispec)%range_ndx)) then
                 ! nr of bins containing each species (e.g. dust_nbin in dust_model.F90)
                 oslo_sectional_species_properties(ispec)%nbin = oslo_sectional_species_properties(ispec)%nbin + 1
                 ind = ind+1
                 ! indices of bins containing each species
-                bin_idx(ind) = ibin
+                bin_ndx(ind) = ibin
             end if
         end do
-! TODO: I moved the 6 lines below here, after species%nbin is initialized to make the bin_idx allocatable but feels a bit messy..
-        allocate(oslo_sectional_species_properties(ispec)%bin_idx(oslo_sectional_species_properties(ispec)%nbin), stat=ierr)
+! TODO: I moved the 6 lines below here, after species%nbin is initialized to make the bin_ndx allocatable but feels a bit messy..
+        allocate(oslo_sectional_species_properties(ispec)%bin_ndx(oslo_sectional_species_properties(ispec)%nbin), stat=ierr)
         if(ierr/=0) then
-            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties bin_idx")
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties bin_ndx")
         end if
-!        oslo_sectional_species_properties(ispec)%bin_idx = 0 ! TODO: does this need to be initialized?
-        oslo_sectional_species_properties(ispec)%bin_idx = bin_idx(:oslo_sectional_species_properties(ispec)%nbin)
+!        oslo_sectional_species_properties(ispec)%bin_ndx = 0 ! TODO: does this need to be initialized?
+        oslo_sectional_species_properties(ispec)%bin_ndx = bin_ndx(:oslo_sectional_species_properties(ispec)%nbin)
 
         allocate(oslo_sectional_species_properties(ispec)%tracernames(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
         if(ierr/=0) then
@@ -456,7 +457,7 @@ contains
             ! tracernames for each species - potentially check if consistent with cnst_get_ind?
             oslo_sectional_species_properties(ispec)%tracernames(irange) = &
             trim(oslo_sectional_species_properties(ispec)%specname)//'_R'//&
-            trim(int2str(oslo_sectional_species_properties(ispec)%range_idx(irange)))
+            trim(int2str(oslo_sectional_species_properties(ispec)%range_ndx(irange)))
         end do
     end do
 
@@ -520,7 +521,7 @@ contains
     newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
     newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
     newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
-
+! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
     newobj%particle_volume_ = 4/3*pi*newobj%bin_centers_**3
 
     ! deallocate local variables
@@ -573,14 +574,14 @@ contains
             ! TODO (low priority): fix the format :D
             write(iulog ,*) 'sectional aerosol species properties: '
             write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
-            write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_idx(1), ' : ', newobj%aer_spec_prop(ind)%range_idx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
+            write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
             write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
             write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
-            write(iulog ,*) 'hygroscopicity_parameter = ', newobj%aer_spec_prop(ind)%hygroscopicity_parameter
+            write(iulog ,*) 'kappa = ', newobj%aer_spec_prop(ind)%kappa
             write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
             write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
             write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
-            write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_idx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_idx) ! TODO: is there a nicer way?
+            write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx) ! TODO: is there a nicer way?
             write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
        end do
     end if
@@ -778,12 +779,12 @@ contains
   !------------------------------------------------------------------------------
   ! returns density for a species
   !------------------------------------------------------------------------------
-  real(r8) function density(self, species_idx)
+  real(r8) function density(self, species_ndx)
 
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx
+    integer, intent(in) :: species_ndx
 
-    density = self%aer_spec_prop(species_idx)%density
+    density = self%aer_spec_prop(species_ndx)%density
 
   end function density
 
@@ -1005,6 +1006,19 @@ contains
   end function nspecies_tot
 
   !------------------------------------------------------------------------------
+  ! returns the total number of species in each range
+  !------------------------------------------------------------------------------
+  function range_nspecies(self, nranges)  result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: nranges
+    integer :: res(nranges)
+    character(len=*), parameter :: subname = 'range_nspecies'
+
+    res = self%range_nspecies_(:min(nranges,size(self%range_nspecies_)))
+
+  end function range_nspecies
+
+  !------------------------------------------------------------------------------
   ! returns the total number of ranges
   !------------------------------------------------------------------------------
   function nranges(self)  result(res)
@@ -1057,70 +1071,70 @@ contains
   !------------------------------------------------------------------------------
   ! returns the upper or lower range idx TODO: change to array of idices?
   !------------------------------------------------------------------------------
-  function spec_range_idx(self, species_idx, nranges)  result(res)
+  function spec_range_ndx(self, species_ndx, nranges)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx, nranges
+    integer, intent(in) :: species_ndx, nranges
     integer :: res(nranges)
-    character(len=*), parameter :: subname = 'spec_range_idx'
+    character(len=*), parameter :: subname = 'spec_range_ndx'
 
-    res = self%aer_spec_prop(species_idx)%range_idx
+    res = self%aer_spec_prop(species_ndx)%range_ndx
 
-  end function spec_range_idx
+  end function spec_range_ndx
 
   !------------------------------------------------------------------------------
   ! returns the upper or lower range idx TODO: change to array of idices?
   !------------------------------------------------------------------------------
-  function spec_bin_idx(self, species_idx, nbins)  result(res)
+  function spec_bin_ndx(self, species_ndx, nbins)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx, nbins
+    integer, intent(in) :: species_ndx, nbins
     integer :: ibin
     integer :: res(nbins)
-    character(len=*), parameter :: subname = 'spec_bin_idx'
+    character(len=*), parameter :: subname = 'spec_bin_ndx'
 
-    res = self%aer_spec_prop(species_idx)%bin_idx
+    res = self%aer_spec_prop(species_ndx)%bin_ndx
 
-  end function spec_bin_idx
+  end function spec_bin_ndx
 
   !------------------------------------------------------------------------------
   ! returns the upper or lower range idx TODO: change to array of idices?
   !------------------------------------------------------------------------------
-  function spec_nrange(self, species_idx)  result(res)
+  function spec_nrange(self, species_ndx)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx
+    integer, intent(in) :: species_ndx
     integer :: res
     character(len=*), parameter :: subname = 'spec_nrange'
 
-    res = self%aer_spec_prop(species_idx)%nrange
+    res = self%aer_spec_prop(species_ndx)%nrange
 
   end function spec_nrange
 
   !------------------------------------------------------------------------------
   ! returns number of bins containing species
   !------------------------------------------------------------------------------
-  function spec_nbin(self, species_idx)  result(res)
+  function spec_nbin(self, species_ndx)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx
+    integer, intent(in) :: species_ndx
     integer :: res
     character(len=*), parameter :: subname = 'spec_nbin'
 
-    res = self%aer_spec_prop(species_idx)%nbin
+    res = self%aer_spec_prop(species_ndx)%nbin
 
   end function spec_nbin
 
   !------------------------------------------------------------------------------
   ! returns number of bins containing species
   !------------------------------------------------------------------------------
-  function spec_tracernames(self, species_idx, nranges)  result(res)
+  function spec_tracernames(self, species_ndx, nranges)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_idx, nranges
+    integer, intent(in) :: species_ndx, nranges
     character(len=10) :: res(nranges)
     character(len=*), parameter :: subname = 'spec_tracernames'
 
-    res = self%aer_spec_prop(species_idx)%tracernames
+    res = self%aer_spec_prop(species_ndx)%tracernames
 
   end function spec_tracernames
 

@@ -224,7 +224,7 @@ module aerosol_state_mod
      ! bin number
      !------------------------------------------------------------------------------
      subroutine aero_hygroscopicity(self, list_ndx, bin_ndx, kappa)
-       import :: aerosol_state, r8
+       import :: aerosol_state, aerosol_properties, r8
        class(aerosol_state), intent(in) :: self
        integer, intent(in) :: list_ndx     ! rad climate/diagnostic list index
        integer, intent(in) :: bin_ndx      ! bin number
@@ -237,13 +237,13 @@ module aerosol_state_mod
      ! returns aerosol wet diameter and aerosol water concentration for a given
      ! radiation diagnostic list number and bin number
      !------------------------------------------------------------------------------
-     subroutine aero_water_uptake(self, aero_props, list_idx, bin_idx, ncol, nlev, dgnumwet, qaerwat)
+     subroutine aero_water_uptake(self, aero_props, list_ndx, bin_ndx, ncol, nlev, dgnumwet, qaerwat)
        import :: aerosol_state, aerosol_properties, r8
 
        class(aerosol_state), intent(in) :: self
        class(aerosol_properties), intent(in) :: aero_props
-       integer, intent(in) :: list_idx             ! rad climate/diags list number
-       integer, intent(in) :: bin_idx              ! bin number
+       integer, intent(in) :: list_ndx             ! rad climate/diags list number
+       integer, intent(in) :: bin_ndx              ! bin number
        integer, intent(in) :: ncol                 ! number of columns
        integer, intent(in) :: nlev                 ! number of levels
        real(r8),intent(out) :: dgnumwet(ncol,nlev) ! aerosol wet diameter (m)
@@ -265,13 +265,13 @@ module aerosol_state_mod
      !------------------------------------------------------------------------------
      ! aerosol volume interface
      !------------------------------------------------------------------------------
-     function aero_volume(self, aero_props, list_idx, bin_idx, ncol, nlev) result(vol)
+     function aero_volume(self, aero_props, list_ndx, bin_ndx, ncol, nlev) result(vol)
        import :: aerosol_state, aerosol_properties, r8
 
        class(aerosol_state), intent(in) :: self
        class(aerosol_properties), intent(in) :: aero_props
-       integer, intent(in) :: list_idx  ! rad climate/diags list number
-       integer, intent(in) :: bin_idx   ! bin number
+       integer, intent(in) :: list_ndx  ! rad climate/diags list number
+       integer, intent(in) :: bin_ndx   ! bin number
        integer, intent(in) :: ncol      ! number of columns
        integer, intent(in) :: nlev      ! number of levels
 
@@ -282,11 +282,11 @@ module aerosol_state_mod
      !------------------------------------------------------------------------------
      ! aerosol wet diameter
      !------------------------------------------------------------------------------
-     function aero_wet_diam(self, bin_idx, ncol, nlev) result(diam)
+     function aero_wet_diam(self, bin_ndx, ncol, nlev) result(diam)
        import :: aerosol_state,  r8
 
        class(aerosol_state), intent(in) :: self
-       integer, intent(in) :: bin_idx   ! bin number
+       integer, intent(in) :: bin_ndx   ! bin number
        integer, intent(in) :: ncol      ! number of columns
        integer, intent(in) :: nlev      ! number of levels
 

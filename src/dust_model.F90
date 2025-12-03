@@ -14,12 +14,13 @@ module dust_model
   private
 
   ! Public data (TODO: move to object?) also, we have index-mania now!
+  ! TODO: use internal indices for the aerosol scheme, connect only with get_transported/set_transported
   public :: dust_names   ! names of dust tracers (dust_nrange)
   public :: dust_nbin    ! nr bins containing dust
   public :: dust_nrange  ! nr of ranges containing dust
-  public :: dust_bin_tracer_idx ! indices of num_ tracers containing dust (from const_get_ind)
-  public :: dust_range_tracer_idx ! indices of DU_ tracers (from const_get_ind)
-  public :: dust_species_idx ! index in the species object array
+  public :: dust_bin_tracer_ndx ! indices of num_ tracers containing dust (from const_get_ind)
+  public :: dust_range_tracer_ndx ! indices of DU_ tracers (from const_get_ind)
+  public :: dust_species_ndx ! index in the species object array
   public :: dust_active
 
   ! Public procedures
@@ -33,15 +34,15 @@ module dust_model
   ! TODO: move to object?
   integer :: dust_nbin = 0
   integer :: dust_nrange = 0
-  integer, allocatable :: dust_bin_idx(:) ! object internal bin index (array index for bins containing dust)
-  integer, allocatable :: dust_range_idx(:) ! object internal bin index (array index for bins containing dust)
-  integer :: dust_species_idx = 0 ! object internal index
+  integer, allocatable :: dust_bin_ndx(:) ! object internal bin index (array index for bins containing dust)
+  integer, allocatable :: dust_range_ndx(:) ! object internal bin index (array index for bins containing dust)
+  integer :: dust_species_ndx = 0 ! object internal index
   character(len=6), protected, allocatable :: dust_names(:)
   character(len=10), allocatable :: dust_bin_names(:)
 
   ! TODO: move to obj somehow, currently the format in the base obj. is too rigid?
-  integer, protected, allocatable :: dust_bin_tracer_idx(:)
-  integer, protected, allocatable :: dust_range_tracer_idx(:)
+  integer, protected, allocatable :: dust_bin_tracer_ndx(:)
+  integer, protected, allocatable :: dust_range_tracer_ndx(:)
 
   ! TODO: get proper distribution & map onto bins, 11 dust bins currently (e.g. Kok et al 2011) see dust_emis
   real(r8), allocatable :: emis_fraction_in_bin(:)
@@ -138,18 +139,18 @@ contains
     do ispec = 1, aero_props%nspecies_tot() !TODO: currently this just works with one dust species
         call aero_props%get(1, ispec, specname=name)
         if (trim(name) == 'DU') then
-            dust_species_idx = ispec
+            dust_species_ndx = ispec
             dust_nspecies = dust_nspecies + 1
             dust_nrange = aero_props%spec_nrange(ispec)
             dust_nbin = aero_props%spec_nbin(ispec)
 
-            allocate(dust_bin_idx(dust_nbin), dust_range_idx(dust_nrange), dust_names(dust_nrange))
+            allocate(dust_bin_ndx(dust_nbin), dust_range_ndx(dust_nrange), dust_names(dust_nrange))
 
-            dust_bin_idx = aero_props%spec_bin_idx(ispec, dust_nbin)
-            dust_range_idx = aero_props%spec_range_idx(ispec, dust_nrange)
+            dust_bin_ndx = aero_props%spec_bin_ndx(ispec, dust_nbin)
+            dust_range_ndx = aero_props%spec_range_ndx(ispec, dust_nrange)
             dust_names = aero_props%spec_tracernames(ispec, dust_nrange)
 
-            exit ! TODO: Change this to allow for more dust species
+            exit ! TODO: Change this to allow for more dust species/compositions
         end if
     end do
 
@@ -162,13 +163,13 @@ contains
     if (istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_bin_names'")
     end if
-    allocate(dust_bin_tracer_idx(dust_nbin), stat=istat )
+    allocate(dust_bin_tracer_ndx(dust_nbin), stat=istat )
     if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_bin_tracer_idx'")
+        call endrun(subname//":: ERROR could not allocate 'dust_bin_tracer_ndx'")
     end if
-    allocate(dust_range_tracer_idx(dust_nrange), stat=istat )
+    allocate(dust_range_tracer_ndx(dust_nrange), stat=istat )
     if ( istat /= 0) then
-        call endrun(subname//":: ERROR could not allocate 'dust_range_tracer_idx'")
+        call endrun(subname//":: ERROR could not allocate 'dust_range_tracer_ndx'")
     end if
     allocate(bin_bounds(aero_props%nbins(), 2), stat=istat)
     if ( istat /= 0 ) then
@@ -183,12 +184,13 @@ contains
         call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
 
+! TODO: use model-internal indices instead! no "cnst_get_ind" anymore
     do ibin = 1, dust_nbin
-        dust_bin_names(ibin) = 'num_'//int2str(dust_bin_idx(ibin))
-        call cnst_get_ind(dust_bin_names(ibin), dust_bin_tracer_idx(ibin))
+        dust_bin_names(ibin) = 'num_'//int2str(dust_bin_ndx(ibin))
+        call cnst_get_ind(dust_bin_names(ibin), dust_bin_tracer_ndx(ibin))
     end do
     do irange = 1, dust_nrange
-        call cnst_get_ind(dust_names(irange), dust_range_tracer_idx(irange))
+        call cnst_get_ind(dust_names(irange), dust_range_tracer_ndx(irange))
     end do
 
     dust_active = dust_nrange > 0
@@ -199,8 +201,8 @@ contains
     ! calculate emission fraction per bin
 
     bin_bounds = aero_props%bin_bounds(aero_props%nbins())
-    dust_bin_bounds(:,1) = bin_bounds(dust_bin_idx(:dust_nbin),1)
-    dust_bin_bounds(:,2) = bin_bounds(dust_bin_idx(:dust_nbin),2)
+    dust_bin_bounds(:,1) = bin_bounds(dust_bin_ndx(:dust_nbin),1)
+    dust_bin_bounds(:,2) = bin_bounds(dust_bin_ndx(:dust_nbin),2)
 
     call dust_emis_fraction_bin(dust_nbin, dust_bin_bounds, emis_fraction_in_bin)
 
@@ -212,6 +214,9 @@ contains
   !==============================================================================
 
   subroutine dust_emis( lchnk, ncol, dust_flux_in, cflx, aero_props )
+! TODO: move dust_flux_in and cflx out of here somehow?
+! something like get_emissions
+
     !-----------------------------------------------------------------------
     ! Purpose: Interface to emission of all dusts.
     ! Notice that the mobilization is calculated in the land model and
@@ -259,15 +264,16 @@ contains
 
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-
+! TODO: move cflx out of here?
+! TODO: use aerosol model internal indices instead
     do ibin = 1, dust_nbin
         cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
-        cflx(:ncol, dust_bin_tracer_idx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_idx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
+        cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
         do irange = 1, dust_nrange
             ! emissions in kg/m2/s to ranges
-            if (bins2ranges(dust_bin_idx(ibin)) == dust_range_idx(irange)) then
-                cflx(:ncol, dust_range_tracer_idx(irange)) = cflx(:ncol, dust_range_tracer_idx(irange)) + cflx_tmp(:ncol, ibin)
+            if (bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
+                cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
             end if
         end do
     end do

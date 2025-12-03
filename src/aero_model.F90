@@ -189,7 +189,7 @@ ind = 0
 do ispec = 1, aero_props%nspecies_tot()
     spec_nrange = aero_props%spec_nrange(ispec)
     allocate(specrange(spec_nrange), spec_names(spec_nrange))
-    specrange = aero_props%spec_range_idx(ispec, spec_nrange)
+    specrange = aero_props%spec_range_ndx(ispec, spec_nrange)
     spec_names = aero_props%spec_tracernames(ispec, spec_nrange)
     do irange = specrange(1), specrange(spec_nrange)
         ind = ind+1
@@ -282,6 +282,7 @@ end do
     integer :: m                       ! aerosol mode index
     integer :: mm                      ! tracer index
     integer :: i
+    integer :: ibin, nbins
 
     real(r8) :: sflx(pcols)
 
@@ -303,6 +304,7 @@ end do
     real(r8) :: vlc_grv(pcols,pver,4)     ! dep velocity
     real(r8)::  vlc_trb(pcols,4)          ! dep velocity
     real(r8) :: aerdepdryis(pcols,pcnst)  ! aerosol dry deposition (interstitial)
+    real(r8), allocatable :: bin_centers(:)
 !    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
 !    real(r8), pointer :: fldcw(:,:)
 !    real(r8), pointer :: dgncur_awet(:,:,:)
@@ -341,7 +343,9 @@ end do
 !    sg_drop(:,:) = 1.46_r8
 !
     dens_aer(:,:) = 0._r8
-    bin_centers = aero_props%bin_centers()
+    nbins = aero_props%nbins()
+    allocate(bin_centers(nbins))
+    bin_centers = aero_props%bin_centers(nbins)
 
     do ibin = 0, nbins  ! main loop over aerosol size bins
         do lphase = 1, 2 ! interstitial/cloud borne forms

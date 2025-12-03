@@ -11,11 +11,13 @@ module sectional_aerosol_state_mod
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
   use physics_types, only: physics_state
   use aerosol_properties_mod, only: aerosol_properties, aero_name_len
+  use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
   use physconst,  only: rhoh2o, mwh2o
 
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
+  use ppgrid,         only: pcols, pver
 
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
@@ -26,18 +28,20 @@ module sectional_aerosol_state_mod
   public :: sectional_aerosol_state
 
   type aerosol_range_state ! one instance per range
-     character(len=10), allocatable :: tracernames(:) ! names of the tracers to communicate to host model
-     real(r8)              :: dry_density        ! density of the species mixture in a range without water
-     real(r8)              :: hygroscopicity     ! hygroscopicity of the species mixture
-    ! real(r8) :: volume
-     real(r8), allocatable :: mass       ! mass of each species in this range
+!TODO: chunks?
+     real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water
+     real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
+! TODO: mass as separate array?
+     real(r8), allocatable :: mass(:, :, :)            ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
+     ! ...
   end type aerosol_range_state
 
   type, extends(aerosol_state) :: sectional_aerosol_state
      private
-     type(aerosol_Range_stae)
+     type(aerosol_range_state), allocatable :: aer_range_state(:)
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
+     real(r8), allocatable :: bin_numconc(:,:,:)
    contains
 
      procedure :: get_transported
@@ -62,16 +66,16 @@ module sectional_aerosol_state_mod
      procedure :: wet_diameter
      procedure :: convcld_actfrac
      procedure :: wgtpct
-     procedure :: density
+     procedure :: dry_density
      procedure :: update_range
 
      final :: destructor
 
   end type sectional_aerosol_state
 
-  interface sectional_aerosol_state
-     procedure :: constructor
-  end interface sectional_aerosol_state
+ ! interface sectional_aerosol_state
+ !    procedure :: constructor
+ ! end interface sectional_aerosol_state
 
   real(r8), parameter :: rh2odens = 1._r8/rhoh2o
 
@@ -79,13 +83,14 @@ contains
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
-  function constructor(state,pbuf) result(newobj)
+  function new_sectional_aerosol_state_obj(state,pbuf, aero_props) result(newobj)
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
+    type(sectional_aerosol_properties), intent(in) :: aero_props
 
-    integer :: ierr
+    integer :: ierr, maxspec, irange
 
     character(len=*), parameter :: subname = 'constructor'
 
@@ -99,11 +104,42 @@ contains
 
     newobj%state => state
     newobj%pbuf => pbuf
+    maxspec = maxval(aero_props%range_nspecies(aero_props%nranges()))
 
-    ! allocate array for range_state
-    ! allocate internal array for bin_num
+    allocate(newobj%aer_range_state(aero_props%nranges()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+    do irange = 1, aero_props%nranges()
+        allocate(newobj%aer_range_state(irange)%mass(maxspec, pcols, pver), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aer_range_state(irange)%dry_density(pcols, pver), stat=ierr)
+        if( ierr /= 0 )then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aer_range_state(irange)%hygroscopicity(pcols,pver), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-  end function constructor
+       ! newobj%aer_range_state%dry_density = 0._r8
+       ! newobj%aer_range_state%hygroscopicity = 0._r8
+       ! newobj%aer_range_state%mass = 0._r8
+    end do
+
+    allocate(newobj%bin_numconc(aero_props%nbins(),pcols, pver), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
+  end function new_sectional_aerosol_state_obj
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
@@ -116,9 +152,14 @@ contains
 
     nullify(self%state)
     nullify(self%pbuf)
+    if (allocated(self%aer_range_state)) then
+        deallocate(self%aer_range_state)
+    end if
+    if (allocated(self%bin_numconc)) then
+        deallocate(self%bin_numconc)
+    end if
 
-    ! deallocate everything
-  end subroutine destructor
+end subroutine destructor
 
   !------------------------------------------------------------------------------
   ! sets transported components
@@ -135,6 +176,9 @@ contains
     ! BEFORE advection time step
     ! Connect internal arrays for bin_number concentrations to num_1, num_2, ...
     ! and internal masses for ranges to DU_R3, DU_R4, etc
+    ! internal bin_numconc -> cnst_get_ind for num_1, num_2, ...
+    ! internal aer_range_state%mass -> cnst_get_ind for DU_R3, DU_R4, ...
+    ! internal bin_numconc and aer_range_state%mass = 0._r8
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -151,7 +195,8 @@ contains
     call endrun(subname//' is not yet implemented')
     ! AFTER advection time step
     ! Retrieve new values for number and masses and put them back into internal array
-
+    ! cnst_get_ind num_1, num_2, ... -> bin_numconc
+    !
   end subroutine get_transported
 
   !------------------------------------------------------------------------
@@ -262,7 +307,7 @@ contains
     type(ptr2d_t), intent(out) :: raer(:)
     type(ptr2d_t), intent(out) :: qqcw(:)
 
-    integer :: ibin,ispc, indx
+    integer :: ibin,ispc, iidx
 
     character(len=*), parameter :: subname = 'get_states'
 
@@ -375,28 +420,33 @@ contains
   !------------------------------------------------------------------------------
   subroutine hygroscopicity(self, list_ndx, bin_ndx, kappa)
     class(sectional_aerosol_state), intent(in) :: self
+ !   class(aerosol_properties), intent(in) :: aero_props
 ! TODO: what is list_ndx?
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
     real(r8), intent(out) :: kappa(:,:)                 !
+    real(r8), allocatable :: bins2ranges(:)
+    integer :: irange
 
     character(len=*), parameter :: subname = 'hygroscopicity'
 
-    call endrun(subname//' is not yet implemented')
+ !   allocate(bins2ranges(aero_props%nbins()))
+    !bins2ranges = aero_props%bins2ranges(aero_props%nbins())
+    !irange = bins2ranges(bin_ndx)
+    !kappa = self%aer_range_state%hygroscopicity(irange)
 
-    ! return value from range_state
   end subroutine hygroscopicity
 
   !------------------------------------------------------------------------------
   ! returns aerosol wet diameter and aerosol water concentration for a given
   ! radiation diagnostic list number and bin number
   !------------------------------------------------------------------------------
-  subroutine water_uptake(self, aero_props, list_idx, bin_idx, ncol, nlev, dgnumwet, qaerwat)
+  subroutine water_uptake(self, aero_props, list_ndx, bin_ndx, ncol, nlev, dgnumwet, qaerwat)
 
     class(sectional_aerosol_state), intent(in) :: self
     class(aerosol_properties), intent(in) :: aero_props
-    integer, intent(in) :: list_idx             ! rad climate/diags list number
-    integer, intent(in) :: bin_idx              ! bin number
+    integer, intent(in) :: list_ndx             ! rad climate/diags list number
+    integer, intent(in) :: bin_ndx              ! bin number
     integer, intent(in) :: ncol                 ! number of columns
     integer, intent(in) :: nlev                 ! number of levels
     real(r8),intent(out) :: dgnumwet(ncol,nlev) ! aerosol wet diameter (m)
@@ -411,13 +461,13 @@ contains
   !------------------------------------------------------------------------------
   ! aerosol dry volume (m3/kg) for given radiation diagnostic list number and bin number
   !------------------------------------------------------------------------------
-  function dry_volume(self, aero_props, list_idx, bin_idx, ncol, nlev) result(vol)
+  function dry_volume(self, aero_props, list_ndx, bin_ndx, ncol, nlev) result(vol)
 
     class(sectional_aerosol_state), intent(in) :: self
     class(aerosol_properties), intent(in) :: aero_props
 
-    integer, intent(in) :: list_idx  ! rad climate/diags list number
-    integer, intent(in) :: bin_idx   ! bin number
+    integer, intent(in) :: list_ndx  ! rad climate/diags list number
+    integer, intent(in) :: bin_ndx   ! bin number
     integer, intent(in) :: ncol      ! number of columns
     integer, intent(in) :: nlev      ! number of levels
 
@@ -438,13 +488,13 @@ contains
   !------------------------------------------------------------------------------
   ! aerosol wet volume (m3/kg) for given radiation diagnostic list number and bin number
   !------------------------------------------------------------------------------
-  function wet_volume(self, aero_props, list_idx, bin_idx, ncol, nlev) result(vol)
+  function wet_volume(self, aero_props, list_ndx, bin_ndx, ncol, nlev) result(vol)
 
     class(sectional_aerosol_state), intent(in) :: self
     class(aerosol_properties), intent(in) :: aero_props
 
-    integer, intent(in) :: list_idx  ! rad climate/diags list number
-    integer, intent(in) :: bin_idx   ! bin number
+    integer, intent(in) :: list_ndx  ! rad climate/diags list number
+    integer, intent(in) :: bin_ndx   ! bin number
     integer, intent(in) :: ncol      ! number of columns
     integer, intent(in) :: nlev      ! number of levels
 
@@ -463,13 +513,13 @@ contains
   !------------------------------------------------------------------------------
   ! aerosol water volume (m3/kg) for given radiation diagnostic list number and bin number
   !------------------------------------------------------------------------------
-  function water_volume(self, aero_props, list_idx, bin_idx, ncol, nlev) result(vol)
+  function water_volume(self, aero_props, list_ndx, bin_ndx, ncol, nlev) result(vol)
 
     class(sectional_aerosol_state), intent(in) :: self
     class(aerosol_properties), intent(in) :: aero_props
 
-    integer, intent(in) :: list_idx  ! rad climate/diags list number
-    integer, intent(in) :: bin_idx   ! bin number
+    integer, intent(in) :: list_ndx  ! rad climate/diags list number
+    integer, intent(in) :: bin_ndx   ! bin number
     integer, intent(in) :: ncol      ! number of columns
     integer, intent(in) :: nlev      ! number of levels
 
@@ -487,9 +537,9 @@ contains
   !------------------------------------------------------------------------------
   ! aerosol wet diameter
   !------------------------------------------------------------------------------
-  function wet_diameter(self, bin_idx, ncol, nlev) result(diam)
+  function wet_diameter(self, bin_ndx, ncol, nlev) result(diam)
     class(sectional_aerosol_state), intent(in) :: self
-    integer, intent(in) :: bin_idx   ! bin number
+    integer, intent(in) :: bin_ndx   ! bin number
     integer, intent(in) :: ncol      ! number of columns
     integer, intent(in) :: nlev      ! number of levels
 
@@ -536,37 +586,47 @@ contains
 
   end function wgtpct
 
-  real(r8) function dry_density(self)
-! return range_density
+  real(r8) function dry_density(self, bin_ndx, aero_props)
+    class(sectional_aerosol_state), intent(in) :: self
+    class(aerosol_properties), intent(in) :: aero_props
+    integer, intent(in)   :: bin_ndx
+    real(r8), allocatable :: bins2ranges(:)
+    integer               :: irange
+
+    character(len=*), parameter :: subname = 'dry_density'
+
+ !   allocate(bins2ranges(aero_props%nbins()))
+ !   bins2ranges = aero_props%bins2ranges(aero_props%nbins())
+
+!    irange = bins2ranges(bin_ndx)
+!    aero_state%aer_range_state%density(irange)
+
   end function dry_density
 
-  subroutine update_range(self, mass_tend)
+  subroutine update_range(self, mass_tend, nranges, aero_props)
     class(sectional_aerosol_state), intent(in) :: self
+    class(aerosol_properties), intent(in) :: aero_props
     real(r8), intent(in) :: mass_tend(:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range))
-    integer              :: irange
+    integer              :: irange, nranges
     real(r8)             :: range_dry_volume
+    real(r8)             :: range_bounds(nranges,2)
 
 ! update state of range
     ! update mass
-    aerosol_range_state%mass = aerosol_range_state%mass + mass_tend
+ !   self%aer_range_state%mass = self%aer_range_state%mass + mass_tend
     ! reset density and hygroscopicity
-    aerosol_range_state%dry_density = 0._r8
-    aerosol_range_state%hygroscopicity = 0._r8
-    do irange = 1, aero_props%nranges()
-        range_dry_volume = sum(dry_volume(lower_bin: upper_bin))
-        aerosol_range_state%dry_density(irange) = aerosol_range_state%mass(:,irange)/range_dry_volume
-        do ispec = 1, max(aero_props%range_nspecies)
-            if ( aerosol_range_state%mass(irange,ispec) /= 0._r8) then ! TODO, is there a nicer way? no dividing by 0 and such.. something like "try"
-                aerosol_range_state%hygroscopicity(irange) = aerosol_range_state%hygroscopicity(irange) + &
-                    mwh2o/rhoh2o * aerosol_range_state%mass(irange, ispec)/sum(aerosol_range_state%irange,:) * &
-                    aero_props%hygroscopicity(ispec) / aero_props%molecular_weight / &
-                    (aerosol_range_state%mass(irange, ispec)/sum(aerosol_range_state%irange,:) / aero_props%density(ispec))
-            end if
-        end do
-    end do
-
-! sum_over_species(V_species/V_tot*species_hygroscopicity)
-    ! mwh2o/rhoh2o * sumoverspecies((mmr_species*hygr/molar_mass_species)) / ( sumoverspecies (mmr_species/dens_species))
+ !   self%aer_range_state%dry_density = 0._r8
+ !   self%aer_range_statehygroscopicity = 0._r8
+ !   range_bounds = aero_props%range_bounds()
+ !   do irange = 1, aero_props%nranges()
+ !       range_dry_volume = sum(dry_volume(range_bounds(irange,1), range_bounds(irange, 2)))
+ !       self%aer_range_statedry_density(irange) = self%aer_range_state%mass(:,irange)/range_dry_volume
+ !       do ispec = 1, max(aero_props%range_nspecies)
+! TODO: source
+ !           self%aer_range_state%hygroscopicity(irange) = self%aer_range_state%hygroscopicity(irange) + &
+ !                    mass_species/density_species/range_dry_volume * aero_props%kappa(ispec)
+  !      end do
+  !  end do
 
   end subroutine update_range
 
