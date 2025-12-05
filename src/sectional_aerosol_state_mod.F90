@@ -82,9 +82,9 @@ module sectional_aerosol_state_mod
       type(sectional_aerosol_properties), intent(in) :: aero_props
     end function sas_state_obj_initialize
   end interface
-  
+
   interface sectional_aerosol_state
-     procedure :: constructor(sas_state_obj_initialize)
+     procedure :: constructor
   end interface sectional_aerosol_state
 
   real(r8), parameter :: rh2odens = 1._r8/rhoh2o
