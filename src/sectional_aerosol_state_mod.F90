@@ -38,9 +38,10 @@ module sectional_aerosol_state_mod
 
   type, extends(aerosol_state) :: sectional_aerosol_state
      private
-     type(aerosol_range_state), allocatable :: aer_range_state(:)
+     type(aerosol_range_state), allocatable :: aero_range_state(:)
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
+     type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
    contains
 
@@ -66,22 +67,22 @@ module sectional_aerosol_state_mod
      procedure :: wet_diameter
      procedure :: convcld_actfrac
      procedure :: wgtpct
-     procedure :: dry_density
+     procedure :: bin_dry_density
      procedure :: update_range
 
      final :: destructor
 
   end type sectional_aerosol_state
 
-  interface
-    function sas_state_obj_initialize(state, pbuf, aero_props) result(newobj)
-      import :: physics_state, physics_buffer_desc, sectional_aerosol_state, sectional_aerosol_properties
-      type(physics_state), target :: state
-      type(physics_buffer_desc), pointer :: pbuf(:)
-      type(sectional_aerosol_state), pointer :: newobj
-      type(sectional_aerosol_properties), intent(in) :: aero_props
-    end function sas_state_obj_initialize
-  end interface
+ ! interface
+!    function sas_state_obj_initialize(state, pbuf, aero_props) result(newobj)
+!      import :: physics_state, physics_buffer_desc, sectional_aerosol_state, sectional_aerosol_properties
+!      type(physics_state), target :: state
+!      type(physics_buffer_desc), pointer :: pbuf(:)
+!      type(sectional_aerosol_state), pointer :: newobj
+!      type(sectional_aerosol_properties), intent(in) :: aero_props
+!    end function sas_state_obj_initialize
+ ! end interface
 
   interface sectional_aerosol_state
      procedure :: constructor
@@ -98,13 +99,11 @@ contains
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
-    type(sectional_aerosol_properties), intent(in) :: aero_props
+    type(sectional_aerosol_properties), target :: aero_props
 
     integer :: ierr, maxspec, irange
 
     character(len=*), parameter :: subname = 'constructor'
-
-    call endrun(subname//' is not yet implemented')
 
     allocate(newobj,stat=ierr)
     if( ierr /= 0 ) then
@@ -114,33 +113,36 @@ contains
 
     newobj%state => state
     newobj%pbuf => pbuf
+    newobj%sec_aero_props => aero_props
+
     maxspec = maxval(aero_props%range_nspecies(aero_props%nranges()))
 
-    allocate(newobj%aer_range_state(aero_props%nranges()), stat=ierr)
+    allocate(newobj%aero_range_state(aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
     end if
     do irange = 1, aero_props%nranges()
-        allocate(newobj%aer_range_state(irange)%mass(maxspec, pcols, pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%mass(maxspec, pcols, pver), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
         end if
-        allocate(newobj%aer_range_state(irange)%dry_density(pcols, pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%dry_density(pcols, pver), stat=ierr)
         if( ierr /= 0 )then
             nullify(newobj)
             return
         end if
-        allocate(newobj%aer_range_state(irange)%hygroscopicity(pcols,pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%hygroscopicity(pcols,pver), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
         end if
 
-       ! newobj%aer_range_state%dry_density = 0._r8
-       ! newobj%aer_range_state%hygroscopicity = 0._r8
-       ! newobj%aer_range_state%mass = 0._r8
+        newobj%aero_range_state(irange)%dry_density = 0._r8
+        newobj%aero_range_state(irange)%hygroscopicity = 0._r8
+        newobj%aero_range_state(irange)%mass = 0._r8
+
     end do
 
     allocate(newobj%bin_numconc(aero_props%nbins(),pcols, pver), stat=ierr)
@@ -162,8 +164,8 @@ contains
 
     nullify(self%state)
     nullify(self%pbuf)
-    if (allocated(self%aer_range_state)) then
-        deallocate(self%aer_range_state)
+    if (allocated(self%aero_range_state)) then
+        deallocate(self%aero_range_state)
     end if
     if (allocated(self%bin_numconc)) then
         deallocate(self%bin_numconc)
@@ -187,8 +189,8 @@ end subroutine destructor
     ! Connect internal arrays for bin_number concentrations to num_1, num_2, ...
     ! and internal masses for ranges to DU_R3, DU_R4, etc
     ! internal bin_numconc -> cnst_get_ind for num_1, num_2, ...
-    ! internal aer_range_state%mass -> cnst_get_ind for DU_R3, DU_R4, ...
-    ! internal bin_numconc and aer_range_state%mass = 0._r8
+    ! internal aero_range_state%mass -> cnst_get_ind for DU_R3, DU_R4, ...
+    ! internal bin_numconc and aero_range_state%mass = 0._r8
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -430,20 +432,18 @@ end subroutine destructor
   !------------------------------------------------------------------------------
   subroutine hygroscopicity(self, list_ndx, bin_ndx, kappa)
     class(sectional_aerosol_state), intent(in) :: self
- !   class(aerosol_properties), intent(in) :: aero_props
 ! TODO: what is list_ndx?
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
     real(r8), intent(out) :: kappa(:,:)                 !
-    real(r8), allocatable :: bins2ranges(:)
+    integer, allocatable :: bins2ranges(:)
     integer :: irange
 
     character(len=*), parameter :: subname = 'hygroscopicity'
-
- !   allocate(bins2ranges(aero_props%nbins()))
-    !bins2ranges = aero_props%bins2ranges(aero_props%nbins())
-    !irange = bins2ranges(bin_ndx)
-    !kappa = self%aer_range_state%hygroscopicity(irange)
+    allocate(bins2ranges(self%sec_aero_props%nbins()))
+    bins2ranges = self%sec_aero_props%bins2ranges(self%sec_aero_props%nbins())
+    irange = bins2ranges(bin_ndx)
+    kappa = self%aero_range_state(irange)%hygroscopicity
 
   end subroutine hygroscopicity
 
@@ -596,22 +596,21 @@ end subroutine destructor
 
   end function wgtpct
 
-  real(r8) function dry_density(self, bin_ndx, aero_props)
+  real(r8) function bin_dry_density(self, bin_ndx) result(ddens)
     class(sectional_aerosol_state), intent(in) :: self
-    class(aerosol_properties), intent(in) :: aero_props
     integer, intent(in)   :: bin_ndx
-    real(r8), allocatable :: bins2ranges(:)
+    integer, allocatable      :: bins2ranges(:)
     integer               :: irange
+    real(r8)             :: res(pcols,pver)
 
     character(len=*), parameter :: subname = 'dry_density'
+    allocate(bins2ranges(self%sec_aero_props%nbins()))
+    bins2ranges = self%sec_aero_props%bins2ranges(self%sec_aero_props%nbins())
 
- !   allocate(bins2ranges(aero_props%nbins()))
- !   bins2ranges = aero_props%bins2ranges(aero_props%nbins())
+    irange = bins2ranges(bin_ndx)
+    !ddens = self%aero_range_state(irange)%dry_density
 
-!    irange = bins2ranges(bin_ndx)
-!    aero_state%aer_range_state%density(irange)
-
-  end function dry_density
+  end function bin_dry_density
 
   subroutine update_range(self, mass_tend, nranges, aero_props)
     class(sectional_aerosol_state), intent(in) :: self
@@ -623,17 +622,17 @@ end subroutine destructor
 
 ! update state of range
     ! update mass
- !   self%aer_range_state%mass = self%aer_range_state%mass + mass_tend
+ !   self%aero_range_state%mass = self%aero_range_state%mass + mass_tend
     ! reset density and hygroscopicity
- !   self%aer_range_state%dry_density = 0._r8
- !   self%aer_range_statehygroscopicity = 0._r8
+ !   self%aero_range_state%dry_density = 0._r8
+ !   self%aero_range_statehygroscopicity = 0._r8
  !   range_bounds = aero_props%range_bounds()
  !   do irange = 1, aero_props%nranges()
  !       range_dry_volume = sum(dry_volume(range_bounds(irange,1), range_bounds(irange, 2)))
- !       self%aer_range_statedry_density(irange) = self%aer_range_state%mass(:,irange)/range_dry_volume
+ !       self%aero_range_statedry_density(irange) = self%aero_range_state%mass(:,irange)/range_dry_volume
  !       do ispec = 1, max(aero_props%range_nspecies)
 ! TODO: source
- !           self%aer_range_state%hygroscopicity(irange) = self%aer_range_state%hygroscopicity(irange) + &
+ !           self%aero_range_state%hygroscopicity(irange) = self%aero_range_state%hygroscopicity(irange) + &
  !                    mass_species/density_species/range_dry_volume * aero_props%kappa(ispec)
   !      end do
   !  end do

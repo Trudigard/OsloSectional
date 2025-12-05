@@ -347,7 +347,7 @@ end do
     allocate(bin_centers(nbins))
     bin_centers = aero_props%bin_centers(nbins)
 
-    do ibin = 0, nbins  ! main loop over aerosol size bins
+    do ibin = 1, nbins  ! main loop over aerosol size bins
         do lphase = 1, 2 ! interstitial/cloud borne forms
             if (lphase == 1) then ! interstitial
 
