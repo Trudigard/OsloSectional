@@ -78,6 +78,9 @@ module sectional_aerosol_properties_mod
      procedure :: resuspension_resize
      procedure :: rebin_bulk_fluxes
      procedure :: hydrophilic
+     procedure :: range_bounds
+     procedure :: kappa
+     procedure :: molecular_weight
 
      final :: destructor
   end type sectional_aerosol_properties
@@ -789,6 +792,30 @@ contains
   end function density
 
   !------------------------------------------------------------------------------
+  ! returns kappa for a species (hygroscopicity)
+  !------------------------------------------------------------------------------
+  real(r8) function kappa(self, species_ndx)
+
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_ndx
+
+    kappa = self%aer_spec_prop(species_ndx)%kappa
+
+  end function kappa
+
+  !------------------------------------------------------------------------------
+  ! returns molecular_weight for a species
+  !------------------------------------------------------------------------------
+  real(r8) function molecular_weight(self, species_ndx)
+
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: species_ndx
+
+    molecular_weight = self%aer_spec_prop(species_ndx)%molecular_weight
+
+  end function molecular_weight
+
+  !------------------------------------------------------------------------------
   ! returns mass and number activation fractions
   !------------------------------------------------------------------------------
   subroutine actfracs(self, bin_ndx, smc, smax, fn, fm )
@@ -1055,6 +1082,19 @@ contains
     res = self%bin_bounds_(:min(nbins,size(self%bin_bounds_)),:)
 
   end function bin_bounds
+
+  !------------------------------------------------------------------------------
+  ! returns range bounds
+  !------------------------------------------------------------------------------
+  function range_bounds(self, nranges) result(res)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in) :: nranges
+    integer :: res(nranges,2)
+    character(len=*), parameter :: subname = 'range_bounds'
+
+    res = self%range_bounds_(:min(nranges,size(self%range_bounds_)),:)
+
+  end function range_bounds
 
   !------------------------------------------------------------------------------
   ! returns volume of a particle in a bin

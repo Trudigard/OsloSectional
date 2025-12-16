@@ -29,7 +29,7 @@ module sectional_aerosol_state_mod
 
   type aerosol_range_state ! one instance per range
 !TODO: chunks?
-     real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water
+     real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, pcols, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
 ! TODO: mass as separate array?
      real(r8), allocatable :: mass(:, :, :)            ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
@@ -490,8 +490,7 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'dry_volume'
 
-    call endrun(subname//' is not yet implemented')
-! bin_num * aero_props%volume
+    vol = self%bin_numconc(bin_ndx, :, : ) * self%sec_aero_props%particle_volume(bin_ndx)
 
   end function dry_volume
 
@@ -596,46 +595,69 @@ end subroutine destructor
 
   end function wgtpct
 
-  real(r8) function bin_dry_density(self, bin_ndx) result(ddens)
+  function bin_dry_density(self, bin_ndx) result(ddens)
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in)   :: bin_ndx
-    integer, allocatable      :: bins2ranges(:)
+    integer, allocatable  :: bins2ranges(:)
     integer               :: irange
-    real(r8)             :: res(pcols,pver)
+    real(r8)              :: ddens(pcols,pver)
 
     character(len=*), parameter :: subname = 'dry_density'
     allocate(bins2ranges(self%sec_aero_props%nbins()))
     bins2ranges = self%sec_aero_props%bins2ranges(self%sec_aero_props%nbins())
 
     irange = bins2ranges(bin_ndx)
-    !ddens = self%aero_range_state(irange)%dry_density
+    ddens = self%aero_range_state(irange)%dry_density
 
   end function bin_dry_density
 
-  subroutine update_range(self, mass_tend, nranges, aero_props)
-    class(sectional_aerosol_state), intent(in) :: self
-    class(aerosol_properties), intent(in) :: aero_props
-    real(r8), intent(in) :: mass_tend(:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range))
-    integer              :: irange, nranges
-    real(r8)             :: range_dry_volume
-    real(r8)             :: range_bounds(nranges,2)
+  subroutine update_range(self, mass_tend, nranges, nbins)
+    class(sectional_aerosol_state), intent(inout) :: self
+    real(r8), intent(in) :: mass_tend(:,:,:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range), pcols, pver)
+    integer, intent(in)  :: nbins, nranges
+    integer              :: range_nspecies(nranges)
+    integer              :: irange, ispec, ibin, icol, iver, max_range_nspecies
+    real(r8)             :: range_dry_volume(pcols, pver)
+    real(r8)             :: range_total_mass(pcols, pver)
+    integer              :: range_bounds(nranges,2)
+    integer              :: bins2ranges(nbins)
+    real(r8)             :: test(pcols, pver)
+    ! get range bounds
+    range_bounds = self%sec_aero_props%range_bounds(nranges)
+    bins2ranges = self%sec_aero_props%bins2ranges(nbins)
+    range_nspecies = self%sec_aero_props%range_nspecies(nranges)
 
-! update state of range
-    ! update mass
- !   self%aero_range_state%mass = self%aero_range_state%mass + mass_tend
-    ! reset density and hygroscopicity
- !   self%aero_range_state%dry_density = 0._r8
- !   self%aero_range_statehygroscopicity = 0._r8
- !   range_bounds = aero_props%range_bounds()
- !   do irange = 1, aero_props%nranges()
- !       range_dry_volume = sum(dry_volume(range_bounds(irange,1), range_bounds(irange, 2)))
- !       self%aero_range_statedry_density(irange) = self%aero_range_state%mass(:,irange)/range_dry_volume
- !       do ispec = 1, max(aero_props%range_nspecies)
+    if ( nranges == 1 ) then
+        max_range_nspecies = range_nspecies(nranges)
+    else if ( nranges > 1 ) then
+        max_range_nspecies = max(range_nspecies(:))
+    end if
+
+    do irange = 1, nranges
+        range_dry_volume = 0._r8
+        range_total_mass = 0._r8
+        ! update mass of each component
+        self%aero_range_state(irange)%mass = self%aero_range_state(irange)%mass + mass_tend(irange,:,:,:)
+        range_total_mass = sum(self%aero_range_state(irange)%mass, dim=1) ! sum over species
+        ! reset density and hygroscopicity
+        self%aero_range_state(irange)%dry_density = 0._r8
+        self%aero_range_state(irange)%hygroscopicity = 0._r8
+        ! volume of entire mass in a range
+        do ibin = 1, self%sec_aero_props%nbins()
+            if ( ( bins2ranges(ibin) >= range_bounds(irange,1) ) .and. ( bins2ranges(ibin) <= range_bounds(irange, 2)) ) then
+                range_dry_volume = range_dry_volume + self%dry_volume(self%sec_aero_props, 1, ibin, 1, 1) !TODO: change input parameters
+            end if
+        end do
+
+        self%aero_range_state(irange)%dry_density = range_total_mass/range_dry_volume
+        do ispec = 1, max_range_nspecies
 ! TODO: source
- !           self%aero_range_state%hygroscopicity(irange) = self%aero_range_state%hygroscopicity(irange) + &
- !                    mass_species/density_species/range_dry_volume * aero_props%kappa(ispec)
-  !      end do
-  !  end do
+           ! self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
+           ! + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
+           ! self%sec_aero_props%density(ispec) * self%sec_aero_props(irange)%kappa(ispec) ! TODO: probably not the least ugly way to do this
+            test = self%aero_range_state(irange)%mass(ispec,:,:)
+        end do
+    end do
 
   end subroutine update_range
 
