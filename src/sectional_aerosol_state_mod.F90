@@ -74,16 +74,6 @@ module sectional_aerosol_state_mod
 
   end type sectional_aerosol_state
 
- ! interface
-!    function sas_state_obj_initialize(state, pbuf, aero_props) result(newobj)
-!      import :: physics_state, physics_buffer_desc, sectional_aerosol_state, sectional_aerosol_properties
-!      type(physics_state), target :: state
-!      type(physics_buffer_desc), pointer :: pbuf(:)
-!      type(sectional_aerosol_state), pointer :: newobj
-!      type(sectional_aerosol_properties), intent(in) :: aero_props
-!    end function sas_state_obj_initialize
- ! end interface
-
   interface sectional_aerosol_state
      procedure :: constructor
   end interface sectional_aerosol_state
@@ -616,22 +606,17 @@ end subroutine destructor
     real(r8), intent(in) :: mass_tend(:,:,:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range), pcols, pver)
     integer, intent(in)  :: nbins, nranges
     integer              :: range_nspecies(nranges)
-    integer              :: irange, ispec, ibin, icol, iver, max_range_nspecies
+    integer              :: irange, ispec, ibin
     real(r8)             :: range_dry_volume(pcols, pver)
     real(r8)             :: range_total_mass(pcols, pver)
     integer              :: range_bounds(nranges,2)
     integer              :: bins2ranges(nbins)
     real(r8)             :: test(pcols, pver)
+
     ! get range bounds
     range_bounds = self%sec_aero_props%range_bounds(nranges)
     bins2ranges = self%sec_aero_props%bins2ranges(nbins)
     range_nspecies = self%sec_aero_props%range_nspecies(nranges)
-
-    if ( nranges == 1 ) then
-        max_range_nspecies = range_nspecies(nranges)
-    else if ( nranges > 1 ) then
-        max_range_nspecies = max(range_nspecies(:))
-    end if
 
     do irange = 1, nranges
         range_dry_volume = 0._r8
@@ -650,12 +635,11 @@ end subroutine destructor
         end do
 
         self%aero_range_state(irange)%dry_density = range_total_mass/range_dry_volume
-        do ispec = 1, max_range_nspecies
+        do ispec = 1, maxval(range_nspecies)
 ! TODO: source
-           ! self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
-           ! + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
-           ! self%sec_aero_props%density(ispec) * self%sec_aero_props(irange)%kappa(ispec) ! TODO: probably not the least ugly way to do this
-            test = self%aero_range_state(irange)%mass(ispec,:,:)
+            self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
+            + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
+            self%sec_aero_props%density(ispec) * self%sec_aero_props%kappa(ispec) ! TODO: probably not the least ugly way to do this
         end do
     end do
 
