@@ -90,6 +90,8 @@ module sectional_aerosol_properties_mod
   end interface sectional_aerosol_properties
 
   logical, parameter :: debug = .false.
+  type(sectional_aerosol_properties), pointer :: prop_obj => null()
+
 
 contains
   !------------------------------------------------------------------------------
@@ -103,7 +105,7 @@ contains
 
     type(sectional_aerosol_properties), pointer :: newobj
 
-    character(len=*), intent(in) :: nlfile
+    character(len=*),optional, intent(in) :: nlfile
     integer                      :: ncnst_tot=0
     ! TODO: ncnst_tot = tracers ??
     integer,allocatable          :: nspecies(:) ! nspecies per bin (given by base_object)
@@ -161,7 +163,11 @@ contains
                                             oslo_sectional_aerosol_weight, &
                                             oslo_sectional_aerosol_mixed, &
                                             oslo_sectional_aerosol_kappa
+    if ( present(nlfile) ) then
 
+    if ( associated(prop_obj) ) then
+        call endrun(subname//':: ERROR sectional_aerosol_properties has already been initialized')
+    end if
     ! initialize variables
     oslo_sectional_nspecies_tot = 0
     oslo_sectional_nspecies = 0
@@ -587,6 +593,14 @@ contains
             write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx) ! TODO: is there a nicer way?
             write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
        end do
+    end if
+        prop_obj => newobj
+    else
+        if ( .not. associated(prop_obj) ) then
+            call endrun("Internal Error: sectional_aerosol_properties has not been initialized")
+        end if
+        newobj => prop_obj
+
     end if
 
     ! deallocate local variables

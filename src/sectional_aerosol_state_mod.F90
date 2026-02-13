@@ -37,12 +37,14 @@ module sectional_aerosol_state_mod
   end type aerosol_range_state
 
   type, extends(aerosol_state) :: sectional_aerosol_state
-     private
-     type(aerosol_range_state), allocatable :: aero_range_state(:)
+     !private
+
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
+     type(aerosol_range_state), allocatable :: aero_range_state(:)
+
    contains
 
      procedure :: get_transported
@@ -84,13 +86,12 @@ contains
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
-  function constructor(state,pbuf, aero_props) result(newobj)
+  function constructor(state,pbuf) result(newobj)
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
-
     integer :: ierr, maxspec, irange
 
     character(len=*), parameter :: subname = 'constructor'
@@ -103,7 +104,13 @@ contains
 
     newobj%state => state
     newobj%pbuf => pbuf
-    newobj%sec_aero_props => aero_props
+    newobj%sec_aero_props => sectional_aerosol_properties()
+
+    allocate(newobj%bin_numconc(aero_props%nbins(),pcols, pver), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
 
     maxspec = maxval(aero_props%range_nspecies(aero_props%nranges()))
 
@@ -112,6 +119,7 @@ contains
         nullify(newobj)
         return
     end if
+
     do irange = 1, aero_props%nranges()
         allocate(newobj%aero_range_state(irange)%mass(maxspec, pcols, pver), stat=ierr)
         if( ierr /= 0 ) then
@@ -134,12 +142,6 @@ contains
         newobj%aero_range_state(irange)%mass = 0._r8
 
     end do
-
-    allocate(newobj%bin_numconc(aero_props%nbins(),pcols, pver), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
 
   end function constructor
 

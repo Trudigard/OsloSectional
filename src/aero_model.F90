@@ -34,6 +34,10 @@ module aero_model
   public :: aero_model_surfarea    ! tropospheric aerosol wet surface area for chemistry
   public :: aero_model_strat_surfarea   ! stub
 
+  ! name of the aerosol scheme
+  public :: aero_modelname
+  character(len=*), parameter :: aero_modelname = 'oslo_sectional'
+
  ! Misc private data
 
   integer :: so4_ndx, cb2_ndx, oc2_ndx, nit_ndx
@@ -83,6 +87,14 @@ contains
     call oslo_aero_ctl_readnl(nlfile)
 
     call dust_readnl(nlfile)
+
+    if (.not. aerodep_flx_prescribed()) then
+        aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
+    end if
+
+    ! initialize props
+    ! nlfile input optional
+    !
 
   end subroutine aero_model_readnl
 
@@ -145,7 +157,7 @@ contains
                        history_chemistry_out = history_chemistry   )
 
     if (.not. aerodep_flx_prescribed()) then
-        aero_props => sectional_aerosol_properties(nlfile) ! calls constructor function in sectional_aerosol_properties
+        aero_props => sectional_aerosol_properties() ! calls constructor function in sectional_aerosol_properties
 !        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
     end if
 
