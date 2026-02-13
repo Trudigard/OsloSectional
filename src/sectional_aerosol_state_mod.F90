@@ -28,12 +28,13 @@ module sectional_aerosol_state_mod
   public :: sectional_aerosol_state
 
   type aerosol_range_state ! one instance per range
-!TODO: chunks?
+     character(len=:), allocatable :: range_name(:)
+     integer, allocatable  :: transport_index(:)
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, pcols, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-! TODO: mass as separate array?
-     real(r8), allocatable :: mass(:, :, :)            ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
+     real(r8), allocatable :: mass(:, :, :)           ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
      ! ...
+
   end type aerosol_range_state
 
   type, extends(aerosol_state) :: sectional_aerosol_state
@@ -43,6 +44,7 @@ module sectional_aerosol_state_mod
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
+     integer, allocatable :: num_transport_index(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
 
    contains
@@ -87,12 +89,15 @@ contains
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   function constructor(state,pbuf) result(newobj)
+    use mo_sim_dat, only: solsym
+    use constituents, only: cnst_get_ind
+    use string_utils, only: int2str
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
-    integer :: ierr, maxspec, irange
+    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx
 
     character(len=*), parameter :: subname = 'constructor'
 
@@ -112,16 +117,20 @@ contains
         return
     end if
 
-    maxspec = maxval(aero_props%range_nspecies(aero_props%nranges()))
-
     allocate(newobj%aero_range_state(aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
     end if
 
+    allocate(newobj%num_transport_index(aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
     do irange = 1, aero_props%nranges()
-        allocate(newobj%aero_range_state(irange)%mass(maxspec, pcols, pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%mass(pcols, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
@@ -136,11 +145,56 @@ contains
             nullify(newobj)
             return
         end if
+        allocate(newobj%aero_range_state(irange)%range_name(newobj%sec_aero_props%range_nspecies(irange)))
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aero_range_state(irange)%transport_index(newobj%sec_aero_props%range_nspecies(irange)))
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
         newobj%aero_range_state(irange)%dry_density = 0._r8
         newobj%aero_range_state(irange)%hygroscopicity = 0._r8
         newobj%aero_range_state(irange)%mass = 0._r8
+        newobj%aero_range_state(irange)%range_name = ''
+        newobj%aero_range_state(irange)%transport_index = 0
 
+        ispec=0
+        do solsym_ndx = 1, size(solsym)
+            ubar_ndx = index(solsym(solsym_ndx), '_R'//int2str(irange))
+            if ( ubar_ndx > 0 ) then
+                ispec = ispec + 1
+                if ( ispec > newobj%sec_aero_props%range_nspecies(irange) ) then
+                    call endrun(subname//':: ERROR : number of species is larger than number of species in range')
+                end if
+                newobj%aero_range_state%range_name(ispec) = solsym(solsym_ndx)
+                call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state%transport_index(ispec), abort=.false.)
+                if ( newobj%aero_range_state%transport_index(ispec) < 0 ) then
+                    call endrun(subname//":: ERROR: transport array index for"//trim(solsym(solsym_ndx))//" not found")
+                end if
+            end if
+        end do
+    end do
+
+    do ibin = 1, newobj%sec_aero_props%nbins()
+        num_name = 'num_'//int2str(ibin)
+        solsym_found = .false.
+        do solsym_ndx = 1, size(solsym)
+            if ( trim(solsym(solsym_ndx)) == trim(num_name) ) then
+                solsym_found = .true.
+                exit
+            end if
+        end do
+        if (solsym_found == .false.) then
+            call endrun(subname//':: ERROR: bin '//trim(num_name)//' not found')
+        end if
+        call cnst_get_ind(num_name, newobj%num_transport_index(ibin), abort = .false.)
+        if ( newobj%num_transport_index(ibin) < 0 ) then
+            call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
+        end if
     end do
 
   end function constructor
@@ -607,7 +661,6 @@ end subroutine destructor
     class(sectional_aerosol_state), intent(inout) :: self
     real(r8), intent(in) :: mass_tend(:,:,:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range), pcols, pver)
     integer, intent(in)  :: nbins, nranges
-    integer              :: range_nspecies(nranges)
     integer              :: irange, ispec, ibin
     real(r8)             :: range_dry_volume(pcols, pver)
     real(r8)             :: range_total_mass(pcols, pver)
@@ -618,7 +671,6 @@ end subroutine destructor
     ! get range bounds
     range_bounds = self%sec_aero_props%range_bounds(nranges)
     bins2ranges = self%sec_aero_props%bins2ranges(nbins)
-    range_nspecies = self%sec_aero_props%range_nspecies(nranges)
 
     do irange = 1, nranges
         range_dry_volume = 0._r8
@@ -637,12 +689,12 @@ end subroutine destructor
         end do
 
         self%aero_range_state(irange)%dry_density = range_total_mass/range_dry_volume
-        do ispec = 1, maxval(range_nspecies)
+  !      do ispec = 1,
 ! TODO: source
-            self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
-            + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
-            self%sec_aero_props%density(ispec) * self%sec_aero_props%kappa(ispec) ! TODO: probably not the least ugly way to do this
-        end do
+   !         self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
+   !         + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
+   !         self%sec_aero_props%density(ispec) * self%sec_aero_props%kappa(ispec) ! TODO: probably not the least ugly way to do this
+   !     end do
     end do
 
   end subroutine update_range

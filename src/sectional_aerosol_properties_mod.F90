@@ -1049,13 +1049,13 @@ contains
   !------------------------------------------------------------------------------
   ! returns the total number of species in each range
   !------------------------------------------------------------------------------
-  function range_nspecies(self, nranges)  result(res)
+  function range_nspecies(self, irange)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: nranges
-    integer :: res(nranges)
+    integer, intent(in) :: irange
+    integer :: res
     character(len=*), parameter :: subname = 'range_nspecies'
 
-    res = self%range_nspecies_(:min(nranges,size(self%range_nspecies_)))
+    res = self%range_nspecies_(irange)
 
   end function range_nspecies
 
