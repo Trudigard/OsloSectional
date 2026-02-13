@@ -17,7 +17,7 @@ module sectional_aerosol_state_mod
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
-  use ppgrid,         only: pcols, pver
+  use ppgrid,         only: pver, pcols
 
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
@@ -28,9 +28,9 @@ module sectional_aerosol_state_mod
   public :: sectional_aerosol_state
 
   type aerosol_range_state ! one instance per range
-     character(len=:), allocatable :: range_name(:)
+     character(len=16), allocatable :: range_name(:)
      integer, allocatable  :: transport_index(:)
-     real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, pcols, pver
+     real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
      real(r8), allocatable :: mass(:, :, :)           ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
      ! ...
@@ -46,6 +46,7 @@ module sectional_aerosol_state_mod
      real(r8), allocatable :: bin_numconc(:,:,:)
      integer, allocatable :: num_transport_index(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
+     integer :: ncol
 
    contains
 
@@ -89,7 +90,7 @@ contains
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   function constructor(state,pbuf) result(newobj)
-    use mo_sim_dat, only: solsym
+    use mo_tracname, only: solsym
     use constituents, only: cnst_get_ind
     use string_utils, only: int2str
     type(physics_state), target :: state
@@ -97,8 +98,9 @@ contains
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
-    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx
-
+    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin
+    character(len=:), allocatable :: num_name
+    logical :: solsym_found
     character(len=*), parameter :: subname = 'constructor'
 
     allocate(newobj,stat=ierr)
@@ -111,7 +113,9 @@ contains
     newobj%pbuf => pbuf
     newobj%sec_aero_props => sectional_aerosol_properties()
 
-    allocate(newobj%bin_numconc(aero_props%nbins(),pcols, pver), stat=ierr)
+    newobj%ncol = state%ncol
+
+    allocate(newobj%bin_numconc(aero_props%nbins(),newobj%ncol, pver), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
@@ -130,17 +134,17 @@ contains
     end if
 
     do irange = 1, aero_props%nranges()
-        allocate(newobj%aero_range_state(irange)%mass(pcols, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%mass(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
         end if
-        allocate(newobj%aero_range_state(irange)%dry_density(pcols, pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%dry_density(newobj%ncol, pver), stat=ierr)
         if( ierr /= 0 )then
             nullify(newobj)
             return
         end if
-        allocate(newobj%aero_range_state(irange)%hygroscopicity(pcols,pver), stat=ierr)
+        allocate(newobj%aero_range_state(irange)%hygroscopicity(newobj%ncol, pver), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
@@ -170,9 +174,9 @@ contains
                 if ( ispec > newobj%sec_aero_props%range_nspecies(irange) ) then
                     call endrun(subname//':: ERROR : number of species is larger than number of species in range')
                 end if
-                newobj%aero_range_state%range_name(ispec) = solsym(solsym_ndx)
-                call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state%transport_index(ispec), abort=.false.)
-                if ( newobj%aero_range_state%transport_index(ispec) < 0 ) then
+                newobj%aero_range_state(irange)%range_name(ispec) = solsym(solsym_ndx)
+                call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state(irange)%transport_index(ispec), abort=.false.)
+                if ( newobj%aero_range_state(irange)%transport_index(ispec) < 0 ) then
                     call endrun(subname//":: ERROR: transport array index for"//trim(solsym(solsym_ndx))//" not found")
                 end if
             end if
@@ -188,7 +192,7 @@ contains
                 exit
             end if
         end do
-        if (solsym_found == .false.) then
+        if ( .not. solsym_found ) then
             call endrun(subname//':: ERROR: bin '//trim(num_name)//' not found')
         end if
         call cnst_get_ind(num_name, newobj%num_transport_index(ibin), abort = .false.)
@@ -221,22 +225,26 @@ end subroutine destructor
 
   !------------------------------------------------------------------------------
   ! sets transported components
-  ! This aerosol model with the state of the transported aerosol constituents
+  ! This aerosol model with the state of the transported aerosol     ! This updates the transported aerosol constituent array to match the aerosol model state.
+! constituents
   ! (mass mixing ratios or number mixing ratios)
   !------------------------------------------------------------------------------
   subroutine set_transported( self, transported_array )
     class(sectional_aerosol_state), intent(inout) :: self
     real(r8), intent(in) :: transported_array(:,:,:)
+    integer              :: irange, ispec, ibin
 
     character(len=*), parameter :: subname = 'set_transported'
 
-    call endrun(subname//' is not yet implemented')
-    ! BEFORE advection time step
-    ! Connect internal arrays for bin_number concentrations to num_1, num_2, ...
-    ! and internal masses for ranges to DU_R3, DU_R4, etc
-    ! internal bin_numconc -> cnst_get_ind for num_1, num_2, ...
-    ! internal aero_range_state%mass -> cnst_get_ind for DU_R3, DU_R4, ...
-    ! internal bin_numconc and aero_range_state%mass = 0._r8
+    do irange = 1, self%sec_aero_props%nranges()
+        do ispec = 1, self%sec_aero_props%range_nspecies(irange)
+            self%aero_range_state(irange)%mass(:,:,ispec) = self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_index(ispec))
+        end do
+    end do
+
+    do ibin = 1, self%sec_aero_props%nbins()
+        self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_index(ibin))
+    end do
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -247,14 +255,21 @@ end subroutine destructor
   subroutine get_transported( self, transported_array )
     class(sectional_aerosol_state), intent(in) :: self
     real(r8), intent(out) :: transported_array(:,:,:)
+    integer               :: irange, ispec, ibin
 
     character(len=*), parameter :: subname = 'get_transported'
 
-    call endrun(subname//' is not yet implemented')
-    ! AFTER advection time step
-    ! Retrieve new values for number and masses and put them back into internal array
-    ! cnst_get_ind num_1, num_2, ... -> bin_numconc
-    !
+    do irange = 1, self%sec_aero_props%nranges()
+        do ispec = 1, self%sec_aero_props%range_nspecies(irange)
+            self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_index(ispec)) = self%aero_range_state(irange)%mass(:,:,ispec)
+        end do
+    end do
+
+    do ibin = 1, self%sec_aero_props%nbins()
+        self%state%q(:self%ncol,:,self%num_transport_index(ibin)) = self%bin_numconc(:,:,ibin)
+    end do
+
+
   end subroutine get_transported
 
   !------------------------------------------------------------------------
@@ -659,7 +674,7 @@ end subroutine destructor
 
   subroutine update_range(self, mass_tend, nranges, nbins)
     class(sectional_aerosol_state), intent(inout) :: self
-    real(r8), intent(in) :: mass_tend(:,:,:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range), pcols, pver)
+    real(r8), intent(in) :: mass_tend(:,:,:,:) ! shape aero_props%range_nspecies (range, (max(nspecies in range), ncol, pver)
     integer, intent(in)  :: nbins, nranges
     integer              :: irange, ispec, ibin
     real(r8)             :: range_dry_volume(pcols, pver)
