@@ -1,6 +1,5 @@
 module sectional_aerosol_state_mod
 
-! TODO: make object to internally hold bin number concentrations and range bulk masses
 ! TODO: Range density function/array + set_density and get_density?
 ! TODO: Update range function
 ! TODO: range_state object: density, mass
