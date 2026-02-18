@@ -16,7 +16,7 @@ module sectional_aerosol_state_mod
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
-  use ppgrid,         only: pver, pcols
+  use ppgrid,         only: pver
 
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
@@ -29,9 +29,10 @@ module sectional_aerosol_state_mod
   type aerosol_range_state ! one instance per range
      character(len=16), allocatable :: range_name(:)
      integer, allocatable  :: transport_ndx(:)
+     integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mass(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), allocatable :: mass(:, :, :)           ! mass of each species in this range len = maxval(range_nspecies) so that index is same in each range
+     real(r8), allocatable :: mass(:, :, :)           ! (ncol, pver, range_nspecies)
      ! ...
 
   end type aerosol_range_state
@@ -97,8 +98,8 @@ contains
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
-    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin
-    character(len=:), allocatable :: num_name
+    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin, ispecprops
+    character(len=:), allocatable :: num_name, specname, specname_props
     logical :: solsym_found
     character(len=*), parameter :: subname = 'constructor'
 
@@ -159,11 +160,18 @@ contains
             return
         end if
 
+        allocate(newobj%aero_range_state(irange)%spec_ndx(newobj%sec_aero_props%range_nspecies(irange)))
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+
         newobj%aero_range_state(irange)%dry_density = 0._r8
         newobj%aero_range_state(irange)%hygroscopicity = 0._r8
         newobj%aero_range_state(irange)%mass = 0._r8
         newobj%aero_range_state(irange)%range_name = ''
         newobj%aero_range_state(irange)%transport_ndx = 0
+        newobj%aero_range_state(irange)%spec_ndx = 0
 
         ispec=0
         do solsym_ndx = 1, size(solsym)
@@ -178,6 +186,16 @@ contains
                 if ( newobj%aero_range_state(irange)%transport_ndx(ispec) < 0 ) then
                     call endrun(subname//":: ERROR: transport array index for"//trim(solsym(solsym_ndx))//" not found")
                 end if
+
+                ! add index to connect to the species objects in aero_props
+                specname = solsym(solsym_ndx)
+                do ispecprops = 1, newobj%sec_aero_props%nspecies_tot()
+                    call newobj%sec_aero_props%get(bin_ndx=1,species_ndx=ispecprops, specname=specname_props)
+                    if ( specname(1:ubar_ndx-1) == trim( specname_props ) ) then ! before ubar_ndx -> species name
+                        newobj%aero_range_state(irange)%spec_ndx(ispec) = ispecprops
+                    end if
+                end do
+
             end if
         end do
 
@@ -655,12 +673,13 @@ end subroutine destructor
 
   end function wgtpct
 
-  function bin_dry_density(self, bin_ndx) result(ddens)
+  function bin_dry_density(self, bin_ndx, ncol) result(ddens)
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in)   :: bin_ndx
+    integer, intent(in)   :: ncol                 ! number of columns
     integer, allocatable  :: bins2ranges(:)
     integer               :: irange
-    real(r8)              :: ddens(pcols,pver)
+    real(r8)              :: ddens(ncol,pver)
 
     character(len=*), parameter :: subname = 'dry_density'
     allocate(bins2ranges(self%sec_aero_props%nbins()))
@@ -671,15 +690,16 @@ end subroutine destructor
 
   end function bin_dry_density
 
-  subroutine update_range(self, mass_tend, irange, range_bounds)
+  subroutine update_range(self, mass_tend, irange, range_bounds, ncol)
     class(sectional_aerosol_state), intent(inout) :: self
-    real(r8), intent(in) :: mass_tend(:,:,:) ! shape aero_props%range_nspecies (ncol, pver, range_nspecies) -> one array for one range
+    real(r8), optional, intent(in) :: mass_tend(:,:,:) ! shape aero_props%range_nspecies (ncol, pver, range_nspecies) -> one array for one range
     integer, intent(in)  :: irange
     integer, intent(in)  :: range_bounds(:,:)
-    integer              :: ispec, ibin
-    real(r8)             :: range_dry_volume(pcols, pver)
-    real(r8)             :: range_total_mass(pcols, pver)
-    real(r8)             :: test(pcols, pver)
+    integer, intent(in) :: ncol                 ! number of columns
+    integer              :: ispec, ibin, ispecprop
+    real(r8)             :: range_dry_volume(ncol, pver)
+    real(r8)             :: range_total_mass(ncol, pver)
+    real(r8)             :: test(ncol, pver)
 
     ! get range bounds
   !  range_bounds = self%sec_aero_props%range_bounds(nranges)
@@ -687,8 +707,13 @@ end subroutine destructor
 
     range_dry_volume = 0._r8
     range_total_mass = 0._r8
-        ! update mass of each component
-    self%aero_range_state(irange)%mass = self%aero_range_state(irange)%mass + mass_tend(:,:,:)
+
+    ! update mass of each component if mass tendency has been passed as an argument
+    ! else: update other state variables with mass from before
+    if ( present(mass_tend) ) then
+        self%aero_range_state(irange)%mass = self%aero_range_state(irange)%mass + mass_tend(:,:,:)
+    end if
+
     range_total_mass = sum(self%aero_range_state(irange)%mass, dim=3) ! sum over species
 
     ! reset density and hygroscopicity
@@ -702,10 +727,11 @@ end subroutine destructor
 
     self%aero_range_state(irange)%dry_density = range_total_mass/range_dry_volume
     do ispec = 1,self%sec_aero_props%range_nspecies(irange)
-! TODO: source
+        ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
+! TODO: source, total hygroscopicity parameter kappa_tot = SUM_OVER_ALL_SPECIES(volume_i/volume_tot * kappa_i)
         self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
             + self%aero_range_state(irange)%mass(ispec,:,:) / range_dry_volume / &
-            self%sec_aero_props%density(ispec) * self%sec_aero_props%kappa(ispec) ! TODO: probably not the least ugly way to do this
+            self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
     end do
 
   end subroutine update_range
