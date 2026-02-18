@@ -263,6 +263,12 @@ end subroutine destructor
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
     end do
+
+    ! update the range properties
+    do irange = 1, self%sec_aero_props%nranges()
+        call self%update_range(irange=irange, range_bounds=self%sec_aero_props%range_bounds(irange), ncol=self%ncol)
+    end do
+
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -690,7 +696,7 @@ end subroutine destructor
 
   end function bin_dry_density
 
-  subroutine update_range(self, mass_tend, irange, range_bounds, ncol)
+  subroutine update_range(self, irange, range_bounds, ncol, mass_tend)
     class(sectional_aerosol_state), intent(inout) :: self
     real(r8), optional, intent(in) :: mass_tend(:,:,:) ! shape aero_props%range_nspecies (ncol, pver, range_nspecies) -> one array for one range
     integer, intent(in)  :: irange
@@ -700,10 +706,6 @@ end subroutine destructor
     real(r8)             :: range_dry_volume(ncol, pver)
     real(r8)             :: range_total_mass(ncol, pver)
     real(r8)             :: test(ncol, pver)
-
-    ! get range bounds
-  !  range_bounds = self%sec_aero_props%range_bounds(nranges)
-!    bins2ranges = self%sec_aero_props%bins2ranges(nbins)
 
     range_dry_volume = 0._r8
     range_total_mass = 0._r8

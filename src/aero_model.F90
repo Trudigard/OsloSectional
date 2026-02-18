@@ -365,9 +365,9 @@ end do
 
 ! TODO: use WET radius and density in future!!
                 rad_aer(1:ncol,:) = bin_centers(ibin)
-                !dens_aer = aeroprops bin_density -> avg density ! ranges need to track volume fractions
+                dens_aer = aero_state%bin_dry_density(ibin, ncol)
                 jvlc = 1 ! TODO: what is this?
-                !call aero_depvel_part
+                call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), sg_drop(:,:), 0, lchnk)
 
             ! if lphase == 2 then cloud-borne
             end if
