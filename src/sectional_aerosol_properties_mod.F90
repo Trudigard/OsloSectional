@@ -165,435 +165,436 @@ contains
                                             oslo_sectional_aerosol_kappa
     if ( present(nlfile) ) then
 
-    if ( associated(prop_obj) ) then
-        call endrun(subname//':: ERROR sectional_aerosol_properties has already been initialized')
-    end if
-    ! initialize variables
-    oslo_sectional_nspecies_tot = 0
-    oslo_sectional_nspecies = 0
-    oslo_sectional_nbins = 0
-    oslo_sectional_nranges = 0
-    oslo_sectional_bin_centers = ''
-    oslo_sectional_bin_bounds = ''
-    oslo_sectional_range_bounds = ''
-
-    ! read aerosol properties namelist
-    if (masterproc) then
-        open(newunit=unitn, file=trim(nlfile), status='old')
-        call find_group_name(unitn, 'oslo_sectional_properties_nl', ierr)
-        if ( ierr /= 0 ) then
-            close(unitn)
-            call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_nl'")
+        if ( associated(prop_obj) ) then
+            call endrun(subname//':: ERROR sectional_aerosol_properties has already been initialized')
         end if
+        ! initialize variables
+        oslo_sectional_nspecies_tot = 0
+        oslo_sectional_nspecies = 0
+        oslo_sectional_nbins = 0
+        oslo_sectional_nranges = 0
+        oslo_sectional_bin_centers = ''
+        oslo_sectional_bin_bounds = ''
+        oslo_sectional_range_bounds = ''
 
-        read(unitn, oslo_sectional_properties_nl, iostat=ierr)
-        if ( ierr /= 0 ) then
-            close(unitn)
-            call endrun(subname // ':: ERROR reading oslo_sectional_properties_nl namelist')
+        ! read aerosol properties namelist
+        if (masterproc) then
+            open(newunit=unitn, file=trim(nlfile), status='old')
+            call find_group_name(unitn, 'oslo_sectional_properties_nl', ierr)
+            if ( ierr /= 0 ) then
+                close(unitn)
+                call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_nl'")
+            end if
+
+            read(unitn, oslo_sectional_properties_nl, iostat=ierr)
+            if ( ierr /= 0 ) then
+                close(unitn)
+                call endrun(subname // ':: ERROR reading oslo_sectional_properties_nl namelist')
+            end if
         end if
-    end if
 
 !==================================================================================================
 ! Broadcast oslo_sectional_properties
 !==================================================================================================
-    call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
-    end if
+        call MPI_Bcast(oslo_sectional_nspecies_tot, 1, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies_tot'")
+        end if
 
-    call MPI_Bcast(oslo_sectional_nspecies, size(oslo_sectional_nspecies), mpi_integer, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
-    end if
+        call MPI_Bcast(oslo_sectional_nspecies, size(oslo_sectional_nspecies), mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nspecies'")
+        end if
 
-    call MPI_Bcast(oslo_sectional_nbins, 1, mpi_integer, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbins'")
-    end if
+        call MPI_Bcast(oslo_sectional_nbins, 1, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nbins'")
+        end if
 
-    call MPI_Bcast(oslo_sectional_nranges, 1, mpi_integer, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nranges'")
-    end if
+        call MPI_Bcast(oslo_sectional_nranges, 1, mpi_integer, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_nranges'")
+        end if
 
-    call MPI_Bcast(oslo_sectional_bin_bounds, strlen*size(oslo_sectional_bin_bounds), mpi_character, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
-    end if
+        call MPI_Bcast(oslo_sectional_bin_bounds, strlen*size(oslo_sectional_bin_bounds), mpi_character, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_bounds'")
+        end if
 
-    call MPI_Bcast(oslo_sectional_bin_centers, strlen*size(oslo_sectional_bin_centers), mpi_character, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers")
-    end if
+        call MPI_Bcast(oslo_sectional_bin_centers, strlen*size(oslo_sectional_bin_centers), mpi_character, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_bin_centers")
+        end if
 
-    call MPI_Bcast(oslo_sectional_range_bounds, strlen*size(oslo_sectional_range_bounds), mpi_character, mstrid, mpicom, ierr)
-    if ( ierr /= MPI_SUCCESS ) then
-        call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds")
-    end if
+        call MPI_Bcast(oslo_sectional_range_bounds, strlen*size(oslo_sectional_range_bounds), mpi_character, mstrid, mpicom, ierr)
+        if ( ierr /= MPI_SUCCESS ) then
+            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_range_bounds")
+        end if
 
 !==================================================================================================
 ! Read and broadcast aerosol species properties namelist in sequence
 !==================================================================================================
  !    allocate array for species objects
-    allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
-    if(ierr/=0) then
-        if (masterproc) close(unitn)
-        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties")
-    end if
-
-    do ispec=1,oslo_sectional_nspecies_tot
-
-        ! namelist variables
-        oslo_sectional_aerosol_name = ''
-        oslo_sectional_aerosol_range = ''
-        oslo_sectional_aerosol_density = 0.0_r8
-        oslo_sectional_aerosol_weight = 0.0_r8
-        oslo_sectional_aerosol_kappa = 0.0_r8
-        oslo_sectional_aerosol_mixed = .false.
-        lower = 0
-        upper = 0
-
-        ! read namelist
-        if (masterproc) then
-            call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
-            if (ierr /= 0) then
-                close(unitn)
-                call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_aerosol_nl' for species number " &
-                //int2str(ispec)//'of '//int2str(oslo_sectional_nspecies_tot) )
-            end if
-
-            read(unitn, oslo_sectional_properties_aerosol_nl, iostat=ierr)
-            if (ierr /= 0) then
-                close(unitn)
-                call endrun(subname // ":: ERROR reading 'oslo_sectional_properties_aerosol_nl' for species number " &
-                //int2str(ispec)//'of '//int2str(oslo_sectional_nspecies_tot) )
-            end if
-
-        end if
-
-        ! broadcast
-        call MPI_Bcast(oslo_sectional_aerosol_name, len(oslo_sectional_aerosol_name), mpi_character, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_name'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_aerosol_range, len(oslo_sectional_aerosol_range), mpi_character, mstrid, mpicom, ierr)
-        if ( ierr /= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_range'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_aerosol_density, 1, mpi_real8, mstrid, mpicom, ierr)
-        if ( ierr/= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_density'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_aerosol_weight, 1, mpi_real8, mstrid, mpicom, ierr)
-        if ( ierr/= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_weight'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_aerosol_kappa, 1, mpi_real8, mstrid, mpicom, ierr)
-        if ( ierr/= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_kappa'")
-        end if
-
-        call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
-        if ( ierr/= MPI_SUCCESS ) then
-            call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
-        end if
-
-        ! initialize properties object variables
-        oslo_sectional_species_properties(ispec)%specname = ''
-        oslo_sectional_species_properties(ispec)%density = 0.0_r8
-        oslo_sectional_species_properties(ispec)%molecular_weight = 0.0_r8
-        oslo_sectional_species_properties(ispec)%kappa = 0.0_r8
-        oslo_sectional_species_properties(ispec)%mixed = .false.
-        oslo_sectional_species_properties(ispec)%nbin = 0
-        oslo_sectional_species_properties(ispec)%nrange = 0
-
-        pos = index(oslo_sectional_aerosol_range, ':')
-
-        if ( pos == 0 ) then
-           call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
-        end if
-
-        read(oslo_sectional_aerosol_range(1:pos-1), *) lower
-        read(oslo_sectional_aerosol_range(pos+1:), *) upper
-
-        oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
-        oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
-        oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
-        oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
-        oslo_sectional_species_properties(ispec)%kappa = oslo_sectional_aerosol_kappa
-        oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
-
-        ! allocate and initialize range_ndx, and tracernames
-        allocate(oslo_sectional_species_properties(ispec)%range_ndx(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
+        allocate(oslo_sectional_species_properties(oslo_sectional_nspecies_tot), stat=ierr)
         if(ierr/=0) then
-            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties range_ndx")
+            if (masterproc) close(unitn)
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties")
         end if
-        oslo_sectional_species_properties(ispec)%range_ndx = 0
 
-        do ind = 1, (upper - lower + 1)
-            oslo_sectional_species_properties(ispec)%range_ndx(ind) = lower + ind - 1
+        do ispec=1,oslo_sectional_nspecies_tot
+
+            ! namelist variables
+            oslo_sectional_aerosol_name = ''
+            oslo_sectional_aerosol_range = ''
+            oslo_sectional_aerosol_density = 0.0_r8
+            oslo_sectional_aerosol_weight = 0.0_r8
+            oslo_sectional_aerosol_kappa = 0.0_r8
+            oslo_sectional_aerosol_mixed = .false.
+            lower = 0
+            upper = 0
+
+            ! read namelist
+            if (masterproc) then
+                call find_group_name(unitn, 'oslo_sectional_properties_aerosol_nl', ierr)
+                if (ierr /= 0) then
+                    close(unitn)
+                    call endrun(subname//":: ERROR could not find group 'oslo_sectional_properties_aerosol_nl' for species number " &
+                    //int2str(ispec)//'of '//int2str(oslo_sectional_nspecies_tot) )
+                end if
+
+                read(unitn, oslo_sectional_properties_aerosol_nl, iostat=ierr)
+                if (ierr /= 0) then
+                    close(unitn)
+                    call endrun(subname // ":: ERROR reading 'oslo_sectional_properties_aerosol_nl' for species number " &
+                    //int2str(ispec)//'of '//int2str(oslo_sectional_nspecies_tot) )
+                end if
+
+            end if
+
+            ! broadcast
+            call MPI_Bcast(oslo_sectional_aerosol_name, len(oslo_sectional_aerosol_name), mpi_character, mstrid, mpicom, ierr)
+            if ( ierr /= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_name'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_range, len(oslo_sectional_aerosol_range), mpi_character, mstrid, mpicom, ierr)
+            if ( ierr /= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_range'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_density, 1, mpi_real8, mstrid, mpicom, ierr)
+            if ( ierr/= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_density'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_weight, 1, mpi_real8, mstrid, mpicom, ierr)
+            if ( ierr/= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_weight'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_kappa, 1, mpi_real8, mstrid, mpicom, ierr)
+            if ( ierr/= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_kappa'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_mixed, 1, mpi_logical, mstrid, mpicom, ierr)
+            if ( ierr/= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_mixed'")
+            end if
+
+            ! initialize properties object variables
+            oslo_sectional_species_properties(ispec)%specname = ''
+            oslo_sectional_species_properties(ispec)%density = 0.0_r8
+            oslo_sectional_species_properties(ispec)%molecular_weight = 0.0_r8
+            oslo_sectional_species_properties(ispec)%kappa = 0.0_r8
+            oslo_sectional_species_properties(ispec)%mixed = .false.
+            oslo_sectional_species_properties(ispec)%nbin = 0
+            oslo_sectional_species_properties(ispec)%nrange = 0
+
+            pos = index(oslo_sectional_aerosol_range, ':')
+
+            if ( pos == 0 ) then
+                call endrun(subname//":: ERROR invalid format for 'oslo_sectional_aerosol_range'")
+            end if
+
+            read(oslo_sectional_aerosol_range(1:pos-1), *) lower
+            read(oslo_sectional_aerosol_range(pos+1:), *) upper
+
+            oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
+            oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
+            oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
+            oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
+            oslo_sectional_species_properties(ispec)%kappa = oslo_sectional_aerosol_kappa
+            oslo_sectional_species_properties(ispec)%mixed = oslo_sectional_aerosol_mixed
+
+            ! allocate and initialize range_ndx, and tracernames
+            allocate(oslo_sectional_species_properties(ispec)%range_ndx(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
+            if(ierr/=0) then
+                call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties range_ndx")
+            end if
+            oslo_sectional_species_properties(ispec)%range_ndx = 0
+
+            do ind = 1, (upper - lower + 1)
+                oslo_sectional_species_properties(ispec)%range_ndx(ind) = lower + ind - 1
+            end do
+
         end do
 
-
-    end do
-
-    if (masterproc) then
-        close(unitn)
-    end if
+        if (masterproc) then
+            close(unitn)
+        end if
 
 !==================================================================================================
 ! Allocate local arrays
 !==================================================================================================
 
-    ! allocate with size nbins
-    allocate( nspecies(oslo_sectional_nbins), stat=ierr)
+        ! allocate with size nbins
+        allocate( nspecies(oslo_sectional_nbins), stat=ierr)
         if(ierr/=0) then
             call endrun(subname// ": Error "//int2str(ierr)//" allocating nspecies")
             return
         end if
 
-    allocate( bins2ranges(oslo_sectional_nbins), stat=ierr)
+        allocate( bins2ranges(oslo_sectional_nbins), stat=ierr)
         if(ierr/=0) then
             call endrun(subname// ": Error "//int2str(ierr)//" allocating bins2ranges'")
             return
         end if
 
-    allocate( bin_centers(oslo_sectional_nbins), stat=ierr)
-       if( ierr /= 0 ) then
+        allocate( bin_centers(oslo_sectional_nbins), stat=ierr)
+        if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating bin_centers'")
            return
-       end if
-    allocate( bin_bounds(oslo_sectional_nbins, 2), stat=ierr)
-       if( ierr /= 0 ) then
+        end if
+
+        allocate( bin_bounds(oslo_sectional_nbins, 2), stat=ierr)
+        if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating bin_bounds'")
            return
-       end if
+        end if
 
-    allocate( range_bounds(oslo_sectional_nranges, 2), stat=ierr)
-       if( ierr /= 0 ) then
+        allocate( range_bounds(oslo_sectional_nranges, 2), stat=ierr)
+        if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating range_bounds'")
            return
-       end if
+        end if
 
-    ! TODO: find out what to do with these three
-    allocate( alogsig(oslo_sectional_nbins), stat=ierr)
+! TODO: what to do with these, since we are not using them currently?
+        allocate( alogsig(oslo_sectional_nbins), stat=ierr)
         if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating alogsig'")
            return
-       end if
-    allocate( f1(oslo_sectional_nbins), stat=ierr)
+        end if
+
+        allocate( f1(oslo_sectional_nbins), stat=ierr)
            if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating f1'")
            return
-       end if
-    allocate( f2(oslo_sectional_nbins), stat=ierr)
+        end if
+
+        allocate( f2(oslo_sectional_nbins), stat=ierr)
            if( ierr /= 0 ) then
            call endrun(subname// ": Error "//int2str(ierr)//" allocating f2'")
            return
-       end if
+        end if
 !==================================================================================================
 ! parse bin info
 !==================================================================================================
-    ! TODO: figure out what to do with these
-    ! alogsig -> alogsig(m) = log(sigmag(m))
-    ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
-    ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
-    alogsig = nan
-    f1 = nan
-    f2 = nan
+        ! TODO: figure out what to do with these
+        ! alogsig -> alogsig(m) = log(sigmag(m))
+        ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
+        ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
+        alogsig = nan
+        f1 = nan
+        f2 = nan
 
-    ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
-    do ibin=1,oslo_sectional_nbins
-        read(oslo_sectional_bin_centers(ibin),'(F10.5)') bin_centers(ibin)
-        pos = index(oslo_sectional_bin_bounds(ibin), ':')
-        read(oslo_sectional_bin_bounds(ibin)(1:pos-1), '(F10.5)') bin_bounds(ibin,1)
-        read(oslo_sectional_bin_bounds(ibin)(pos+1:), '(F10.5)') bin_bounds(ibin,2)
-    end do
+        ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
+        do ibin=1,oslo_sectional_nbins
+            read(oslo_sectional_bin_centers(ibin),'(F10.5)') bin_centers(ibin)
+            pos = index(oslo_sectional_bin_bounds(ibin), ':')
+            read(oslo_sectional_bin_bounds(ibin)(1:pos-1), '(F10.5)') bin_bounds(ibin,1)
+            read(oslo_sectional_bin_bounds(ibin)(pos+1:), '(F10.5)') bin_bounds(ibin,2)
+        end do
 
-    ! parse range bounds
-    do irange=1,oslo_sectional_nranges
-        pos = index(oslo_sectional_range_bounds(irange), ':')
-        read(oslo_sectional_range_bounds(irange)(1:pos-1), '(I3)') range_bounds(irange,1)
-        read(oslo_sectional_range_bounds(irange)(pos+1:), '(I3)') range_bounds(irange,2)
-    end do
-
-    ncnst_tot = oslo_sectional_nbins + sum(oslo_sectional_nspecies(:oslo_sectional_nranges)) ! nbins + sum(nspecies)
-
-    ! initialize bins2ranges array
-    do ibin=1,oslo_sectional_nbins
+        ! parse range bounds
         do irange=1,oslo_sectional_nranges
-            if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
-                bins2ranges(ibin) = irange
-                nspecies(ibin) = oslo_sectional_nspecies(irange)
-                exit
-            end if
+            pos = index(oslo_sectional_range_bounds(irange), ':')
+            read(oslo_sectional_range_bounds(irange)(1:pos-1), '(I3)') range_bounds(irange,1)
+            read(oslo_sectional_range_bounds(irange)(pos+1:), '(I3)') range_bounds(irange,2)
         end do
-    end do
 
-    ! fill species objects with bin info
-    do ispec = 1, oslo_sectional_nspecies_tot
-        ind = 0
-        oslo_sectional_species_properties(ispec)%nbin = 0
-        do ibin = 1, oslo_sectional_nbins
-            if (bins2ranges(ibin) >= oslo_sectional_species_properties(ispec)%range_ndx(1) .and. &
-                bins2ranges(ibin) <= maxval(oslo_sectional_species_properties(ispec)%range_ndx)) then
-                ! nr of bins containing each species (e.g. dust_nbin in dust_model.F90)
-                oslo_sectional_species_properties(ispec)%nbin = oslo_sectional_species_properties(ispec)%nbin + 1
-                ind = ind+1
-                ! indices of bins containing each species
-                bin_ndx(ind) = ibin
-            end if
+        ncnst_tot = oslo_sectional_nbins + sum(oslo_sectional_nspecies(:oslo_sectional_nranges)) ! nbins + sum(nspecies)
+
+        ! initialize bins2ranges array
+        do ibin=1,oslo_sectional_nbins
+            do irange=1,oslo_sectional_nranges
+                if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
+                    bins2ranges(ibin) = irange
+                    nspecies(ibin) = oslo_sectional_nspecies(irange)
+                    exit
+                end if
+            end do
         end do
+
+        ! fill species objects with bin info
+        do ispec = 1, oslo_sectional_nspecies_tot
+            ind = 0
+            oslo_sectional_species_properties(ispec)%nbin = 0
+            do ibin = 1, oslo_sectional_nbins
+                if (bins2ranges(ibin) >= oslo_sectional_species_properties(ispec)%range_ndx(1) .and. &
+                    bins2ranges(ibin) <= maxval(oslo_sectional_species_properties(ispec)%range_ndx)) then
+                    ! nr of bins containing each species (e.g. dust_nbin in dust_model.F90)
+                    oslo_sectional_species_properties(ispec)%nbin = oslo_sectional_species_properties(ispec)%nbin + 1
+                    ind = ind+1
+                    ! indices of bins containing each species
+                    bin_ndx(ind) = ibin
+                end if
+            end do
 ! TODO: I moved the 6 lines below here, after species%nbin is initialized to make the bin_ndx allocatable but feels a bit messy..
-        allocate(oslo_sectional_species_properties(ispec)%bin_ndx(oslo_sectional_species_properties(ispec)%nbin), stat=ierr)
-        if(ierr/=0) then
-            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties bin_ndx")
-        end if
-!        oslo_sectional_species_properties(ispec)%bin_ndx = 0 ! TODO: does this need to be initialized?
-        oslo_sectional_species_properties(ispec)%bin_ndx = bin_ndx(:oslo_sectional_species_properties(ispec)%nbin)
+            allocate(oslo_sectional_species_properties(ispec)%bin_ndx(oslo_sectional_species_properties(ispec)%nbin), stat=ierr)
+            if(ierr/=0) then
+                call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties bin_ndx")
+            end if
+            oslo_sectional_species_properties(ispec)%bin_ndx = bin_ndx(:oslo_sectional_species_properties(ispec)%nbin)
 
-        allocate(oslo_sectional_species_properties(ispec)%tracernames(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
-        if(ierr/=0) then
-            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties tracernames")
-        end if
-        oslo_sectional_species_properties(ispec)%tracernames = ''
+            allocate(oslo_sectional_species_properties(ispec)%tracernames(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
+            if(ierr/=0) then
+                call endrun(subname// ": ERROR "//int2str(ierr)//" allocating oslo_sectional_species_properties tracernames")
+            end if
+            oslo_sectional_species_properties(ispec)%tracernames = ''
 
-        do irange = 1, oslo_sectional_species_properties(ispec)%nrange
-            ! tracernames for each species - potentially check if consistent with cnst_get_ind?
-            oslo_sectional_species_properties(ispec)%tracernames(irange) = &
-            trim(oslo_sectional_species_properties(ispec)%specname)//'_R'//&
-            trim(int2str(oslo_sectional_species_properties(ispec)%range_ndx(irange)))
+            do irange = 1, oslo_sectional_species_properties(ispec)%nrange
+                ! tracernames for each species - potentially check if consistent with cnst_get_ind?
+                oslo_sectional_species_properties(ispec)%tracernames(irange) = &
+                trim(oslo_sectional_species_properties(ispec)%specname)//'_R'//&
+                trim(int2str(oslo_sectional_species_properties(ispec)%range_ndx(irange)))
+            end do
         end do
-    end do
 
 !==================================================================================================
 ! Allocate and initialize newobj
 !==================================================================================================
 
-    allocate(newobj,stat=ierr)
-    if ( ierr/=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj,stat=ierr)
+        if ( ierr/=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%bins2ranges_(oslo_sectional_nbins), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%bins2ranges_(oslo_sectional_nbins), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%range_nspecies_(oslo_sectional_nranges), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%range_nspecies_(oslo_sectional_nranges), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%bin_centers_(oslo_sectional_nbins), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%bin_centers_(oslo_sectional_nbins), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%bin_bounds_(oslo_sectional_nbins, 2), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%bin_bounds_(oslo_sectional_nbins, 2), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%range_bounds_(oslo_sectional_nranges, 2), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%range_bounds_(oslo_sectional_nranges, 2), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%aer_spec_prop(oslo_sectional_nspecies_tot), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%aer_spec_prop(oslo_sectional_nspecies_tot), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    allocate(newobj%particle_volume_(oslo_sectional_nbins), stat=ierr)
-    if( ierr /=0 ) then
-        nullify(newobj)
-        return
-    end if
+        allocate(newobj%particle_volume_(oslo_sectional_nbins), stat=ierr)
+        if( ierr /=0 ) then
+            nullify(newobj)
+            return
+        end if
 
-    newobj%bins2ranges_ = bins2ranges
-    newobj%nranges_ = oslo_sectional_nranges
-    newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
-    newobj%range_nspecies_ = oslo_sectional_nspecies(:oslo_sectional_nranges)
-    newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
-    newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
-    newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
-    newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
-! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
-    newobj%particle_volume_ = 4/3*pi*newobj%bin_centers_**3
+        newobj%bins2ranges_ = bins2ranges
+        newobj%nranges_ = oslo_sectional_nranges
+        newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
+        newobj%range_nspecies_ = oslo_sectional_nspecies(:oslo_sectional_nranges)
+        newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
+        newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
+        newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
+        newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
+    ! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
+        newobj%particle_volume_ = 4/3*pi*newobj%bin_centers_**3
 
-    ! deallocate local variables
-    if (allocated(bin_centers)) deallocate(bin_centers)
-    if (allocated(bin_bounds)) deallocate(bin_bounds)
-    if (allocated(range_bounds)) deallocate(range_bounds)
-    if (allocated(bins2ranges)) deallocate(bins2ranges)
-    if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
+        ! deallocate local variables
+        if (allocated(bin_centers)) deallocate(bin_centers)
+        if (allocated(bin_bounds)) deallocate(bin_bounds)
+        if (allocated(range_bounds)) deallocate(range_bounds)
+        if (allocated(bins2ranges)) deallocate(bins2ranges)
+        if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
 
-    call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
+        call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
 !==================================================================================================
 ! Report
 !==================================================================================================
 !    call MPI_Barrier(mpicom, ierr)
-   if (masterproc) then
-        write(iulog,*) 'sectional aerosol properties: '
-        write(iulog,*) 'nbins = ', newobj%nbins()
-        write(iulog,*) 'nranges = ', newobj%nranges_
-        write(iulog,*) 'ncnst_tot = ', newobj%ncnst_tot()
-        write(iulog,*) 'nspecies_tot = ', newobj%nspecies_tot_
-        write(iulog,*) 'nspecies = ', newobj%nspecies()
+        if (masterproc) then
+            write(iulog,*) 'sectional aerosol properties: '
+            write(iulog,*) 'nbins = ', newobj%nbins()
+            write(iulog,*) 'nranges = ', newobj%nranges_
+            write(iulog,*) 'ncnst_tot = ', newobj%ncnst_tot()
+            write(iulog,*) 'nspecies_tot = ', newobj%nspecies_tot_
+            write(iulog,*) 'nspecies = ', newobj%nspecies()
 
-        do irange=1,oslo_sectional_nranges,5
-            write(iulog,*) 'range_nspecies = ', newobj%range_nspecies_(irange:min(irange+4, oslo_sectional_nranges))
-        end do
+            do irange=1,oslo_sectional_nranges,5
+                write(iulog,*) 'range_nspecies = ', newobj%range_nspecies_(irange:min(irange+4, oslo_sectional_nranges))
+            end do
 
-        do ibin=1,oslo_sectional_nbins,5
-            write(iulog,*) 'bin_centers = ', newobj%bin_centers_(ibin:min(ibin+4, oslo_sectional_nbins))
-        end do
+            do ibin=1,oslo_sectional_nbins,5
+                write(iulog,*) 'bin_centers = ', newobj%bin_centers_(ibin:min(ibin+4, oslo_sectional_nbins))
+            end do
 
-        do ibin=1,oslo_sectional_nbins,5
-            write(iulog,*) 'bins2ranges = ',newobj%bins2ranges_(ibin:min(ibin+4, oslo_sectional_nbins))
-        end do
+            do ibin=1,oslo_sectional_nbins,5
+                write(iulog,*) 'bins2ranges = ',newobj%bins2ranges_(ibin:min(ibin+4, oslo_sectional_nbins))
+            end do
 
-        ! TODO: figure out what to do with these
-        ! alogsig -> alogsig(m) = log(sigmag(m))
-        ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
-        ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
+            ! TODO: figure out what to do with these
+            ! alogsig -> alogsig(m) = log(sigmag(m))
+            ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
+            ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
 
-        do ibin=1,oslo_sectional_nbins
-            write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(ibin,1), &
-                                     ' : ', newobj%bin_bounds_(ibin,2)
-        end do
-        do irange=1,oslo_sectional_nranges !TODO FIX format
-            write(iulog,*) 'range_bounds = ', newobj%range_bounds_(irange,1), &
-                                       ' : ', newobj%range_bounds_(irange,2)
-        end do
+            do ibin=1,oslo_sectional_nbins
+                write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(ibin,1), &
+                                        ' : ', newobj%bin_bounds_(ibin,2)
+            end do
+            do irange=1,oslo_sectional_nranges !TODO FIX format
+                write(iulog,*) 'range_bounds = ', newobj%range_bounds_(irange,1), &
+                                        ' : ', newobj%range_bounds_(irange,2)
+            end do
 
-        do ind = 1,oslo_sectional_nspecies_tot
-            ! TODO (low priority): fix the format :D
-            write(iulog ,*) 'sectional aerosol species properties: '
-            write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
-            write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
-            write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
-            write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
-            write(iulog ,*) 'kappa = ', newobj%aer_spec_prop(ind)%kappa
-            write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
-            write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
-            write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
-            write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx) ! TODO: is there a nicer way?
-            write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
-       end do
-    end if
+            do ind = 1,oslo_sectional_nspecies_tot
+                ! TODO (low priority): fix the format :D
+                write(iulog ,*) 'sectional aerosol species properties: '
+                write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
+                write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
+                write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
+                write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
+                write(iulog ,*) 'kappa = ', newobj%aer_spec_prop(ind)%kappa
+                write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
+                write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
+                write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
+                write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx) ! TODO: is there a nicer way?
+                write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
+            end do
+        end if
         prop_obj => newobj
     else
         if ( .not. associated(prop_obj) ) then
