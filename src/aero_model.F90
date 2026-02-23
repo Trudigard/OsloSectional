@@ -16,10 +16,11 @@ module aero_model
   use dust_model,        only: dust_active, dust_names, dust_nbin, dust_nrange
   use seasalt_model,     only: sslt_active=>seasalt_active, seasalt_names, seasalt_nbin
   use spmd_utils,        only: masterproc
-  use physics_buffer,    only: pbuf_get_field, pbuf_get_index
+  use physics_buffer,    only: pbuf_get_field, pbuf_get_index, pbuf_get_chunk
   use cam_history,       only: outfld
   use infnan,            only: nan, assignment(=)
   use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
+  use sectional_aerosol_state_mod, only: sectional_aerosol_state, aero_state_ptr
 
   implicit none
   private
@@ -60,7 +61,9 @@ module aero_model
   integer :: prain_idx  = 0
 
   type(sectional_aerosol_properties), pointer :: aero_props=>null()
+  !type(sectional_aerosol_state), pointer :: aero_state=>null()
 
+  type(aero_state_ptr), allocatable :: master_aero_state(:)
 
 contains
 
@@ -116,7 +119,7 @@ contains
 
   !=============================================================================
   !=============================================================================
-  subroutine aero_model_init( pbuf2d, nlfile )
+  subroutine aero_model_init( pbuf2d, phys_state)
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
     use cam_history,    only: addfld, add_default, horiz_only
@@ -124,15 +127,16 @@ contains
     use dust_model,     only: dust_init
     use string_utils,   only: int2str
     use mo_setsox,      only : setsox, has_sox
+  use ppgrid,               only: begchunk, endchunk, pcols, pver
 
     !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
-    character(len=*), intent(in) :: nlfile
+    type(physics_state),    intent(in)    :: phys_state(begchunk:endchunk)     ! Physics state variables
 
     ! local vars
-    integer           :: m, id, ierr, ibin, ispec
+    integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk
     integer           :: spec_nrange, ind, irange
     integer, allocatable :: specrange(:)
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
@@ -142,6 +146,7 @@ contains
     character(len=10) :: aerosol_names(500)
     character(len=10), allocatable :: spec_names(:)
     character(len=20) :: dummy
+    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
 
     character(len=12), parameter :: subname = 'aero_model_init'
 
@@ -158,6 +163,13 @@ contains
 
     if (.not. aerodep_flx_prescribed()) then
         aero_props => sectional_aerosol_properties() ! calls constructor function in sectional_aerosol_properties
+        allocate(master_aero_state(begchunk:endchunk))
+        do lchnk = begchunk, endchunk
+            phys_buffer_chunk => pbuf_get_chunk(pbuf2d, lchnk)
+            master_aero_state(lchnk)%ptr => sectional_aerosol_state(phys_state(lchnk), phys_buffer_chunk)
+        end do
+  !     aero_state => sectional_aerosol_state(phys_state, pbuf)
+      !  end do
 !        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
     end if
 
@@ -359,15 +371,15 @@ end do
     allocate(bin_centers(nbins))
     bin_centers = aero_props%bin_centers(nbins)
 
-    do ibin = 1, nbins  ! main loop over aerosol size bins
+    do ibin = 1, nbins  ! main loop over aerosol size binsaero
         do lphase = 1, 2 ! interstitial/cloud borne forms
             if (lphase == 1) then ! interstitial
 
 ! TODO: use WET radius and density in future!!
                 rad_aer(1:ncol,:) = bin_centers(ibin)
-                dens_aer = aero_state%bin_dry_density(ibin, ncol)
+                !dens_aer = aero_state%bin_dry_density(ibin, ncol)
                 jvlc = 1 ! TODO: what is this?
-                call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), sg_drop(:,:), 0, lchnk)
+                !call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), sg_drop(:,:), 0, lchnk)
 
             ! if lphase == 2 then cloud-borne
             end if

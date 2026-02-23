@@ -25,6 +25,11 @@ module sectional_aerosol_state_mod
   private
 
   public :: sectional_aerosol_state
+  public :: aero_state_ptr
+
+  type aero_state_ptr
+    type(sectional_aerosol_state), pointer :: ptr => null()
+  end type aero_state_ptr
 
   type aerosol_range_state ! one instance per range
      character(len=16), allocatable :: range_name(:)
@@ -84,6 +89,7 @@ module sectional_aerosol_state_mod
   end interface sectional_aerosol_state
 
   real(r8), parameter :: rh2odens = 1._r8/rhoh2o
+  type(aero_state_ptr), allocatable :: master_aero_state(:)
 
 contains
 
@@ -93,15 +99,26 @@ contains
     use mo_tracname, only: solsym
     use constituents, only: cnst_get_ind
     use string_utils, only: int2str
+      use ppgrid,               only: begchunk, endchunk, pcols, pver
+
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
-    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin, ispecprops
+    integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin, ispecprops, lchnk
     character(len=:), allocatable :: num_name, specname, specname_props
     logical :: solsym_found
     character(len=*), parameter :: subname = 'constructor'
+
+    if ( .not. allocated(master_aero_state) ) then
+        allocate(master_aero_state(begchunk:endchunk))
+    end if
+
+    lchnk = state%lchnk
+    if ( associated(master_aero_state(lchnk)%ptr) ) then
+        newobj => master_aero_state(lchnk)%ptr
+    else
 
     allocate(newobj,stat=ierr)
     if( ierr /= 0 ) then
@@ -115,25 +132,25 @@ contains
 
     newobj%ncol = state%ncol
 
-    allocate(newobj%bin_numconc(newobj%ncol, pver, aero_props%nbins()), stat=ierr)
+    allocate(newobj%bin_numconc(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
     end if
 
-    allocate(newobj%aero_range_state(aero_props%nranges()), stat=ierr)
+    allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
     end if
 
-    allocate(newobj%num_transport_ndx(aero_props%nbins()), stat=ierr)
+    allocate(newobj%num_transport_ndx(newobj%sec_aero_props%nbins()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
     end if
 
-    do irange = 1, aero_props%nranges()
+    do irange = 1, newobj%sec_aero_props%nranges()
         allocate(newobj%aero_range_state(irange)%mass(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
@@ -218,6 +235,8 @@ contains
             call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
         end if
     end do
+
+end if
 
   end function constructor
 
