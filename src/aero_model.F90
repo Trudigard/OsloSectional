@@ -334,7 +334,10 @@ end do
 !    real(r8), pointer :: dgncur_awet(:,:,:)
 !    real(r8), pointer :: wetdens(:,:,:)
 !    real(r8), pointer :: qaerwat(:,:,:)
+
     character(len=*), parameter :: subname = 'aero_model_drydep'
+
+    integer :: xx, yy
 
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
@@ -377,10 +380,17 @@ end do
 
 ! TODO: use WET radius and density in future!!
                 rad_aer(1:ncol,:) = bin_centers(ibin)
-                !dens_aer = aero_state%bin_dry_density(ibin, ncol)
-                jvlc = 1 ! TODO: what is this?
-                !call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), sg_drop(:,:), 0, lchnk)
+                dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
 
+                do xx = 1, ncol
+                    do yy = 1, pver
+                        if (dens_aer(xx, yy) == 0.) then
+                            dens_aer(xx, yy) = 1
+                        end if
+                    end do
+                end do
+                jvlc = 1 ! TODO: what is this?
+ !               call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), lchnk)
             ! if lphase == 2 then cloud-borne
             end if
         end do
@@ -875,6 +885,7 @@ subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,
     do k=top_lev,pver ! radius_part is not defined above top_lev
        do i=1,ncol
 
+ !           if ( radius_part(i, k) > 0.) then
 ! use a maximum radius of 50 microns when calculating deposition velocity
 ! TODO: limit max radius??
 ! no dispersion for sectional
@@ -897,10 +908,14 @@ subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,
                   gravit*slp_crc(i,k) / vsc_dyn_atm(i,k) ![m s-1] Stokes' settling velocity SeP97 p. 466
 
           vlc_dry(i,k)=vlc_grv(i,k)
+
+ !           end if
        enddo
     enddo
     k=pver  ! only look at bottom level for next part
     do i=1,ncol
+ !                   if ( radius_part(i, k) > 0.) then
+
        dff_aer = boltz * t(i,k) * slp_crc(i,k) / &    ![m2 s-1]
                  (6.0_r8*pi*vsc_dyn_atm(i,k)*radius_part(i,k)) !SeP97 p.474
        shm_nbr = vsc_knm_atm(i,k) / dff_aer                        ![frc] SeP97 p.972
@@ -938,6 +953,7 @@ subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,
        enddo  ! n_land_type
        vlc_trb(i) = wrk2
        vlc_dry(i,k) = wrk3
+    !end if
     enddo !ncol
 
     return
