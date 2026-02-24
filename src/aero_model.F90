@@ -337,8 +337,6 @@ end do
 
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
-    integer :: xx, yy
-
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
     ocnfrac  => cam_in%ocnfrac(:)
@@ -381,16 +379,8 @@ end do
 ! TODO: use WET radius and density in future!!
                 rad_aer(1:ncol,:) = bin_centers(ibin)
                 dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
-
-                do xx = 1, ncol
-                    do yy = 1, pver
-                        if (dens_aer(xx, yy) == 0.) then
-                            dens_aer(xx, yy) = 1
-                        end if
-                    end do
-                end do
                 jvlc = 1 ! TODO: what is this?
- !               call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), lchnk)
+                call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), rad_drop(:,:), dens_drop(:,:), lchnk)
             ! if lphase == 2 then cloud-borne
             end if
         end do
@@ -901,8 +891,8 @@ subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,
           vsc_knm_atm(i,k) = vsc_dyn_atm(i,k) / rho ![m2 s-1] Kinematic viscosity of air
 
           slp_crc(i,k) = 1.0_r8 + mfp_atm(i,k) * &
-                  (1.257_r8+0.4_r8*exp(-1.1_r8*radius_part(i,k)/(mfp_atm(i,k)))) / &
-                  radius_part(i,k)   ![frc] Slip correction factor SeP97 p. 464
+                  (1.257_r8+0.4_r8*exp(-1.1_r8*radius_part(i,k)/(mfp_atm(i,k)))) !/ & !TODO: IMPORTANT!! division by 0 with radius_part! needs to be fixed asap
+ !                 radius_part(i,k)   ![frc] Slip correction factor SeP97 p. 464
 
           vlc_grv(i,k) = (4.0_r8/18.0_r8) * radius_part(i,k)*radius_part(i,k)*density_part(i,k)* &
                   gravit*slp_crc(i,k) / vsc_dyn_atm(i,k) ![m s-1] Stokes' settling velocity SeP97 p. 466

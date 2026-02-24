@@ -1,5 +1,5 @@
 # OsloSectional
-Oslo Sectional Aerosol Model
+Oslo Sectional Aerosol Model (Name to be decided!)
 
 ## config
 Contains configuration files for the sectional aerosol model that are used/executed during the build process.
@@ -12,6 +12,7 @@ These folders contain files from OsloAero and CAM that have been changed to make
 The oslo_sectional source code.
 Files that have been significantly edited so far:
 * sectional_aerosol_properties_mod.F90
+* sectional_aerosol_state_mod.F90
 * dust_model.F90: Handles dust emissions (INPUT)
 * aero_model.F90: Main calls to objects, reads general namelists
 
@@ -29,7 +30,7 @@ Note: This setup is temporary
 6. Compset: SecDust
 
 ## branches
-- sectional_develop : Reviewed code, currently outdated
+- sectional_develop : Reviewed code, currently very outdated
 - sec-stable : NOT reviewed but short tests have passed
 - stale-* : Old branches, to be deleted soon
 - other branches are current working feature branches
