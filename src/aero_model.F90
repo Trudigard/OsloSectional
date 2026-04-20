@@ -380,14 +380,32 @@ end do
                 rad_aer(1:ncol,:) = bin_centers(ibin)
                 dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
                 jvlc = 1 ! TODO: what is this?
+
                 call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, &
                              vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), &
                              rad_aer(:,:), dens_aer(:,:), lchnk)
             ! if lphase == 2 then cloud-borne
+
             end if
         end do
+    ! loop through species_in_bin
+    ! do some weird jvlc stuff -> find "mm", index
+    ! jvlc = 1 number dry
+    ! jvlc = 2
+    ! jvlc = 3
+    ! jvlc = 4
 
     end do
+
+! TODO outfld
+! dust_sediment_tend and d3ddflux to change ptend
+! change cam_out:
+
+    ! if the user has specified prescribed aerosol dep fluxes then
+    ! do not set cam_out dep fluxes according to the prognostic aerosols
+    !if (.not.aerodep_flx_prescribed()) then
+    !   call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
+    !endif
 
   endsubroutine aero_model_drydep
 
