@@ -40,6 +40,7 @@ class _AerosolSpecies:
     Attributes:
         active (bool) : whether the species should be included in the simulation
         short_name (str) : short name of the aerosol species
+        species_type (str) : type of the species, e.g. 'dust', 's-organic', 'p-organic'
         long_name (str) : long name of the aerosol species
         composition (str) : composition to trace aerosol mass
         mixed (bool) : True for internally mixed, false for externally mixed aerosol
@@ -60,6 +61,7 @@ class _AerosolSpecies:
         try:
             self.active = config.getboolean(species, 'active', fallback=False)
             self.short_name = config.get(species, 'short_name')
+            self.species_type = config.get(species, 'species_type')
             self.long_name = config.get(species, 'long_name', fallback=self.short_name)
             self.composition = config.get(species, 'composition')
             self.density = config.getfloat(species, 'density')
@@ -307,6 +309,7 @@ def bin_config(aerconf_file, chemconf, chem_infile, oslo_sectional_in):
         if species.active:
             f.write("&oslo_sectional_properties_aerosol_nl\n")
             f.write(f" oslo_sectional_aerosol_name      =  '{species.short_name}' \n")
+            f.write(f" oslo_sectional_aerosol_type = '{species.species_type}' \n")
             f.write(" oslo_sectional_aerosol_range       =  ")
             f.write(f"'{species.range_idx[0]}:{species.range_idx[-1]}' \n")
             f.write(f" oslo_sectional_aerosol_mixed     =  .{species.mixed}. \n")

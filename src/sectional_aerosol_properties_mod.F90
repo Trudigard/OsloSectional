@@ -15,6 +15,7 @@ module sectional_aerosol_properties_mod
 
   type aerosol_species_properties
      character(len=:), allocatable :: specname        ! e.g. DU
+     character(len=:), allocatable :: spectype        ! e.g. 'dust'
      integer                 :: nbin            ! number of bins containing species
      integer                 :: nrange          ! nr of ranges containing species
      integer, allocatable    :: range_ndx(:)    ! indices of ranges containing species
@@ -134,6 +135,7 @@ contains
     ! namelist aerosol species variables
     type(aerosol_species_properties), allocatable :: oslo_sectional_species_properties(:)
     character(len=10)                     :: oslo_sectional_aerosol_name
+    character(len=10)                     :: oslo_sectional_aerosol_type
     character(len=10)                     :: oslo_sectional_aerosol_range
     real(r8)                              :: oslo_sectional_aerosol_density
     real(r8)                              :: oslo_sectional_aerosol_weight
@@ -158,6 +160,7 @@ contains
                                             oslo_sectional_range_bounds
 
     namelist /oslo_sectional_properties_aerosol_nl/ oslo_sectional_aerosol_name, &
+                                            oslo_sectional_aerosol_type, &
                                             oslo_sectional_aerosol_range, &
                                             oslo_sectional_aerosol_density, &
                                             oslo_sectional_aerosol_weight, &
@@ -245,6 +248,7 @@ contains
 
             ! namelist variables
             oslo_sectional_aerosol_name = ''
+            oslo_sectional_aerosol_type = ''
             oslo_sectional_aerosol_range = ''
             oslo_sectional_aerosol_density = 0.0_r8
             oslo_sectional_aerosol_weight = 0.0_r8
@@ -275,6 +279,11 @@ contains
             call MPI_Bcast(oslo_sectional_aerosol_name, len(oslo_sectional_aerosol_name), mpi_character, mstrid, mpicom, ierr)
             if ( ierr /= MPI_SUCCESS ) then
                 call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_name'")
+            end if
+
+            call MPI_Bcast(oslo_sectional_aerosol_type, len(oslo_sectional_aerosol_type), mpi_character, mstrid, mpicom, ierr)
+            if ( ierr /= MPI_SUCCESS ) then
+                call endrun(subname//": Error "//int2str(ierr)//" broadcasting 'oslo_sectional_aerosol_type'")
             end if
 
             call MPI_Bcast(oslo_sectional_aerosol_range, len(oslo_sectional_aerosol_range), mpi_character, mstrid, mpicom, ierr)
@@ -322,6 +331,7 @@ contains
 
             oslo_sectional_species_properties(ispec)%nrange = upper - lower + 1
             oslo_sectional_species_properties(ispec)%specname = oslo_sectional_aerosol_name
+            oslo_sectional_species_properties(ispec)%spectype = oslo_sectional_aerosol_type
             oslo_sectional_species_properties(ispec)%density = oslo_sectional_aerosol_density
             oslo_sectional_species_properties(ispec)%molecular_weight = oslo_sectional_aerosol_weight
             oslo_sectional_species_properties(ispec)%kappa = oslo_sectional_aerosol_kappa
@@ -584,6 +594,7 @@ contains
                 ! TODO (low priority): fix the format :D
                 write(iulog ,*) 'sectional aerosol species properties: '
                 write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
+                write(iulog ,*) 'species type = ', newobj%aer_spec_prop(ind)%spectype
                 write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
                 write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
                 write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
@@ -1302,6 +1313,20 @@ contains
     character(len=*), parameter :: subname = 'rebin_bulk_fluxes'
 
     call endrun(subname//' is not yet implemented')
+
+    ! Mass of species in bin
+    ! tot_mass_in_range = sum_range_masses
+    ! tot_mass_in_bin = number_in_bin * volume_of_particle_in_bin * density(given)
+    ! dust_mass_frac = tot_mass_in_range / dust_mass_in_range
+    ! mass_dust_in_bin = tot_mass_in_bin * dust_mass_frac
+
+    ! Add up for bulk
+    !do ibin = 1, self%nbins()
+
+
+
+
+!   end do
 
   end subroutine rebin_bulk_fluxes
 
