@@ -542,7 +542,7 @@ contains
         newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
         newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
     ! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
-        newobj%particle_volume_ = 4/3*pi*newobj%bin_centers_**3
+        newobj%particle_volume_ = 4/3*pi*(newobj%bin_centers_**3 * 10._r8**(-9)) ! convert nm to m
 
         ! deallocate local variables
         if (allocated(bin_centers)) deallocate(bin_centers)
@@ -575,6 +575,11 @@ contains
             do ibin=1,oslo_sectional_nbins,5
                 write(iulog,*) 'bins2ranges = ',newobj%bins2ranges_(ibin:min(ibin+4, oslo_sectional_nbins))
             end do
+
+            do ibin=1,oslo_sectional_nbins,5
+                write(iulog,*) 'particle_volume = ',newobj%particle_volume_(ibin:min(ibin+4, oslo_sectional_nbins))
+            end do
+
 
             ! TODO: figure out what to do with these
             ! alogsig -> alogsig(m) = log(sigmag(m))
@@ -711,7 +716,7 @@ contains
     end if
 
     if (present(spectype)) then
-        call endrun(subname//' spectype is not yet implemented')
+        spectype = self%aer_spec_prop(species_ndx)%spectype
     end if
 
     if (present(specname)) then

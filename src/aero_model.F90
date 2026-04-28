@@ -306,7 +306,7 @@ end do
     integer :: m                       ! aerosol mode index
     integer :: mm                      ! tracer index
     integer :: i
-    integer :: ibin, nbins
+    integer :: ibin, nbins, icol, ilev, irange
 
     real(r8) :: sflx(pcols)
 
@@ -324,16 +324,22 @@ end do
     real(r8) :: dens_aer(pcols,pver)
     real(r8) :: sg_aer(pcols,pver)
 
-    real(r8) :: vlc_dry(pcols,pver,4)     ! dep velocity
+    real(r8) :: vlc_dry(pcols,pver,4)     ! dep velocity ! TODO: get rid of last dimension?
     real(r8) :: vlc_grv(pcols,pver,4)     ! dep velocity
     real(r8)::  vlc_trb(pcols,4)          ! dep velocity
     real(r8) :: aerdepdryis(pcols,pcnst)  ! aerosol dry deposition (interstitial)
     real(r8), allocatable :: bin_centers(:)
+    logical :: do_dust_sed
+          real(r8) :: small
+
 !    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
 !    real(r8), pointer :: fldcw(:,:)
 !    real(r8), pointer :: dgncur_awet(:,:,:)
 !    real(r8), pointer :: wetdens(:,:,:)
 !    real(r8), pointer :: qaerwat(:,:,:)
+
+    real(r8) :: bin_mmr_tot(pcols, pver)
+    real(r8) :: bin_mmr_tend(pcols, pver)
 
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
@@ -388,18 +394,66 @@ end do
 
             end if
         end do
+
+
     ! loop through species_in_bin
-    ! do some weird jvlc stuff -> find "mm", index
+    ! do some weird jvlc stuff -> find "mm", tracer index => use ncnst_tot
     ! jvlc = 1 number dry
     ! jvlc = 2
     ! jvlc = 3
     ! jvlc = 4
+        do irange = 1, aero_props%nranges()
+            call master_aero_state(lchnk)%ptr%update_range(irange, ncol)
+        end do
+
+        do_dust_sed = .true.
+        do icol = 1, ncol
+            do ilev = 1, pver
+                bin_mmr_tot(icol, ilev) = 1._r8 !master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
+                !if ( bin_mmr_tot(icol,ilev) == 0._r8 ) then
+!                    do_dust_sed=.false.
+                !    small = 1.e6_r8 * tiny( small )
+                !    bin_mmr_tot(icol,ilev) = small
+                !end if
+            end do
+        end do
+
+        pvmzaer(:ncol,1)=0._r8
+        pvmzaer(:ncol,2:pverp) = vlc_dry(:ncol,:,jvlc)
+        pvmzaer(:ncol,2:pverp) = pvmzaer(:ncol,2:pverp) * rho(:ncol,:)*gravit
+
+    ! bin_mmr_tot intent(in), was state%q before. ptend%q is replaced by mmr_tend
+    ! bin_mmr_tend(pcols, pver)
+        if (do_dust_sed) then
+
+            if (masterproc) then
+   write(iulog,*) 'DEBUG: min/max pint ',  &
+        minval(state%pint(1:ncol,1:pverp)), maxval(state%pint(1:ncol,1:pverp))
+   write(iulog,*) 'DEBUG: min/max bin_mmr_tot ',  &
+        minval(bin_mmr_tot(1:ncol,1:pver)), maxval(bin_mmr_tot(1:ncol,1:pver))
+end if
+
+        call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, &
+            bin_mmr_tot(:ncol,:), pvmzaer, bin_mmr_tend, sflx )
+            if (masterproc) then
+                write(iulog,*)"DEBUG: dust_sediment_tend"
+            end if
+        end if
+        ! TODO: add tendency to ranges
+
 
     end do
 
 ! TODO outfld
-! dust_sediment_tend and d3ddflux to change ptend
+
+
+! dust_sediment_tend (and d3ddflux) to change ptend
 ! change cam_out:
+
+! rebin bulk fluxes for 'dust'
+    ! rebin_bulk_fluxes prep
+    ! Mass of species in bin
+
 
     ! if the user has specified prescribed aerosol dep fluxes then
     ! do not set cam_out dep fluxes according to the prognostic aerosols

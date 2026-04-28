@@ -60,7 +60,7 @@ module aerosol_state_mod
      procedure(aero_wet_diam), deferred :: wet_diameter
      procedure :: convcld_actfrac
      procedure :: sol_factb_interstitial
-     procedure(aero_drydep) :: compute_drydep
+ !    procedure(aero_drydep), deferred :: compute_drydep
  end type aerosol_state
 
   ! for state fields
@@ -295,25 +295,25 @@ module aerosol_state_mod
 
      end function aero_wet_diam
 
-     subroutine aero_drydep(ncol, psetcols, t, pmid, pdel, pint, &
-         q, landfrac, icefrac, ocnfrac, fvin, ram1in, cflx, pbuf, &
-         obklen, ustar, dt, dgncur_awet, wetdens, dgncur_awet_processmode, &
-         wetdens_processmode, cam_out, ptend,
-         pcphidry, pbcphodry, ocphidry, ocphodry, dstdry1, dstdry2, dstdry3, dstdry4)
+  !   subroutine aero_drydep(ncol, psetcols, t, pmid, pdel, pint, &
+   !      q, landfrac, icefrac, ocnfrac, fvin, ram1in, cflx, pbuf, &
+   !      obklen, ustar, dt, dgncur_awet, wetdens, dgncur_awet_processmode, &
+   !      wetdens_processmode, cam_out, ptend,
+   !      pcphidry, pbcphodry, ocphidry, ocphodry, dstdry1, dstdry2, dstdry3, dstdry4)
         ! to replace cam_out:
-        real(r8), intent(out) :: bcphidry(pcols)     ! dry deposition of hydrophilic black carbon
-        real(r8), intent(out) :: bcphodry(pcols)     ! dry deposition of hydrophobic black carbon
-        real(r8), intent(out) :: ocphidry(pcols)     ! dry deposition of hydrophilic organic carbon
-        real(r8), intent(out) :: ocphodry(pcols)     ! dry deposition of hydrophobic organic carbon
-        real(r8), intent(out) :: dstdry1(pcols)      ! dry deposition of dust (bin1)
-        real(r8), intent(out) :: dstdry2(pcols)      ! dry deposition of dust (bin2)
-        real(r8), intent(out) :: dstdry3(pcols)      ! dry deposition of dust (bin3)
-        real(r8), intent(out) :: dstdry4(pcols)      ! dry deposition of dust (bin4)
+   !     real(r8), intent(out) :: bcphidry(pcols)     ! dry deposition of hydrophilic black carbon
+   !     real(r8), intent(out) :: bcphodry(pcols)     ! dry deposition of hydrophobic black carbon
+   !     real(r8), intent(out) :: ocphidry(pcols)     ! dry deposition of hydrophilic organic carbon
+   !     real(r8), intent(out) :: ocphodry(pcols)     ! dry deposition of hydrophobic organic carbon
+   !     real(r8), intent(out) :: dstdry1(pcols)      ! dry deposition of dust (bin1)
+   !     real(r8), intent(out) :: dstdry2(pcols)      ! dry deposition of dust (bin2)
+   !     real(r8), intent(out) :: dstdry3(pcols)      ! dry deposition of dust (bin3)
+   !     real(r8), intent(out) :: dstdry4(pcols)      ! dry deposition of dust (bin4)
         ! to replace ptend:
-        logical, intent(out)  ::  lq(:)  ! true if dqdt() is returned
-        real(r8), intent(out) :: q(:,:,:)                  ! consituent tendencies (kg/kg/s)
+   !     logical, intent(out)  ::  lq(:)  ! true if dqdt() is returned
+   !     real(r8), intent(out) :: q(:,:,:)                  ! consituent tendencies (kg/kg/s)
 
-     end subroutine aero_drydep
+!     end subroutine aero_drydep
 
   end interface
 

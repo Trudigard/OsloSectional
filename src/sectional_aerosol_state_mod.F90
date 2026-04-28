@@ -107,7 +107,8 @@ contains
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
     integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin, ispecprops, lchnk
-    character(len=:), allocatable :: num_name, specname, specname_props
+    character(len=:), allocatable :: num_name
+    character(len=10)             :: speciesname, speciesname_props
     logical :: solsym_found
     character(len=*), parameter :: subname = 'constructor'
 
@@ -205,10 +206,10 @@ contains
                 end if
 
                 ! add index to connect to the species objects in aero_props
-                specname = solsym(solsym_ndx)
+                speciesname = solsym(solsym_ndx)
                 do ispecprops = 1, newobj%sec_aero_props%nspecies_tot()
-                    call newobj%sec_aero_props%get(bin_ndx=1,species_ndx=ispecprops, specname=specname_props)
-                    if ( specname(1:ubar_ndx-1) == trim( specname_props ) ) then ! before ubar_ndx -> species name
+                    call newobj%sec_aero_props%get(bin_ndx=1,species_ndx=ispecprops, specname=speciesname_props)
+                    if ( speciesname(1:ubar_ndx-1) == trim( speciesname_props ) ) then ! before ubar_ndx -> species name
                         newobj%aero_range_state(irange)%spec_ndx(ispec) = ispecprops
                     end if
                 end do
@@ -285,7 +286,7 @@ end subroutine destructor
 
     ! update the range properties
     do irange = 1, self%sec_aero_props%nranges()
-        call self%update_range(irange=irange, range_bounds=self%sec_aero_props%range_bounds(irange), ncol=self%ncol)
+        call self%update_range(irange=irange, ncol=self%ncol)
     end do
 
   end subroutine set_transported
@@ -324,14 +325,21 @@ end subroutine destructor
     integer, intent(in) :: col_ndx      ! column index
     integer, intent(in) :: lyr_ndx      ! vertical layer index
 
+    integer :: ncol
+    real(r8), allocatable :: aer_dry_dens(:, :)
+
     real(r8) :: mmr_tot                 ! mass mixing ratios totaled for all species
 
     character(len=*), parameter :: subname = 'ambient_total_bin_mmr'
 
+    ncol = self%state%ncol
+    allocate(aer_dry_dens(ncol, pver))
+    aer_dry_dens = self%bin_dry_density(bin_ndx, ncol)
+
     ! (kg_tot_aerosol_in_bin / kg_air)
     mmr_tot = self%bin_numconc(col_ndx, lyr_ndx, bin_ndx) &
                 * self%sec_aero_props%particle_volume(bin_ndx) &
-                * self%bin_dry_density(bin_ndx)
+                * aer_dry_dens(col_ndx, lyr_ndx)
 
   end function ambient_total_bin_mmr
 
@@ -346,23 +354,7 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'get_ambient_mmr_0list'
 
-    irange = bins2ranges(bin_ndx)
-    ! TODO: fix ispec
-    ispec = ??? -> not same in every range_state
-    do icol = 1, ncol
-        do ilev = 1, nlev
-            massfrac = self%aero_range_state%mmr(icol, ilev, ispec) &
-                                     / sum(self%aero_range_state(irange)%mmr(icol, ilev, :))
-
-            bin_mmr_tot = self%ambient_total_bin_mmr(self%sec_aero_props, bin_ndx, icol, ilev)
-
-            species_bin_mmr(icol, ilev) = bin_mmr_tot * massfrac
-        end do
-    end do
-
-    ! sum up mass in self%mmr(col, lev, :)
-    ! mass_fraction: speciesmass/totmass
-    ! mass fraction * mmr_tot -> bin_mass
+    call endrun(subname//' is not yet implemented')
 
   end subroutine get_ambient_mmr_0list
 
@@ -729,18 +721,21 @@ end subroutine destructor
 
   end function bin_dry_density
 
-  subroutine update_range(self, irange, range_bounds, ncol, mmr_tend)
+  subroutine update_range(self, irange, ncol, mmr_tend)
     class(sectional_aerosol_state), intent(inout) :: self
     real(r8), optional, intent(in) :: mmr_tend(:,:,:) ! shape aero_props%range_nspecies (ncol, pver, range_nspecies) -> one array for one range
     integer, intent(in)  :: irange
-    integer, intent(in)  :: range_bounds(:,:)
     integer, intent(in)  :: ncol                 ! number of columns
+    integer, allocatable :: range_bounds(:,:)
     integer              :: ispec, ibin, ispecprop
     real(r8)             :: range_dry_volume(ncol, pver)
     real(r8)             :: range_total_mmr(ncol, pver)
 
+    allocate(range_bounds(self%sec_aero_props%nranges(), 2))
+
     range_dry_volume = 0._r8
     range_total_mmr = 0._r8
+    range_bounds = self%sec_aero_props%range_bounds(irange)
 
     ! update mmr of each component if mmr tendency has been passed as an argument
     ! else: update other state variables with mmr from before
@@ -756,15 +751,23 @@ end subroutine destructor
 
     ! volume of all aerosol /kg_air in a range (m3_aer/kg_air)
     do ibin = range_bounds(irange, 1), range_bounds(irange, 2)
-        range_dry_volume = range_dry_volume + self%dry_volume(self%sec_aero_props, 1, ibin, 1, 1) !TODO: change input parameters
+        range_dry_volume = range_dry_volume + self%dry_volume(self%sec_aero_props, 1, ibin, self%state%ncol, pver) !TODO: change input parameters
     end do
 
-    self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
+    where (range_dry_volume /= 0._r8)
+        self%aero_range_state(irange)%dry_density = range_total_mmr / range_dry_volume
+    elsewhere
+        self%aero_range_state(irange)%dry_density = 0._r8  ! or some safe default
+    end where
+
+
+
+    !self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
     do ispec = 1,self%sec_aero_props%range_nspecies(irange)
         ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
 ! TODO: source, total hygroscopicity parameter kappa_tot = SUM_OVER_ALL_SPECIES(volume_i/volume_tot * kappa_i)
         self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
-            + self%aero_range_state(irange)%mmr(ispec,:,:) / range_dry_volume / &
+            + self%aero_range_state(irange)%mmr(:,:,ispec) / range_dry_volume / &
             self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
     end do
 
