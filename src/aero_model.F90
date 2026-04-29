@@ -329,8 +329,6 @@ end do
     real(r8)::  vlc_trb(pcols,4)          ! dep velocity
     real(r8) :: aerdepdryis(pcols,pcnst)  ! aerosol dry deposition (interstitial)
     real(r8), allocatable :: bin_centers(:)
-    logical :: do_dust_sed
-          real(r8) :: small
 
 !    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
 !    real(r8), pointer :: fldcw(:,:)
@@ -338,10 +336,15 @@ end do
 !    real(r8), pointer :: wetdens(:,:,:)
 !    real(r8), pointer :: qaerwat(:,:,:)
 
-    real(r8) :: bin_mmr_tot(pcols, pver)
     real(r8) :: bin_mmr_tend(pcols, pver)
-
+    real(r8) :: bin_mmr_tot(pcols, pver)
+    real(r8) :: bin_num_tend(pcols, pver)
+    real(r8), allocatable :: range_mmr_tend(:, :, :) ! pcols, pver, nspecies_tot
+    real(r8), allocatable :: bins2ranges(:)
     character(len=*), parameter :: subname = 'aero_model_drydep'
+
+    allocate(range_mmr_tend(pcols, pver, aero_props%nranges()))
+    allocate(bins2ranges(aero_props%nbins()))
 
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
@@ -378,7 +381,15 @@ end do
     allocate(bin_centers(nbins))
     bin_centers = aero_props%bin_centers(nbins)
 
+    do irange = 1, aero_props%nranges()
+        call master_aero_state(lchnk)%ptr%update_range(irange, ncol)
+    end do
+
+    bins2ranges = aero_props%bins2ranges(nbins)
+    irange = 1
     do ibin = 1, nbins  ! main loop over aerosol size binsaero
+        irange = bins2ranges(ibin)
+
         do lphase = 1, 2 ! interstitial/cloud borne forms
             if (lphase == 1) then ! interstitial
 
@@ -395,26 +406,20 @@ end do
             end if
         end do
 
-
     ! loop through species_in_bin
     ! do some weird jvlc stuff -> find "mm", tracer index => use ncnst_tot
     ! jvlc = 1 number dry
     ! jvlc = 2
     ! jvlc = 3
     ! jvlc = 4
-        do irange = 1, aero_props%nranges()
-            call master_aero_state(lchnk)%ptr%update_range(irange, ncol)
-        end do
 
-        do_dust_sed = .true.
+        bin_mmr_tend = 0._r8
+        bin_mmr_tot = 0._r8
+        bin_num_tend = 0._r8
+
         do icol = 1, ncol
             do ilev = 1, pver
-                bin_mmr_tot(icol, ilev) = 1._r8 !master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
-                !if ( bin_mmr_tot(icol,ilev) == 0._r8 ) then
-!                    do_dust_sed=.false.
-                !    small = 1.e6_r8 * tiny( small )
-                !    bin_mmr_tot(icol,ilev) = small
-                !end if
+                bin_mmr_tot(icol, ilev) = master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
             end do
         end do
 
@@ -424,25 +429,42 @@ end do
 
     ! bin_mmr_tot intent(in), was state%q before. ptend%q is replaced by mmr_tend
     ! bin_mmr_tend(pcols, pver)
-        if (do_dust_sed) then
-
-            if (masterproc) then
-   write(iulog,*) 'DEBUG: min/max pint ',  &
-        minval(state%pint(1:ncol,1:pverp)), maxval(state%pint(1:ncol,1:pverp))
-   write(iulog,*) 'DEBUG: min/max bin_mmr_tot ',  &
-        minval(bin_mmr_tot(1:ncol,1:pver)), maxval(bin_mmr_tot(1:ncol,1:pver))
-end if
 
         call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, &
-            bin_mmr_tot(:ncol,:), pvmzaer, bin_mmr_tend, sflx )
-            if (masterproc) then
-                write(iulog,*)"DEBUG: dust_sediment_tend"
-            end if
-        end if
+            bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
+            ! tend(pcols, pver)
+            ! sflx(pcols)
+
         ! TODO: add tendency to ranges
+        ! tend(pcols, pver) -> mass removed from bins
 
+        dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
+        do icol = 1, ncol
+            do ilev = 1, pver
+                bin_num_tend(icol, ilev) = bin_mmr_tend(icol, ilev) / master_aero_state(lchnk)%ptr%sec_aero_props%particle_volume(ibin) &
+                        / dens_aer(icol, ilev)
+            end do
+        end do
 
+        ! subtract from master_aero_state(lchnk)
+       ! master_aero_state(lchnk)%ptr%bin_numconc(:,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc(:,:,ibin) - bin_num_tend
+        ! add up mass in range
+       ! range_mmr_tend(:,:,irange) = range_mmr_tend(:,:,irange) + bin_mmr_tend(:,:)
     end do
+
+    !do irange = 1, nrange
+    !    do ispec = 1, aero_props%range_nspecies(irange)
+        ! mass fraction of each species
+    !    massfrac = master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:,:,ispec) &
+    !                / sum(master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:,:,:), dim=3)
+    !    species_tend = range_mmr_tend(:,:,irange)*massfrac
+        ! subtract from mmr
+    !    master_aero_state(lchnk%ptr%aero_range_state(irange)%mmr(:,:,ispec)) = &
+    !                    master_aero_state(lchnk%ptr%aero_range_state(irange)%mmr(:,:,ispec)) &
+    !                    - species_tend
+        ! update_range ? mass fractions don't change
+    !    end do
+    !end do
 
 ! TODO outfld
 
