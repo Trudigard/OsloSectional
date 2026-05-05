@@ -238,10 +238,8 @@ contains
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: totalEmissionFlux(pcols)    ! sum emission flux over all sizes
     real(r8) :: cflx_tmp(pcols,dust_nbin)
-    integer  :: bins2ranges(aero_props%nbins())
     character(len=*), parameter :: subname = 'dust_emis'
 
-    bins2ranges = aero_props%bins2ranges(aero_props%nbins())
     ! Filter away unreasonable values for soil erodibility
     ! (using low values e.g. gives emissions in greenland..)
     where(soil_erodibility(:,lchnk) < 0.1_r8)
@@ -272,7 +270,7 @@ contains
         cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
         do irange = 1, dust_nrange
             ! emissions in kg/m2/s to ranges
-            if (bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
+            if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
                 cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
             end if
         end do

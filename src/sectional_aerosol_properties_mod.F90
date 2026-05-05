@@ -6,6 +6,7 @@ module sectional_aerosol_properties_mod
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
+   use string_utils, only: int2str
 
   implicit none
 
@@ -875,7 +876,10 @@ contains
 
     character(len=*), parameter :: subname = 'num_names'
 
-    call endrun(subname//' is not yet implemented')
+    name_a = 'num_'//trim(int2str(bin_ndx))
+    name_c = 'num_'//trim(int2str(bin_ndx))//'_c'
+ !   call endrun(subname//' is not yet implemented')
+!     call rad_cnst_get_info(0,bin_ndx, num_name=name_a, num_name_cw=name_c)
 
   end subroutine num_names
 
@@ -1213,13 +1217,13 @@ contains
   ! returns the total number of species objects
   !------------------------------------------------------------------------------
 
-  function bins2ranges(self, nbins)  result(res)
+  function bins2ranges(self, ibin)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in)         :: nbins
-    integer                     :: res(nbins)
+    integer, intent(in)         :: ibin
+    integer                     :: res
     character(len=*), parameter :: subname = 'bins2ranges'
 
-    res = self%bins2ranges_(:min(nbins,size(self%bins2ranges_)))
+    res = self%bins2ranges_(ibin)
 
   end function bins2ranges
   !------------------------------------------------------------------------------
@@ -1319,6 +1323,8 @@ contains
 
     call endrun(subname//' is not yet implemented')
 
+    !call aero_props%rebin_bulk_fluxes('dust', dep_fluxes, bulk_dst_edges, dst_fluxes, errstat, errstr)
+
     ! Mass of species in bin
     ! tot_mass_in_range = sum_range_masses
     ! tot_mass_in_bin = number_in_bin * volume_of_particle_in_bin * density(given)
@@ -1328,7 +1334,9 @@ contains
     ! Add up for bulk
     !do ibin = 1, self%nbins()
 
-
+    error_code = 0
+    bulk_fluxes = 0._r8
+    error_string = ''
 
 
 !   end do
@@ -1345,7 +1353,10 @@ contains
     character(len=aero_name_len) :: modetype
     character(len=*), parameter :: subname = 'hydrophilic'
 
-    call endrun(subname//' is not yet implemented')
+!    call endrun(subname//' is not yet implemented')
+! TODO: check sizing
+! depends on size -> modal: "accum"
+    hydrophilic = ( self%bin_centers_(bin_ndx) > 50._r8 .and. self%bin_centers_(bin_ndx) < 500._r8 )
 
   end function hydrophilic
 
