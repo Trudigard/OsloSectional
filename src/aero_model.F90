@@ -21,6 +21,7 @@ module aero_model
   use infnan,            only: nan, assignment(=)
   use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
   use sectional_aerosol_state_mod, only: sectional_aerosol_state, aero_state_ptr
+  use string_utils,      only: int2str
 
   implicit none
   private
@@ -128,7 +129,7 @@ contains
     use string_utils,   only: int2str
     use mo_setsox,      only : setsox, has_sox
   use ppgrid,               only: begchunk, endchunk, pcols, pver
-
+    use aero_deposition_cam, only: aero_deposition_cam_init
     !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
     ! args
@@ -170,7 +171,7 @@ contains
         end do
   !     aero_state => sectional_aerosol_state(phys_state, pbuf)
       !  end do
-!        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
+       ! call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
     end if
 
     call dust_init(aero_props)
@@ -274,6 +275,7 @@ end do
 !       (moles-x/mole-air) for chemical species l in aerosol mode m
 !       that is in clear air or interstitial air (but not in cloud water)
     use dust_model,        only: dust_names, dust_nbin
+    use aero_deposition_cam,only: aero_deposition_cam_setdry
 
 ! TODO: move out state, cam_in, cam_out, ptend, pbuf -> e.g. move to different subroutine for now
     ! args
@@ -306,9 +308,12 @@ end do
     integer :: m                       ! aerosol mode index
     integer :: mm                      ! tracer index
     integer :: i
-    integer :: ibin, nbins, icol, ilev, irange
+    integer :: ibin, nbins, icol, ilev, irange, ispec, ierr
 
     real(r8) :: sflx(pcols)
+    real(r8) :: sflx_num(pcols)
+    real(r8) :: sflx_range_species(pcols)
+    real(r8),allocatable :: sflx_range(:,:)
 
     real(r8) :: tvs(pcols,pver)
     real(r8) :: rho(pcols,pver)      ! air density in kg/m3
@@ -326,11 +331,12 @@ end do
 
     real(r8) :: vlc_dry(pcols,pver,4)     ! dep velocity ! TODO: get rid of last dimension?
     real(r8) :: vlc_grv(pcols,pver,4)     ! dep velocity
-    real(r8)::  vlc_trb(pcols,4)          ! dep velocity
+    real(r8) ::  vlc_trb(pcols,4)          ! dep velocity
     real(r8) :: aerdepdryis(pcols,pcnst)  ! aerosol dry deposition (interstitial)
+    real(r8) :: massfrac(pcols, pver)
     real(r8), allocatable :: bin_centers(:)
 
-!    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
+    real(r8) :: aerdepdrycw(pcols,pcnst)  ! aerosol dry deposition (cloud water)
 !    real(r8), pointer :: fldcw(:,:)
 !    real(r8), pointer :: dgncur_awet(:,:,:)
 !    real(r8), pointer :: wetdens(:,:,:)
@@ -340,11 +346,22 @@ end do
     real(r8) :: bin_mmr_tot(pcols, pver)
     real(r8) :: bin_num_tend(pcols, pver)
     real(r8), allocatable :: range_mmr_tend(:, :, :) ! pcols, pver, nspecies_tot
-    real(r8), allocatable :: bins2ranges(:)
+    character(len=15) :: species_tracername
+
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
-    allocate(range_mmr_tend(pcols, pver, aero_props%nranges()))
-    allocate(bins2ranges(aero_props%nbins()))
+    allocate(range_mmr_tend(pcols, pver, aero_props%nranges()), stat=ierr)
+    if( ierr /= 0 ) then
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating range_mmr_tend")
+    end if
+    allocate(bin_centers(nbins), stat=ierr)
+    if( ierr /= 0 ) then
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating bin_centers")
+    end if
+    allocate(sflx_range(pcols, aero_props%nranges()), stat=ierr)
+    if( ierr /= 0 ) then
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating sflx_range")
+    end if
 
     landfrac => cam_in%landfrac(:)
     icefrac  => cam_in%icefrac(:)
@@ -354,6 +371,9 @@ end do
 
     lchnk = state%lchnk
     ncol  = state%ncol
+
+    aerdepdryis = 0._r8
+    aerdepdrycw = 0._r8
 
     ! calc ram and fv over ocean and sea ice ...
     call calcram( ncol,landfrac,icefrac,ocnfrac,obklen,&
@@ -378,33 +398,33 @@ end do
 !
     dens_aer(:,:) = 0._r8
     nbins = aero_props%nbins()
-    allocate(bin_centers(nbins))
     bin_centers = aero_props%bin_centers(nbins)
 
     do irange = 1, aero_props%nranges()
         call master_aero_state(lchnk)%ptr%update_range(irange, ncol)
     end do
 
-    bins2ranges = aero_props%bins2ranges(nbins)
     irange = 1
-    do ibin = 1, nbins  ! main loop over aerosol size binsaero
-        irange = bins2ranges(ibin)
+    do ibin = 1, nbins  ! main loop over aerosol size bins aero
+        irange = aero_props%bins2ranges(ibin)
 
         do lphase = 1, 2 ! interstitial/cloud borne forms
             if (lphase == 1) then ! interstitial
+                ! reset tmp arrays
+                bin_mmr_tend = 0._r8
+                bin_mmr_tot = 0._r8
+                bin_num_tend = 0._r8
 
 ! TODO: use WET radius and density in future!!
-                rad_aer(1:ncol,:) = bin_centers(ibin)
+                rad_aer(1:ncol,:) = bin_centers(ibin)*1.e-9_r8 ! convert to m
                 dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
-                jvlc = 1 ! TODO: what is this?
+                jvlc = 1 ! TODO: remove since we don't use masses ?
 
+                ! calculate deposition velocities of single particles
                 call aero_depvel_part(ncol,state%t(:,:), state%pmid(:,:), ram1, fv, &
                              vlc_dry(:,:,jvlc), vlc_trb(:, jvlc), vlc_grv(:,:,jvlc), &
                              rad_aer(:,:), dens_aer(:,:), lchnk)
             ! if lphase == 2 then cloud-borne
-
-            end if
-        end do
 
     ! loop through species_in_bin
     ! do some weird jvlc stuff -> find "mm", tracer index => use ncnst_tot
@@ -412,78 +432,87 @@ end do
     ! jvlc = 2
     ! jvlc = 3
     ! jvlc = 4
+                ! get total mass mixing ratio in a bin with #/kg and total density
+                do icol = 1, ncol
+                    do ilev = 1, pver
+                        bin_mmr_tot(icol, ilev) = master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
+                    end do
+                end do
 
-        bin_mmr_tend = 0._r8
-        bin_mmr_tot = 0._r8
-        bin_num_tend = 0._r8
+                ! convert velocity to Pa/s
+                pvmzaer(:ncol,1)=0._r8
+                pvmzaer(:ncol,2:pverp) = vlc_dry(:ncol,:,jvlc)
+                pvmzaer(:ncol,2:pverp) = pvmzaer(:ncol,2:pverp) * rho(:ncol,:)*gravit
 
-        do icol = 1, ncol
-            do ilev = 1, pver
-                bin_mmr_tot(icol, ilev) = master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
-            end do
+                ! calculate deposition fluxes NOTE: "dust_sediment_tend" is valid for all aerosol, not just dust
+                ! state%q has been changed to bin_mmr_tot (intent(in))
+                ! ptend%q has been changed to bin_mmr_tend(pcols, pver)
+
+                master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin) = 100._r8
+                call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin), pvmzaer, bin_num_tend(:,:), sflx_num )
+                call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
+
+                ! calculate #/kg tendency and put tendency to state
+                master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin) &
+                                + bin_num_tend(:ncol,:)
+
+                dep_trb = 0._r8
+                dep_grv = 0._r8
+
+                do i=1, ncol
+                    if ( vlc_dry(i,pver,jvlc) /= 0._r8 ) then
+                        dep_trb(i)=sflx(i)*vlc_trb(i,jvlc)/vlc_dry(i,pver,jvlc)
+                        dep_grv(i)=sflx(i)*vlc_grv(i,pver,jvlc)/vlc_dry(i,pver,jvlc)
+                    end if
+                end do
+
+                call outfld( 'num_'//trim(int2str(ibin))//'DDF', sflx_num, pcols, lchnk)
+                call outfld( 'num_'//trim(int2str(ibin))//'TBF', dep_trb, pcols, lchnk)
+                call outfld( 'num_'//trim(int2str(ibin))//'GVF', dep_grv, pcols, lchnk)
+                call outfld( 'num_'//trim(int2str(ibin))//'DTQ', master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin), pcols, lchnk)
+
+            end if
         end do
 
-        pvmzaer(:ncol,1)=0._r8
-        pvmzaer(:ncol,2:pverp) = vlc_dry(:ncol,:,jvlc)
-        pvmzaer(:ncol,2:pverp) = pvmzaer(:ncol,2:pverp) * rho(:ncol,:)*gravit
+        ! add up mass in a range
+        range_mmr_tend(:ncol,:,irange) = range_mmr_tend(:ncol,:,irange) + bin_mmr_tend(:ncol,:)
+        sflx_range(:,irange) = sflx_range(:,irange) + sflx
 
-    ! bin_mmr_tot intent(in), was state%q before. ptend%q is replaced by mmr_tend
-    ! bin_mmr_tend(pcols, pver)
+    ! calculate the tendency for each species/range
+    do irange = 1, aero_props%nranges()
+        do ispec = 1, aero_props%range_nspecies(irange)
+            sflx_range_species = 0._r8
+            species_tracername = ''
 
-        call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, &
-            bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
-            ! tend(pcols, pver)
-            ! sflx(pcols)
+            ! mass fraction of each species
+            massfrac(:ncol,:) = master_aero_state(lchnk)%ptr%aero_range_state(irange)%massfrac(:,:,ispec)
 
-        ! TODO: add tendency to ranges
-        ! tend(pcols, pver) -> mass removed from bins
+        ! move tendency into aero range state
+            master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec) = &
+                        master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec) &
+                        + range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
 
-        dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
-        do icol = 1, ncol
-            do ilev = 1, pver
-                bin_num_tend(icol, ilev) = bin_mmr_tend(icol, ilev) / master_aero_state(lchnk)%ptr%sec_aero_props%particle_volume(ibin) &
-                        / dens_aer(icol, ilev)
-            end do
+        ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
+            sflx_range_species(:ncol) = sflx_range(:ncol,irange) * massfrac(:ncol, pver)
+
+            species_tracername = master_aero_state(lchnk)%ptr%aero_range_state(irange)%range_name(ispec)
+
+            call outfld( trim(species_tracername)//'DDF', sflx_range_species, pcols, lchnk)
+            call outfld( trim(species_tracername)//'DTQ', master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec), pcols, lchnk)
         end do
-
-        ! subtract from master_aero_state(lchnk)
-       ! master_aero_state(lchnk)%ptr%bin_numconc(:,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc(:,:,ibin) - bin_num_tend
-        ! add up mass in range
-       ! range_mmr_tend(:,:,irange) = range_mmr_tend(:,:,irange) + bin_mmr_tend(:,:)
     end do
-
-    !do irange = 1, nrange
-    !    do ispec = 1, aero_props%range_nspecies(irange)
-        ! mass fraction of each species
-    !    massfrac = master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:,:,ispec) &
-    !                / sum(master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:,:,:), dim=3)
-    !    species_tend = range_mmr_tend(:,:,irange)*massfrac
-        ! subtract from mmr
-    !    master_aero_state(lchnk%ptr%aero_range_state(irange)%mmr(:,:,ispec)) = &
-    !                    master_aero_state(lchnk%ptr%aero_range_state(irange)%mmr(:,:,ispec)) &
-    !                    - species_tend
-        ! update_range ? mass fractions don't change
-    !    end do
-    !end do
-
-! TODO outfld
-
-
-! dust_sediment_tend (and d3ddflux) to change ptend
-! change cam_out:
-
+end do
 ! rebin bulk fluxes for 'dust'
     ! rebin_bulk_fluxes prep
     ! Mass of species in bin
 
-
     ! if the user has specified prescribed aerosol dep fluxes then
     ! do not set cam_out dep fluxes according to the prognostic aerosols
-    !if (.not.aerodep_flx_prescribed()) then
-    !   call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
-    !endif
+   ! if (.not.aerodep_flx_prescribed()) then
+   !    call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
+   ! endif
 
-  endsubroutine aero_model_drydep
+  end subroutine aero_model_drydep
 
   !=============================================================================
   !=============================================================================
