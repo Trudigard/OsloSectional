@@ -38,6 +38,8 @@ module sectional_aerosol_state_mod
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
      real(r8), allocatable :: mmr(:, :, :)            ! (ncol, pver, range_nspecies)
+     real(r8), allocatable :: mmr_tend(:,:,:)
+     real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
   end type aerosol_range_state
@@ -49,6 +51,7 @@ module sectional_aerosol_state_mod
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
+     real(r8), allocatable :: bin_numconc_tend(:,:,:)
      integer, allocatable :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
@@ -79,7 +82,7 @@ module sectional_aerosol_state_mod
      procedure :: wgtpct
      procedure :: bin_dry_density
      procedure :: update_range
-
+     procedure :: bin_species_mmr
      final :: destructor
 
   end type sectional_aerosol_state
@@ -139,6 +142,12 @@ contains
         return
     end if
 
+    allocate(newobj%bin_numconc_tend(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
     allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
@@ -151,8 +160,22 @@ contains
         return
     end if
 
+    newobj%bin_numconc = 0._r8
+    newobj%bin_numconc_tend = 0._r8
+    newobj%num_transport_ndx = 0
+
     do irange = 1, newobj%sec_aero_props%nranges()
         allocate(newobj%aero_range_state(irange)%mmr(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aero_range_state(irange)%mmr_tend(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aero_range_state(irange)%massfrac(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
@@ -187,6 +210,8 @@ contains
         newobj%aero_range_state(irange)%dry_density = 0._r8
         newobj%aero_range_state(irange)%hygroscopicity = 0._r8
         newobj%aero_range_state(irange)%mmr = 0._r8
+        newobj%aero_range_state(irange)%mmr_tend = 0._r8
+        newobj%aero_range_state(irange)%massfrac = 0._r8
         newobj%aero_range_state(irange)%range_name = ''
         newobj%aero_range_state(irange)%transport_ndx = 0
         newobj%aero_range_state(irange)%spec_ndx = 0
@@ -545,13 +570,11 @@ end subroutine destructor
     integer, intent(in) :: list_ndx        ! rad climate list number
     integer, intent(in) :: bin_ndx         ! bin number
     real(r8), intent(out) :: kappa(:,:)                 !
-    integer, allocatable :: bins2ranges(:)
     integer :: irange
 
     character(len=*), parameter :: subname = 'hygroscopicity'
-    allocate(bins2ranges(self%sec_aero_props%nbins()))
-    bins2ranges = self%sec_aero_props%bins2ranges(self%sec_aero_props%nbins())
-    irange = bins2ranges(bin_ndx)
+
+    irange = self%sec_aero_props%bins2ranges(bin_ndx)
     kappa = self%aero_range_state(irange)%hygroscopicity
 
   end subroutine hygroscopicity
@@ -708,15 +731,12 @@ end subroutine destructor
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in)   :: bin_ndx
     integer, intent(in)   :: ncol                 ! number of columns
-    integer, allocatable  :: bins2ranges(:)
     integer               :: irange
     real(r8)              :: ddens(ncol,pver)
 
     character(len=*), parameter :: subname = 'dry_density'
-    allocate(bins2ranges(self%sec_aero_props%nbins()))
-    bins2ranges = self%sec_aero_props%bins2ranges(self%sec_aero_props%nbins())
 
-    irange = bins2ranges(bin_ndx)
+    irange = self%sec_aero_props%bins2ranges(bin_ndx)
     ddens = self%aero_range_state(irange)%dry_density
 
   end function bin_dry_density
@@ -742,12 +762,19 @@ end subroutine destructor
     if ( present(mmr_tend) ) then
         self%aero_range_state(irange)%mmr = self%aero_range_state(irange)%mmr + mmr_tend(:,:,:)
     end if
-
-    range_total_mmr = sum(self%aero_range_state(irange)%mmr, dim=3) ! sum over species (kg/kg)
-
     ! reset density and hygroscopicity
     self%aero_range_state(irange)%dry_density = 0._r8
     self%aero_range_state(irange)%hygroscopicity = 0._r8
+    range_total_mmr = 0._r8
+    self%aero_range_state(irange)%massfrac = 0._r8
+
+    range_total_mmr = sum(self%aero_range_state(irange)%mmr, dim=3) ! sum over species (kg/kg)
+
+    ! calculate mass fractions
+    do ispec = 1, self%sec_aero_props%range_nspecies(irange)
+        self%aero_range_state(irange)%massfrac(:,:,ispec) = self%aero_range_state(irange)%mmr(:,:,ispec) / range_total_mmr
+    end do
+
 
     ! volume of all aerosol /kg_air in a range (m3_aer/kg_air)
     do ibin = range_bounds(irange, 1), range_bounds(irange, 2)
@@ -760,8 +787,6 @@ end subroutine destructor
         self%aero_range_state(irange)%dry_density = 0._r8  ! or some safe default
     end where
 
-
-
     !self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
     do ispec = 1,self%sec_aero_props%range_nspecies(irange)
         ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
@@ -772,5 +797,19 @@ end subroutine destructor
     end do
 
   end subroutine update_range
+
+  function bin_species_mmr(self, bin_ndx, species_ndx, col_ndx, lyr_ndx) result(spec_mmr_in_bin)
+    class(sectional_aerosol_state), intent(in) :: self
+    integer, intent(in) :: bin_ndx
+    integer, intent(in) :: species_ndx
+    integer, intent(in) :: col_ndx, lyr_ndx
+    integer             :: irange
+    real(r8)            :: spec_mmr_in_bin
+
+    irange = self%sec_aero_props%bins2ranges(bin_ndx)
+    spec_mmr_in_bin = self%aero_range_state(irange)%massfrac(col_ndx, lyr_ndx, species_ndx) &
+                        * self%ambient_total_bin_mmr(self%sec_aero_props, bin_ndx, col_ndx, lyr_ndx)
+
+  end function bin_species_mmr
 
 end module sectional_aerosol_state_mod
