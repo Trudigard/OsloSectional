@@ -111,6 +111,7 @@ contains
     integer                      :: ncnst_tot=0
     ! TODO: ncnst_tot = tracers ??
     integer,allocatable          :: nspecies(:) ! nspecies per bin (given by base_object)
+    integer,allocatable          :: nmasses(:)  ! nspecies for first bin in a range, 0 elsewhere
     real(r8),allocatable         :: alogsig(:) ! given by base obj
     real(r8),allocatable         :: f1(:) ! given by base obj: Abdul-Razzak 1998 eq 28
     real(r8),allocatable         :: f2(:) ! given by base obj: Abdul-Razzak 1998 eq 29
@@ -366,6 +367,12 @@ contains
             return
         end if
 
+        allocate( nmasses(oslo_sectional_nbins), stat=ierr)
+        if(ierr/=0) then
+            call endrun(subname// ": Error "//int2str(ierr)//" allocating nmasses")
+            return
+        end if
+
         allocate( bins2ranges(oslo_sectional_nbins), stat=ierr)
         if(ierr/=0) then
             call endrun(subname// ": Error "//int2str(ierr)//" allocating bins2ranges'")
@@ -436,15 +443,14 @@ contains
 
         ncnst_tot = oslo_sectional_nbins + sum(oslo_sectional_nspecies(:oslo_sectional_nranges)) ! nbins + sum(nspecies)
 
+        nmasses = 0
         ! initialize bins2ranges array
-        do ibin=1,oslo_sectional_nbins
-            do irange=1,oslo_sectional_nranges
-                if (ibin >= range_bounds(irange,1) .and. ibin <= range_bounds(irange,2)) then
-                    bins2ranges(ibin) = irange
-                    nspecies(ibin) = oslo_sectional_nspecies(irange)
-                    exit
-                end if
+        do irange=1,oslo_sectional_nranges
+            do ibin = range_bounds(irange, 1), range_bounds(irange, 2)
+                bins2ranges(ibin) = irange
+                nspecies(ibin) = oslo_sectional_nspecies(irange)
             end do
+            nmasses(range_bounds(irange,1)) = nspecies(range_bounds(irange, 1))
         end do
 
         ! fill species objects with bin info
@@ -552,7 +558,7 @@ contains
         if (allocated(bins2ranges)) deallocate(bins2ranges)
         if (allocated(oslo_sectional_species_properties)) deallocate(oslo_sectional_species_properties)
 
-        call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nspecies, alogsig, f1, f2, ierr)
+        call newobj%initialize(oslo_sectional_nbins, ncnst_tot, nspecies, nmasses, alogsig, f1, f2, ierr)
 !==================================================================================================
 ! Report
 !==================================================================================================
@@ -1217,10 +1223,9 @@ contains
   ! returns the total number of species objects
   !------------------------------------------------------------------------------
 
-  function bins2ranges(self, ibin)  result(res)
+  integer function bins2ranges(self, ibin)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in)         :: ibin
-    integer                     :: res
     character(len=*), parameter :: subname = 'bins2ranges'
 
     res = self%bins2ranges_(ibin)

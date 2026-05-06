@@ -171,7 +171,7 @@ contains
         end do
   !     aero_state => sectional_aerosol_state(phys_state, pbuf)
       !  end do
-       ! call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
+        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
     end if
 
     call dust_init(aero_props)
@@ -508,9 +508,9 @@ end do
 
     ! if the user has specified prescribed aerosol dep fluxes then
     ! do not set cam_out dep fluxes according to the prognostic aerosols
-   ! if (.not.aerodep_flx_prescribed()) then
-   !    call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
-   ! endif
+    if (.not.aerodep_flx_prescribed()) then
+       call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
+    endif
 
   end subroutine aero_model_drydep
 
