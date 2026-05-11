@@ -35,11 +35,11 @@ module sectional_aerosol_properties_mod
      integer               :: nranges_ = 0
      integer               :: nspecies_tot_ = 0
      integer, allocatable  :: range_nspecies_(:)
-     real(r8), allocatable :: bin_centers_(:) ! radii at bin center (nm)
-     real(r8), allocatable :: bin_bounds_(:,:)! radii at bin bounds (nm)
+     real(r8), allocatable :: bin_centers_(:) ! radii at bin center (m)
+     real(r8), allocatable :: bin_bounds_(:,:)! radii at bin bounds (m)
      integer, allocatable  :: range_bounds_(:,:) ! index of bins at range bounds
      integer, allocatable  :: bins2ranges_(:) ! range index for each bin
-     real(r8), allocatable :: particle_volume_(:) ! volume of a single particle in a bin (center radius)
+     real(r8), allocatable :: particle_volume_(:) ! volume of a single particle in a bin (center radius) in m3
      type(aerosol_species_properties), allocatable :: aer_spec_prop(:)
 
    contains
@@ -545,12 +545,12 @@ contains
         newobj%nranges_ = oslo_sectional_nranges
         newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
         newobj%range_nspecies_ = oslo_sectional_nspecies(:oslo_sectional_nranges)
-        newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins)
-        newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :)
+        newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins) * 1e-9             ! nm to m
+        newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :) * 1e-9            ! nm to m
         newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
         newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
     ! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
-        newobj%particle_volume_ = 4/3*pi*(newobj%bin_centers_**3 * 10._r8**(-9)) ! convert nm to m
+        newobj%particle_volume_ = 4/3*pi*(newobj%bin_centers_**3)
 
         ! deallocate local variables
         if (allocated(bin_centers)) deallocate(bin_centers)
@@ -577,7 +577,7 @@ contains
             end do
 
             do ibin=1,oslo_sectional_nbins,5
-                write(iulog,*) 'bin_centers = ', newobj%bin_centers_(ibin:min(ibin+4, oslo_sectional_nbins))
+                write(iulog,*) 'bin_centers in nm = ', newobj%bin_centers_(ibin:min(ibin+4, oslo_sectional_nbins))*1e9
             end do
 
             do ibin=1,oslo_sectional_nbins,5
@@ -585,7 +585,7 @@ contains
             end do
 
             do ibin=1,oslo_sectional_nbins,5
-                write(iulog,*) 'particle_volume = ',newobj%particle_volume_(ibin:min(ibin+4, oslo_sectional_nbins))
+                write(iulog,*) 'particle_volume in m3 = ',newobj%particle_volume_(ibin:min(ibin+4, oslo_sectional_nbins))
             end do
 
 
@@ -595,8 +595,8 @@ contains
             ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
 
             do ibin=1,oslo_sectional_nbins
-                write(iulog,*) 'bin_bounds = ', newobj%bin_bounds_(ibin,1), &
-                                        ' : ', newobj%bin_bounds_(ibin,2)
+                write(iulog,*) 'bin_bounds in nm = ', newobj%bin_bounds_(ibin,1)*1e9, &
+                                        ' : ', newobj%bin_bounds_(ibin,2)*1e9
             end do
             do irange=1,oslo_sectional_nranges !TODO FIX format
                 write(iulog,*) 'range_bounds = ', newobj%range_bounds_(irange,1), &
@@ -1376,8 +1376,8 @@ contains
 
     bulk_fluxes(:) = 0._r8
 ! TODO: move this subroutine to state_mod to be able to interpolate to bins instead of ranges
-    ! lower range bound in m:  bin_bounds(range_bounds(irange, 1),1) * 1e-9
-    ! upper range bound in m:  bin_bounds(range_bounds(irange, 2),2) * 1e-9
+    ! lower range bound in m:  bin_bounds(range_bounds(irange, 1),1)
+    ! upper range bound in m:  bin_bounds(range_bounds(irange, 2),2)
     ! if edge between bulk_edges -> put in
 ! TODO: change to ibin
   !  do irange = 1, self%nbins()
@@ -1424,7 +1424,7 @@ contains
 !    call endrun(subname//' is not yet implemented')
 ! TODO: check sizing
 ! depends on size -> modal: "accum"
-    hydrophilic = ( self%bin_centers_(bin_ndx) > 50._r8 .and. self%bin_centers_(bin_ndx) < 500._r8 )
+    hydrophilic = ( self%bin_centers_(bin_ndx)*1e9 > 50._r8 .and. self%bin_centers_(bin_ndx)*1e9 < 500._r8 )
 
   end function hydrophilic
 

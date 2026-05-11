@@ -418,7 +418,7 @@ end do
                 bin_num_tend = 0._r8
 
 ! TODO: use WET radius and density in future!!
-                rad_aer(1:ncol,:) = bin_centers(ibin)*1.e-9_r8 ! convert to m
+                rad_aer(1:ncol,:) = bin_centers(ibin)
                 dens_aer(1:ncol,:) = master_aero_state(lchnk)%ptr%bin_dry_density(ibin, ncol)
                 jvlc = 1 ! TODO: remove since we don't use masses ?
 

@@ -410,15 +410,15 @@ contains
     integer              :: ibin, i, j, n
 
     ! output
-    real(r8), intent(out):: vol_frac(nbin)
+    real(r8), intent(out):: vol_frac(nbin)          ! unitless
 
     do ibin = 1, nbin
         ! integrate function in log space for each bin diameter
         n = 10
         vol_old = 0.0_r8
 
-        D1 = log( bin_bounds(ibin,1) /500._r8 ) ! transform to diameter and um
-        D2 = log( bin_bounds(ibin,2) /500._r8 )
+        D1 = log( bin_bounds(ibin,1) *1e6_r8 * 2 ) ! transform to diameter and um
+        D2 = log( bin_bounds(ibin,2) *1e6_r8 * 2 )
 
         do i = 1, 1000
             h = (D2 - D1) / n ! with of each subinterval
