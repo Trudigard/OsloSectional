@@ -83,6 +83,7 @@ module sectional_aerosol_properties_mod
      procedure :: range_bounds
      procedure :: kappa
      procedure :: molecular_weight
+     procedure :: specname
 
      final :: destructor
   end type sectional_aerosol_properties
@@ -707,8 +708,29 @@ contains
     complex(r8), pointer, optional, intent(out) :: refindex_lw(:) ! long wave species refractive indices
 
     integer :: ilist
+    integer :: range_ndx_in, specprop_ndx, spec_counter, ispec
     character(len=*), parameter :: subname = 'get'
 
+    range_ndx_in = self%bins2ranges(bin_ndx)
+
+    ! find species properties index
+    ! the input species_ndx is the index in the aero_props%indexer
+    ! to find the index of the correct entry in the species_properties object array,
+    ! this needs to be converted to specprop_ndx, since not all species live in all bins/ranges
+    ! not every species_ndx corresponds to the same species
+    ! every specprop_ndx DOES correspond to the same species
+
+    spec_counter = 0                                                            ! make a counter for # active species in a range
+    specprop_ndx = 0                                                            ! initialize index for species properties object array
+
+    do ispec = 1, self%nspecies_tot()                                           ! loop through the species properties
+        if ( any(self%aer_spec_prop(ispec)%range_ndx == range_ndx_in) ) then    ! find out if the species is in the requested range
+            spec_counter = spec_counter + 1                                     ! if so, add to the counter
+            if ( spec_counter == species_ndx ) then                             ! if counter is equal to species index
+                specprop_ndx = ispec                                            ! then we know what species is meant!
+            end if
+        end if
+    end do
 
     if (present(list_ndx)) then
         call endrun(subname//' list_ndx is not yet implemented')
@@ -723,11 +745,19 @@ contains
     end if
 
     if (present(spectype)) then
-        spectype = self%aer_spec_prop(species_ndx)%spectype
+        if ( specprop_ndx /= 0) then
+            spectype = self%aer_spec_prop(specprop_ndx)%spectype
+        else
+            spectype = ''
+        end if
     end if
 
     if (present(specname)) then
-        specname = self%aer_spec_prop(species_ndx)%specname
+        if ( specprop_ndx /= 0) then
+            specname = self%aer_spec_prop(specprop_ndx)%specname
+        else
+            specname = ''
+        end if
     end if
 
     if (present(specmorph)) then
@@ -823,10 +853,13 @@ contains
   real(r8) function density(self, species_ndx)
 
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_ndx
+    integer, intent(in) :: species_ndx                          ! element in the sec_aero_props array
 
-    density = self%aer_spec_prop(species_ndx)%density
-
+    if (species_ndx > 0) then
+        density = self%aer_spec_prop(species_ndx)%density
+    else
+        density = 0._r8
+    end if
   end function density
 
   !------------------------------------------------------------------------------
@@ -837,7 +870,11 @@ contains
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: species_ndx
 
-    kappa = self%aer_spec_prop(species_ndx)%kappa
+    if (species_ndx > 0) then
+       kappa = self%aer_spec_prop(species_ndx)%kappa
+    else
+       kappa = 0._r8
+    end if
 
   end function kappa
 
@@ -1127,13 +1164,13 @@ contains
   !------------------------------------------------------------------------------
   ! returns range bounds
   !------------------------------------------------------------------------------
-  function range_bounds(self, nranges) result(res)
+  integer function range_bounds(self, irange, bound) result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: nranges
-    integer :: res(nranges,2)
+    integer, intent(in) :: irange
+    integer, intent(in) :: bound ! 1 for lower bound, 2 for upper bound
     character(len=*), parameter :: subname = 'range_bounds'
 
-    res = self%range_bounds_(:min(nranges,size(self%range_bounds_)),:)
+    res = self%range_bounds_(irange, bound)
 
   end function range_bounds
 
@@ -1319,14 +1356,40 @@ contains
 
     class(sectional_aerosol_properties), intent(in) :: self
     character(len=*),intent(in) :: bulk_type       ! aerosol type to rebin
-    real(r8), intent(in) :: dep_fluxes(:)          ! kg/m2
+    real(r8), intent(in) :: dep_fluxes(:)          ! kg/m2 -> for each bin!
     real(r8), intent(in) :: diam_edges(:)          ! meters
     real(r8), intent(out) :: bulk_fluxes(:)        ! kg/m2
     integer,  intent(out) :: error_code            ! error code (0 if no error)
     character(len=*), intent(out) :: error_string  ! error string
+
+    integer :: irange, ispec, nbulk
+    logical :: type_not_found
+
     character(len=*), parameter :: subname = 'rebin_bulk_fluxes'
 
-    call endrun(subname//' is not yet implemented')
+    error_code = 0
+    error_string = ' '
+
+    type_not_found = .true.
+
+    nbulk = size(bulk_fluxes)
+
+    bulk_fluxes(:) = 0._r8
+! TODO: move this subroutine to state_mod to be able to interpolate to bins instead of ranges
+    ! lower range bound in m:  bin_bounds(range_bounds(irange, 1),1) * 1e-9
+    ! upper range bound in m:  bin_bounds(range_bounds(irange, 2),2) * 1e-9
+    ! if edge between bulk_edges -> put in
+! TODO: change to ibin
+  !  do irange = 1, self%nbins()
+  !      do ispec = 1, self%nspecies_tot()
+  !          if (self%aer_spec_prop(ispec)%spectype == bulk_type) then
+  !              type_not_found = .false.
+  !          end if
+
+        ! if spectype = bulktype then
+        ! type_not_found = .false.
+
+  !  end do
 
     !call aero_props%rebin_bulk_fluxes('dust', dep_fluxes, bulk_dst_edges, dst_fluxes, errstat, errstr)
 
@@ -1364,5 +1427,17 @@ contains
     hydrophilic = ( self%bin_centers_(bin_ndx) > 50._r8 .and. self%bin_centers_(bin_ndx) < 500._r8 )
 
   end function hydrophilic
+
+  !------------------------------------------------------------------------------
+  ! Returns specname with aer_spec_props index
+  !------------------------------------------------------------------------------
+  function specname(self, specprop_ndx) result(species_name)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in)           :: specprop_ndx
+    character(len=:), allocatable :: species_name
+
+    species_name = self%aer_spec_prop(specprop_ndx)%specname
+
+  end function specname
 
 end module sectional_aerosol_properties_mod

@@ -137,7 +137,7 @@ contains
     dust_nbin = 0
 
     do ispec = 1, aero_props%nspecies_tot() !TODO: currently this just works with one dust species
-        call aero_props%get(1, ispec, specname=name)
+        name = aero_props%specname(ispec)
         if (trim(name) == 'DU') then
             dust_species_ndx = ispec
             dust_nspecies = dust_nspecies + 1

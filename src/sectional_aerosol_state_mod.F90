@@ -218,12 +218,16 @@ contains
 
         ispec=0
         do solsym_ndx = 1, size(solsym)
+
             ubar_ndx = index(solsym(solsym_ndx), '_R'//int2str(irange))
+
             if ( ubar_ndx > 0 ) then
                 ispec = ispec + 1
+
                 if ( ispec > newobj%sec_aero_props%range_nspecies(irange) ) then
                     call endrun(subname//':: ERROR : number of species is larger than number of species in range')
                 end if
+
                 newobj%aero_range_state(irange)%range_name(ispec) = solsym(solsym_ndx)
                 call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state(irange)%transport_ndx(ispec), abort=.false.)
                 if ( newobj%aero_range_state(irange)%transport_ndx(ispec) < 0 ) then
@@ -232,8 +236,11 @@ contains
 
                 ! add index to connect to the species objects in aero_props
                 speciesname = solsym(solsym_ndx)
-                do ispecprops = 1, newobj%sec_aero_props%nspecies_tot()
-                    call newobj%sec_aero_props%get(bin_ndx=1,species_ndx=ispecprops, specname=speciesname_props)
+
+                do ispecprops = 1, newobj%sec_aero_props%range_nspecies(irange)
+                    ! translate irange to ibin
+                    ibin = newobj%sec_aero_props%range_bounds(irange, 1)
+                    call newobj%sec_aero_props%get(bin_ndx=ibin,species_ndx=ispecprops, specname=speciesname_props)
                     if ( speciesname(1:ubar_ndx-1) == trim( speciesname_props ) ) then ! before ubar_ndx -> species name
                         newobj%aero_range_state(irange)%spec_ndx(ispec) = ispecprops
                     end if
@@ -746,16 +753,12 @@ end subroutine destructor
     real(r8), optional, intent(in) :: mmr_tend(:,:,:) ! shape aero_props%range_nspecies (ncol, pver, range_nspecies) -> one array for one range
     integer, intent(in)  :: irange
     integer, intent(in)  :: ncol                 ! number of columns
-    integer, allocatable :: range_bounds(:,:)
     integer              :: ispec, ibin, ispecprop
     real(r8)             :: range_dry_volume(ncol, pver)
     real(r8)             :: range_total_mmr(ncol, pver)
 
-    allocate(range_bounds(self%sec_aero_props%nranges(), 2))
-
     range_dry_volume = 0._r8
     range_total_mmr = 0._r8
-    range_bounds = self%sec_aero_props%range_bounds(irange)
 
     ! update mmr of each component if mmr tendency has been passed as an argument
     ! else: update other state variables with mmr from before
@@ -777,7 +780,7 @@ end subroutine destructor
 
 
     ! volume of all aerosol /kg_air in a range (m3_aer/kg_air)
-    do ibin = range_bounds(irange, 1), range_bounds(irange, 2)
+    do ibin = self%sec_aero_props%range_bounds(irange, 1), self%sec_aero_props%range_bounds(irange, 2)
         range_dry_volume = range_dry_volume + self%dry_volume(self%sec_aero_props, 1, ibin, self%state%ncol, pver) !TODO: change input parameters
     end do
 
@@ -788,14 +791,15 @@ end subroutine destructor
     end where
 
     !self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
-    do ispec = 1,self%sec_aero_props%range_nspecies(irange)
-        ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
+    if ( self%sec_aero_props%range_nspecies(irange) /= 0 ) then
+        do ispec = 1,self%sec_aero_props%range_nspecies(irange)
+            ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
 ! TODO: source, total hygroscopicity parameter kappa_tot = SUM_OVER_ALL_SPECIES(volume_i/volume_tot * kappa_i)
-        self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
-            + self%aero_range_state(irange)%mmr(:,:,ispec) / range_dry_volume / &
-            self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
-    end do
-
+            self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
+                + self%aero_range_state(irange)%mmr(:,:,ispec) / range_dry_volume / &
+                self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
+        end do
+    end if
   end subroutine update_range
 
   function bin_species_mmr(self, bin_ndx, species_ndx, col_ndx, lyr_ndx) result(spec_mmr_in_bin)
