@@ -545,8 +545,8 @@ contains
         newobj%nranges_ = oslo_sectional_nranges
         newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
         newobj%range_nspecies_ = oslo_sectional_nspecies(:oslo_sectional_nranges)
-        newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins) * 1e-9             ! nm to m
-        newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :) * 1e-9            ! nm to m
+        newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins) * 1.e-9_r8             ! nm to m
+        newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :) * 1.e-9_r8            ! nm to m
         newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
         newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
     ! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
@@ -737,7 +737,7 @@ contains
     end if
 
     if (present(density)) then
-        call endrun(subname//' density is not yet implemented')
+        density = self%aer_spec_prop(specprop_ndx)%density
     end if
 
     if (present(hygro)) then
@@ -1362,52 +1362,101 @@ contains
     integer,  intent(out) :: error_code            ! error code (0 if no error)
     character(len=*), intent(out) :: error_string  ! error string
 
-    integer :: irange, ispec, nbulk
+    integer :: irange, ispecprop, nbulk, imas, ibin, mm, ibulk
     logical :: type_not_found
+    real(r8) :: spec_density, density
+    character(len=10) :: spectype
+    real(r8), allocatable :: bin_dep_flux(:), species_bin_dep_flux(:), adjusted_diameter(:)
+    real(r8), allocatable :: range_volume(:), range_dep_flux(:), spec_dep_flux_in(:), species_massfrac(:), spec_dep_flux(:), range_density(:)
 
     character(len=*), parameter :: subname = 'rebin_bulk_fluxes'
 
+    if (masterproc) then
+        write(iulog,*)"DEBUG: size of the dep_fluxes: ",size(dep_fluxes)
+        write(iulog,*)"DEBUG: size of the bulk_fluxes: ", size(bulk_fluxes)
+    end if
+
+    allocate(bin_dep_flux(self%nbins()), species_bin_dep_flux(self%nbins()), adjusted_diameter(self%nbins()))
+    allocate(range_volume(self%nranges()), range_dep_flux(self%nranges()), spec_dep_flux_in(self%nranges()))
+    allocate(range_density(self%nranges()), species_massfrac(self%nranges()), spec_dep_flux(self%nranges()))
+
+    bin_dep_flux = 0._r8
+    range_dep_flux = 0._r8
+    range_volume = 0._r8
+    spec_dep_flux = 0._r8
+    spec_dep_flux_in = 0._r8
+    species_bin_dep_flux = 0._r8
+    species_massfrac = 0._r8
+    adjusted_diameter = 0._r8
+    range_density = 0._r8
+
+    ! initialize
     error_code = 0
     error_string = ' '
-
+    bulk_fluxes = 0._r8
     type_not_found = .true.
 
     nbulk = size(bulk_fluxes)
 
-    bulk_fluxes(:) = 0._r8
-! TODO: move this subroutine to state_mod to be able to interpolate to bins instead of ranges
-    ! lower range bound in m:  bin_bounds(range_bounds(irange, 1),1)
-    ! upper range bound in m:  bin_bounds(range_bounds(irange, 2),2)
-    ! if edge between bulk_edges -> put in
-! TODO: change to ibin
-  !  do irange = 1, self%nbins()
-  !      do ispec = 1, self%nspecies_tot()
-  !          if (self%aer_spec_prop(ispec)%spectype == bulk_type) then
-  !              type_not_found = .false.
-  !          end if
+    ! Find out if the species exists
+    do ispecprop = 1, self%nspecies_tot()
+        if ( self%aer_spec_prop(ispecprop)%spectype == bulk_type ) then
+            type_not_found = .false.
+            exit
+        end if
+    end do
 
-        ! if spectype = bulktype then
-        ! type_not_found = .false.
+    ! if species doesn't exist, make an error
+    if (type_not_found) then
+        bulk_fluxes(:) = nan
+        error_code = 1
+        write(error_string,*) 'ERROR:: aerosol_properties:: ',subname,' bulk_type: ', bulk_type, ' not found'
+    else
+        do ibin = 1, self%nbins()
+            irange = self%bins2ranges(ibin)                                                                 ! find range corresponding to bin
+            do imas = 0, self%nmasses(ibin)                                                                      ! loop through the indexer
+                mm = self%indexer(ibin,imas)
+                if (imas == 0) then                                                                         ! when imas = 0, index is for bin number conc
+                    bin_dep_flux(ibin) = dep_fluxes(mm)
+                    range_volume(irange) = range_volume(irange) + dep_fluxes(mm) * self%particle_volume(ibin) ! sum up the volume for density calculation
+                else
+                    range_dep_flux(irange) = range_dep_flux(irange) + dep_fluxes(mm)                        ! sum up the deposition flux in kg/m2 for the range
+                    call self%get(ibin, mm, density=density, spectype=spectype)                             ! get the species density and species type
+                    if (trim(spectype) == trim(bulk_type)) then                                                         ! get dep flux for species to be re-binned
+                        spec_dep_flux_in(irange) = spec_dep_flux(irange) + dep_fluxes(mm)
+                        spec_density = density
+                    end if
+                end if
+            end do
+        end do
 
-  !  end do
+        ! calculate the mass fraction of the species in the range/bin
+        do irange = 1, self%nranges()
+            range_density(irange) = range_dep_flux(irange)/range_volume(irange)
+            species_massfrac(irange) = spec_dep_flux_in(irange)/range_dep_flux(irange)
+        end do
 
-    !call aero_props%rebin_bulk_fluxes('dust', dep_fluxes, bulk_dst_edges, dst_fluxes, errstat, errstr)
+        ! get the mass deposited for one species in each bin
+        do ibin = 1, self%nbins()
+            irange = self%bins2ranges(ibin)
+            species_bin_dep_flux(ibin) = species_massfrac(irange) * bin_dep_flux(ibin) * self%particle_volume(ibin)*range_density(irange) ! mass fraction * mass in a bin
 
-    ! Mass of species in bin
-    ! tot_mass_in_range = sum_range_masses
-    ! tot_mass_in_bin = number_in_bin * volume_of_particle_in_bin * density(given)
-    ! dust_mass_frac = tot_mass_in_range / dust_mass_in_range
-    ! mass_dust_in_bin = tot_mass_in_bin * dust_mass_frac
+            ! since all aerosol is mixed and only one species is re-binned here, we need to find the new smaller radius
+            adjusted_diameter(ibin) = ( ( ( species_bin_dep_flux(ibin) * 3._r8 ) / ( spec_density * bin_dep_flux(ibin) * 4._r8 * pi ) )**(1._r8/3._r8) ) * 2 ! convert to diameter
+            if ( adjusted_diameter(ibin) < diam_edges(1) ) then
+                bulk_fluxes(1) = bulk_fluxes(1) + species_bin_dep_flux(ibin)
+            else if ( adjusted_diameter(ibin) > diam_edges(-1)) then
+                bulk_fluxes(-1) = bulk_fluxes(-1) + species_bin_dep_flux(ibin)
+            else
+                do ibulk = 1, size(bulk_fluxes)-1
+                    if ( adjusted_diameter(ibin) > diam_edges(ibulk) .and. adjusted_diameter(ibin) < diam_edges(ibulk+1) ) then
+                        bulk_fluxes(ibulk) = bulk_fluxes(ibulk) + species_bin_dep_flux(ibin)
+                    end if
+                end do
+            end if
+        end do
 
-    ! Add up for bulk
-    !do ibin = 1, self%nbins()
-
-    error_code = 0
-    bulk_fluxes = 0._r8
-    error_string = ''
-
-
-!   end do
+    end if
 
   end subroutine rebin_bulk_fluxes
 
