@@ -565,16 +565,13 @@ end do
 
     character(len=*), parameter :: subname = 'aero_model_wetdep'
 
-
-    if (nwetdep<1) return
-
-    call endrun(subname//":: is not yet implemented")
-
-
     call pbuf_get_field(pbuf, fracis_idx, fracis, start=(/1,1,1/), kount=(/pcols, pver, pcnst/) )
 
     call physics_ptend_init(ptend, state%psetcols, 'aero_model_wetdep', lq=wetdep_lq)
 
+if (nwetdep<1) return
+
+call endrun(subname//":: is not yet implemented")
     call wetdep_inputs_set( state, pbuf, dep_inputs )
 
     lchnk = state%lchnk

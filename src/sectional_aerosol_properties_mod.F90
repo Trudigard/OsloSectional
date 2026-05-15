@@ -1445,8 +1445,8 @@ contains
             adjusted_diameter(ibin) = ( ( ( species_bin_dep_flux(ibin) * 3._r8 ) / ( spec_density * bin_dep_flux(ibin) * 4._r8 * pi ) )**(1._r8/3._r8) ) * 2 ! convert to diameter
             if ( adjusted_diameter(ibin) < diam_edges(1) ) then
                 bulk_fluxes(1) = bulk_fluxes(1) + species_bin_dep_flux(ibin)
-            else if ( adjusted_diameter(ibin) > diam_edges(-1)) then
-                bulk_fluxes(-1) = bulk_fluxes(-1) + species_bin_dep_flux(ibin)
+            else if ( adjusted_diameter(ibin) > diam_edges(size(diam_edges))) then
+                bulk_fluxes(size(bulk_fluxes)) = bulk_fluxes(size(bulk_fluxes)) + species_bin_dep_flux(ibin)
             else
                 do ibulk = 1, size(bulk_fluxes)-1
                     if ( adjusted_diameter(ibin) > diam_edges(ibulk) .and. adjusted_diameter(ibin) < diam_edges(ibulk+1) ) then
