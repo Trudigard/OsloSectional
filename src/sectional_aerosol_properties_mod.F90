@@ -676,9 +676,16 @@ contains
   !------------------------------------------------------------------------------
   integer function number_transported(self)
     class(sectional_aerosol_properties), intent(in) :: self
+!    integer :: ispec
     character(len=*), parameter :: subname = 'number_transported'
 
-    call endrun(subname//' is not yet implemented')
+    number_transported = self%nbins() + sum(self%range_nspecies_)
+
+!    do ispec = 1, self%nspecies_tot()
+!        number_transported = number_transported + self%aer_spec_prop(ispec)%nrange
+        write(6,*)"DEBUG: number_transported: ", number_transported
+!    end do
+    !call endrun(subname//' is not yet implemented')
 
   end function number_transported
 
