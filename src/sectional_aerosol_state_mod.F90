@@ -775,9 +775,10 @@ end subroutine destructor
 
     ! calculate mass fractions
     do ispec = 1, self%sec_aero_props%range_nspecies(irange)
-        self%aero_range_state(irange)%massfrac(:,:,ispec) = self%aero_range_state(irange)%mmr(:,:,ispec) / range_total_mmr
+        where ( range_total_mmr /= 0._r8 )
+            self%aero_range_state(irange)%massfrac(:,:,ispec) = self%aero_range_state(irange)%mmr(:,:,ispec) / range_total_mmr
+        end where
     end do
-
 
     ! volume of all aerosol /kg_air in a range (m3_aer/kg_air)
     do ibin = self%sec_aero_props%range_bounds(irange, 1), self%sec_aero_props%range_bounds(irange, 2)
@@ -795,9 +796,11 @@ end subroutine destructor
         do ispec = 1,self%sec_aero_props%range_nspecies(irange)
             ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
 ! TODO: source, total hygroscopicity parameter kappa_tot = SUM_OVER_ALL_SPECIES(volume_i/volume_tot * kappa_i)
+            where(range_dry_volume /= 0._r8)
             self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
                 + self%aero_range_state(irange)%mmr(:,:,ispec) / range_dry_volume / &
                 self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
+            end where
         end do
     end if
   end subroutine update_range

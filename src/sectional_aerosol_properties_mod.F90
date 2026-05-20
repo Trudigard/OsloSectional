@@ -737,7 +737,11 @@ contains
     end if
 
     if (present(density)) then
-        density = self%aer_spec_prop(specprop_ndx)%density
+        if ( specprop_ndx /= 0) then
+            density = self%aer_spec_prop(specprop_ndx)%density
+        else
+            density = 0._r8
+        end if
     end if
 
     if (present(hygro)) then
@@ -1371,11 +1375,6 @@ contains
 
     character(len=*), parameter :: subname = 'rebin_bulk_fluxes'
 
-    if (masterproc) then
-        write(iulog,*)"DEBUG: size of the dep_fluxes: ",size(dep_fluxes)
-        write(iulog,*)"DEBUG: size of the bulk_fluxes: ", size(bulk_fluxes)
-    end if
-
     allocate(bin_dep_flux(self%nbins()), species_bin_dep_flux(self%nbins()), adjusted_diameter(self%nbins()))
     allocate(range_volume(self%nranges()), range_dep_flux(self%nranges()), spec_dep_flux_in(self%nranges()))
     allocate(range_density(self%nranges()), species_massfrac(self%nranges()), spec_dep_flux(self%nranges()))
@@ -1430,11 +1429,10 @@ contains
             end do
         end do
 
-        ! calculate the mass fraction of the species in the range/bin
-        do irange = 1, self%nranges()
-            range_density(irange) = range_dep_flux(irange)/range_volume(irange)
-            species_massfrac(irange) = spec_dep_flux_in(irange)/range_dep_flux(irange)
-        end do
+        where (range_volume /= 0._r8 .and. range_dep_flux /= 0._r8)
+            range_density = range_dep_flux/range_volume
+            species_massfrac = spec_dep_flux_in/range_dep_flux
+        end where
 
         ! get the mass deposited for one species in each bin
         do ibin = 1, self%nbins()
@@ -1442,17 +1440,19 @@ contains
             species_bin_dep_flux(ibin) = species_massfrac(irange) * bin_dep_flux(ibin) * self%particle_volume(ibin)*range_density(irange) ! mass fraction * mass in a bin
 
             ! since all aerosol is mixed and only one species is re-binned here, we need to find the new smaller radius
-            adjusted_diameter(ibin) = ( ( ( species_bin_dep_flux(ibin) * 3._r8 ) / ( spec_density * bin_dep_flux(ibin) * 4._r8 * pi ) )**(1._r8/3._r8) ) * 2 ! convert to diameter
-            if ( adjusted_diameter(ibin) < diam_edges(1) ) then
-                bulk_fluxes(1) = bulk_fluxes(1) + species_bin_dep_flux(ibin)
-            else if ( adjusted_diameter(ibin) > diam_edges(size(diam_edges))) then
-                bulk_fluxes(size(bulk_fluxes)) = bulk_fluxes(size(bulk_fluxes)) + species_bin_dep_flux(ibin)
-            else
-                do ibulk = 1, size(bulk_fluxes)-1
-                    if ( adjusted_diameter(ibin) > diam_edges(ibulk) .and. adjusted_diameter(ibin) < diam_edges(ibulk+1) ) then
-                        bulk_fluxes(ibulk) = bulk_fluxes(ibulk) + species_bin_dep_flux(ibin)
-                    end if
-                end do
+            if (spec_density /= 0._r8 .and. bin_dep_flux(ibin) /= 0._r8) then
+                adjusted_diameter(ibin) = ( ( ( species_bin_dep_flux(ibin) * 3._r8 ) / ( spec_density * bin_dep_flux(ibin) * 4._r8 * pi ) )**(1._r8/3._r8) ) * 2 ! convert to diameter
+                if ( adjusted_diameter(ibin) < diam_edges(1) ) then
+                    bulk_fluxes(1) = bulk_fluxes(1) + species_bin_dep_flux(ibin)
+                else if ( adjusted_diameter(ibin) > diam_edges(size(diam_edges))) then
+                    bulk_fluxes(size(bulk_fluxes)) = bulk_fluxes(size(bulk_fluxes)) + species_bin_dep_flux(ibin)
+                else
+                    do ibulk = 1, size(bulk_fluxes)-1
+                        if ( adjusted_diameter(ibin) > diam_edges(ibulk) .and. adjusted_diameter(ibin) < diam_edges(ibulk+1) ) then
+                            bulk_fluxes(ibulk) = bulk_fluxes(ibulk) + species_bin_dep_flux(ibin)
+                        end if
+                    end do
+                end if
             end if
         end do
 
