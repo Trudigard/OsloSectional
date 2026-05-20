@@ -130,6 +130,8 @@ contains
     use mo_setsox,      only : setsox, has_sox
   use ppgrid,               only: begchunk, endchunk, pcols, pver
     use aero_deposition_cam, only: aero_deposition_cam_init
+    use aer_drydep_mod,  only: inidrydep
+
     !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
     ! args
@@ -177,6 +179,8 @@ contains
     call dust_init(aero_props)
 
 ! TODO: if drydep active:
+    call inidrydep(rair, gravit)
+
     dummy = 'RAM1'
     call addfld (dummy,horiz_only, 'A','frac','RAM1')
     if ( history_aerosol ) then
