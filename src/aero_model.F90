@@ -141,7 +141,6 @@ contains
     ! local vars
     integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk
     integer           :: spec_nrange, ind, irange
-    integer, allocatable :: specrange(:)
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical           :: history_dust    ! Output dust
     logical           :: history_chemistry ! Output Chemistry
@@ -213,18 +212,18 @@ contains
           call add_default (dummy, 1, ' ')
        endif
     endif
+
 aerosol_names = ''
 ind = 0
 do ispec = 1, aero_props%nspecies_tot()
     spec_nrange = aero_props%spec_nrange(ispec)
-    allocate(specrange(spec_nrange), spec_names(spec_nrange))
-    specrange = aero_props%spec_range_ndx(ispec, spec_nrange)
+    allocate(spec_names(spec_nrange))
     spec_names = aero_props%spec_tracernames(ispec, spec_nrange)
-    do irange = specrange(1), specrange(spec_nrange)
+    do irange = 1, spec_nrange
         ind = ind+1
-        aerosol_names(ind) = spec_names(ind)
+        aerosol_names(ind) = spec_names(irange)
     end do
-    deallocate(specrange, spec_names)
+    deallocate(spec_names)
 end do
 
 do ibin = 1, aero_props%nbins()
@@ -258,7 +257,6 @@ end do
           call add_default (trim(aerosol_names(m))//'TBF', 1, ' ')
           call add_default (trim(aerosol_names(m))//'GVF', 1, ' ')
        endif
-
     enddo
 
     ! call aero_wetdep_init()
