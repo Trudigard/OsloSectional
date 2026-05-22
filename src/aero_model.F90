@@ -454,7 +454,6 @@ end do
                 ! state%q has been changed to bin_mmr_tot (intent(in))
                 ! ptend%q has been changed to bin_mmr_tend(pcols, pver)
 
-                master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin) = 100._r8
                 call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin), pvmzaer, bin_num_tend(:,:), sflx_num )
                 call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
 

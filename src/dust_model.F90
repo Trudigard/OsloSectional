@@ -149,7 +149,6 @@ contains
             dust_bin_ndx = aero_props%spec_bin_ndx(ispec, dust_nbin)
             dust_range_ndx = aero_props%spec_range_ndx(ispec, dust_nrange)
             dust_names = aero_props%spec_tracernames(ispec, dust_nrange)
-
             exit ! TODO: Change this to allow for more dust species/compositions
         end if
     end do
@@ -249,9 +248,7 @@ contains
     end where
 
     totalEmissionFlux(:) = 0.0_r8
-    do icol=1,ncol
-       totalEmissionFlux(icol) = totalEmissionFlux(icol) + sum(dust_flux_in(icol,:))
-    end do
+    totalEmissionFlux = totalEmissionFlux + sum(dust_flux_in, dim=2)
 
     ! Note that following CESM use of "dust_emis_fact", the emissions are
     ! scaled by the INVERSE of the factor!!
@@ -264,10 +261,11 @@ contains
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
 ! TODO: move cflx out of here?
 ! TODO: use aerosol model internal indices instead
+
     do ibin = 1, dust_nbin
         cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
             *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
-        cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(ibin) ! emission in nr/m2/s
+        cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
         do irange = 1, dust_nrange
             ! emissions in kg/m2/s to ranges
             if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
@@ -445,7 +443,7 @@ contains
 
     vol_frac = vol / sum(vol)
 
-  end subroutine dust_emis_fraction_bin
+    end subroutine dust_emis_fraction_bin
 
 !=============================================================================
 !=============================================================================
