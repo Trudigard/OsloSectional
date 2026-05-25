@@ -38,7 +38,6 @@ module sectional_aerosol_state_mod
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
      real(r8), allocatable :: mmr(:, :, :)            ! (ncol, pver, range_nspecies)
-     real(r8), allocatable :: mmr_tend(:,:,:)
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -51,7 +50,6 @@ module sectional_aerosol_state_mod
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
-     real(r8), allocatable :: bin_numconc_tend(:,:,:)
      integer, allocatable :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
@@ -142,12 +140,6 @@ contains
         return
     end if
 
-    allocate(newobj%bin_numconc_tend(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
     allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
@@ -161,16 +153,10 @@ contains
     end if
 
     newobj%bin_numconc = 0._r8
-    newobj%bin_numconc_tend = 0._r8
     newobj%num_transport_ndx = 0
 
     do irange = 1, newobj%sec_aero_props%nranges()
         allocate(newobj%aero_range_state(irange)%mmr(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%mmr_tend(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
@@ -210,7 +196,6 @@ contains
         newobj%aero_range_state(irange)%dry_density = 0._r8
         newobj%aero_range_state(irange)%hygroscopicity = 0._r8
         newobj%aero_range_state(irange)%mmr = 0._r8
-        newobj%aero_range_state(irange)%mmr_tend = 0._r8
         newobj%aero_range_state(irange)%massfrac = 0._r8
         newobj%aero_range_state(irange)%range_name = ''
         newobj%aero_range_state(irange)%transport_ndx = 0

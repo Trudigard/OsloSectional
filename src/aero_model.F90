@@ -346,12 +346,16 @@ end do
 
     real(r8) :: bin_mmr_tend(pcols, pver)
     real(r8) :: bin_mmr_tot(pcols, pver)
-    real(r8) :: bin_num_tend(pcols, pver)
-    real(r8), allocatable :: range_mmr_tend(:, :, :) ! pcols, pver, nspecies_tot
+    real(r8), allocatable :: bin_num_tend(:,:,:)     ! pcols, pver, nbins
+    real(r8), allocatable :: range_mmr_tend(:, :, :) ! pcols, pver, nranges
     character(len=15) :: species_tracername
 
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
+    allocate(bin_num_tend(pcols, pver, aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        call endrun(subname// ": ERROR "//int2str(ierr)//" allocating bin_num_tend")
+    end if
     allocate(range_mmr_tend(pcols, pver, aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         call endrun(subname// ": ERROR "//int2str(ierr)//" allocating range_mmr_tend")
@@ -376,6 +380,7 @@ end do
 
     aerdepdryis = 0._r8
     aerdepdrycw = 0._r8
+    bin_num_tend = 0._r8
 
 ! TODO MAKE AERDEPDRYIS and AERDEPDRYCW
 
@@ -417,7 +422,6 @@ end do
                 ! reset tmp arrays
                 bin_mmr_tend = 0._r8
                 bin_mmr_tot = 0._r8
-                bin_num_tend = 0._r8
 
 ! TODO: use WET radius and density in future!!
                 rad_aer(1:ncol,:) = bin_centers(ibin)
@@ -452,12 +456,12 @@ end do
                 ! state%q has been changed to bin_mmr_tot (intent(in))
                 ! ptend%q has been changed to bin_mmr_tend(pcols, pver)
 
-                call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin), pvmzaer, bin_num_tend(:,:), sflx_num )
+                call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin), pvmzaer, bin_num_tend(:,:, ibin), sflx_num )
                 call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
 
                 ! calculate #/kg tendency and put tendency to state
-                master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin) &
-                                + bin_num_tend(:ncol,:)
+                master_aero_state(lchnk)%ptr%bin_numconc(:ncol,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc(:ncol,:,ibin) &
+                                + bin_num_tend(:ncol,:, ibin)
 
                 dep_trb = 0._r8
                 dep_grv = 0._r8
@@ -472,7 +476,7 @@ end do
                 call outfld( 'num_'//trim(int2str(ibin))//'DDF', sflx_num, pcols, lchnk)
                 call outfld( 'num_'//trim(int2str(ibin))//'TBF', dep_trb, pcols, lchnk)
                 call outfld( 'num_'//trim(int2str(ibin))//'GVF', dep_grv, pcols, lchnk)
-                call outfld( 'num_'//trim(int2str(ibin))//'DTQ', master_aero_state(lchnk)%ptr%bin_numconc_tend(:ncol,:,ibin), pcols, lchnk)
+                call outfld( 'num_'//trim(int2str(ibin))//'DTQ', bin_num_tend(:ncol,:,ibin), pcols, lchnk)
                 mm = aero_props%indexer(ibin, 0)
                 ! TODO: unit??
                 aerdepdryis(:ncol, mm) = sflx(:ncol)
@@ -483,38 +487,38 @@ end do
         ! add up mass in a range
         range_mmr_tend(:ncol,:,irange) = range_mmr_tend(:ncol,:,irange) + bin_mmr_tend(:ncol,:)
         sflx_range(:,irange) = sflx_range(:,irange) + sflx
+    end do
 
         ! calculate the tendency for each species/range
-        do irange = 1, aero_props%nranges()
-            do ispec = 1, aero_props%range_nspecies(irange)
-                sflx_range_species = 0._r8
-                species_tracername = ''
+    do irange = 1, aero_props%nranges()
+        do ispec = 1, aero_props%range_nspecies(irange)
+            sflx_range_species = 0._r8
+            species_tracername = ''
 
-                ! mass fraction of each species
-                massfrac(:ncol,:) = master_aero_state(lchnk)%ptr%aero_range_state(irange)%massfrac(:,:,ispec)
+            ! mass fraction of each species
+            massfrac(:ncol,:) = master_aero_state(lchnk)%ptr%aero_range_state(irange)%massfrac(:,:,ispec)
 
-                ! move tendency into aero range state
-                master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec) = &
-                        master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec) &
-                        + range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
+            ! move tendency into aero range state
+            master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:ncol, :, ispec) = &
+                    master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:ncol, :, ispec) &
+                    + range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
 
-                ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
-                sflx_range_species(:ncol) = sflx_range(:ncol,irange) * massfrac(:ncol, pver)
+            ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
+            sflx_range_species(:ncol) = sflx_range(:ncol,irange) * massfrac(:ncol, pver)
 
-                species_tracername = master_aero_state(lchnk)%ptr%aero_range_state(irange)%range_name(ispec)
+            species_tracername = master_aero_state(lchnk)%ptr%aero_range_state(irange)%range_name(ispec)
 
-                call outfld( trim(species_tracername)//'DDF', sflx_range_species, pcols, lchnk)
-                call outfld( trim(species_tracername)//'DTQ', master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr_tend(:ncol, :, ispec), pcols, lchnk)
+            call outfld( trim(species_tracername)//'DDF', sflx_range_species, pcols, lchnk)
+            call outfld( trim(species_tracername)//'DTQ', range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :), pcols, lchnk)
 
-                mm = aero_props%indexer(ibin, ispec)
-                ! skip the "filler spots" in the index array
-                if ( mm > 0 ) then
-                    aerdepdryis(:ncol, mm) = sflx_range_species(:ncol)
-       !             write(6,*)"DEBUG: maxval for dust dep: ", maxval(aerdepdryis(:ncol,mm))
-                end if
-            end do ! species loop
-        end do ! range looop
-    end do ! bin loop
+            ibin = aero_props%range_bounds(irange, 1)
+            mm = aero_props%indexer(ibin, ispec)
+            ! skip the "filler spots" in the index array
+            if ( mm > 0 ) then
+                aerdepdryis(:ncol, mm) = sflx_range_species(:ncol)
+            end if
+        end do ! species loop
+    end do ! range loop
 
 ! rebin bulk fluxes for 'dust'
     ! rebin_bulk_fluxes prep
