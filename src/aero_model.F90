@@ -172,7 +172,7 @@ contains
         end do
   !     aero_state => sectional_aerosol_state(phys_state, pbuf)
       !  end do
-        call aero_deposition_cam_init(aero_props) ! TODO FIX, shadowfile?
+        call aero_deposition_cam_init(aero_props)
     end if
 
     call dust_init(aero_props)
@@ -911,7 +911,7 @@ call endrun(subname//":: is not yet implemented")
     !call endrun(subname//":: is not yet implemented")
   end subroutine aero_model_emissions
 
-subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,  &
+  subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,  &
                                      radius_part, density_part, lchnk )
 
 !    calculates surface deposition velocity of particles

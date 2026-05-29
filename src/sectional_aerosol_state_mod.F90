@@ -1,10 +1,5 @@
 module sectional_aerosol_state_mod
 
-! TODO: Range density function/array + set_density and get_density?
-! TODO: Update range function
-! TODO: range_state object: density, mmr
-! TODO: bin_state: mmr/number, surface area, hygroscopicity, ...
-
   use shr_kind_mod, only: r8 => shr_kind_r8
   use shr_spfn_mod, only: erf => shr_spfn_erf
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
@@ -255,14 +250,6 @@ contains
     end do
 
 end if
-
-
-
-! TODO: add ludicrous seasalt values
-!  newobj%aero_range_state(3)%mmr(:,:,2) = 23847923._r8
-
-
-
   end function constructor
 
   !------------------------------------------------------------------------------
@@ -298,21 +285,17 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'set_transported'
 
-! TODO: check difference between
-
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
             self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
- !           write(6,*)"DEBUG: set_transported maxval for mmr in range ", irange, " and species number ", ispec, " is ", maxval(self%aero_range_state(irange)%mmr(:self%ncol,:,ispec))
         end do
     end do
 
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
-  !      if (masterproc .and. self%state%lchnk == 1) then
-  !          write(6,*)"DEBUG: bin_numconc in col 1: ", self%bin_numconc(1,:,1)
-  !      end if
- !       write(6,*)"DEBUG: set_transported maxval for num in bin ", ibin, " is ", maxval(self%bin_numconc(:self%ncol,:,ibin)), " transport index is: ", self%num_transport_ndx(ibin)
+        if (masterproc .and. self%state%lchnk == 1) then
+            write(6,*)"DEBUG: bin_numconc in col 1: ", self%bin_numconc(1,:,1)
+        end if
     end do
 
     ! update the range properties

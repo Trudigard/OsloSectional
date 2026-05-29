@@ -110,7 +110,6 @@ contains
 
     character(len=*),optional, intent(in) :: nlfile
     integer                      :: ncnst_tot=0
-    ! TODO: ncnst_tot = tracers ??
     integer,allocatable          :: nspecies(:) ! nspecies per bin (given by base_object)
     integer,allocatable          :: nmasses(:)  ! nspecies for first bin in a range, 0 elsewhere
     real(r8),allocatable         :: alogsig(:) ! given by base obj
@@ -1470,7 +1469,6 @@ contains
     character(len=aero_name_len) :: modetype
     character(len=*), parameter :: subname = 'hydrophilic'
 
-!    call endrun(subname//' is not yet implemented')
 ! TODO: check sizing
 ! depends on size -> modal: "accum"
     hydrophilic = ( self%bin_centers_(bin_ndx)*1e9 > 50._r8 .and. self%bin_centers_(bin_ndx)*1e9 < 500._r8 )

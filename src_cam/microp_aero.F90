@@ -237,6 +237,8 @@ subroutine microp_aero_init(phys_state,pbuf2d)
    end if
 
    aero_props_obj => sectional_aerosol_properties()
+ ! TODO: implement mmr_names in sectional_aerosol_properties_mod to make this work
+   !  call ndrop_init(aero_props_obj)
 
    allocate(aero_state(begchunk:endchunk))
    do c = begchunk, endchunk

@@ -38,20 +38,8 @@ module seasalt_model
 
      character(len=fieldname_len) :: dummy
      integer :: m
-
-     do m = 1, seasalt_nbin
-        call cnst_get_ind(seasalt_names(m), seasalt_indices(m),abort=.false.)
-     enddo
-     seasalt_active = any(seasalt_indices(:) > 0)
-
-     if (.not.seasalt_active) return
-
-     dummy = 'RH'
-     call addfld (dummy,(/ 'lev' /), 'A','frac','RH in dry dep calc')
-     do m = 1,seasalt_nbin
-        dummy = trim(seasalt_names(m)) // 'DI'
-        call addfld (dummy,(/ 'lev' /), 'A','m/s',trim(seasalt_names(m))//' deposition diameter')
-     enddo
+    character(len=*), parameter :: subname = 'seasalt_init'
+    call endrun(subname//" is not yet implemented")
 
    end subroutine seasalt_init
 
@@ -69,12 +57,9 @@ module seasalt_model
     ! local vars
     integer :: ix,m
     real(r8), parameter :: sslt_source(seasalt_nbin) = (/ 4.77e-15_r8, 5.19e-14_r8, 1.22e-13_r8, 6.91e-14_r8 /)
+    character(len=*), parameter :: subname = 'seasalt_emis'
+    call endrun(subname//" is not yet implemented")
 
-    do m = 1, seasalt_nbin
-       ix = seasalt_indices(m)
-       cflx(:ncol,ix) = sslt_source(m) * u10cubed(:ncol) * ocnfrc(:ncol)
-    enddo
-    
   end subroutine seasalt_emis
 
   !=============================================================================
@@ -104,29 +89,29 @@ module seasalt_model
 
     ! set stokes correction to 1.0 for now not a bad assumption for our size range)
     real(r8), parameter :: sslt_stk_crc(seasalt_nbin) = (/ 1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8 /)
-    real(r8), parameter :: sslt_smt_vwr(seasalt_nbin) = (/0.52e-6_r8,2.38e-6_r8,4.86e-6_r8,15.14e-6_r8/) 
+    real(r8), parameter :: sslt_smt_vwr(seasalt_nbin) = (/0.52e-6_r8,2.38e-6_r8,4.86e-6_r8,15.14e-6_r8/)
+
+    character(len=*), parameter :: subname = 'seasalt_depvel'
 
     !-----------------------------------------------------------------------
-    do k = 1, pver
-       call qsat(temp(1:ncol,k),pmid(1:ncol,k),es(1:ncol,k),qs(1:ncol,k),ncol)
-    end do
-    RH(:ncol,:)=q(:ncol,:)/qs(:ncol,:)
-    RH(:ncol,:)=max(0.01_r8,min(0.99_r8,RH(:ncol,:)))
-    ! set stokes correction to 1.0 for now not a bad assumption for our size range)
-    do m=1,seasalt_nbin
-       r=sslt_smt_vwr(m)/2.0_r8
-       do k=1,pver
-          do i=1,ncol
-             wetdia(i,k,m)=((r**3+c1*r**c2/(c3*r**c4-log(RH(i,k))))**(1._r8/3._r8))*2.0_r8
-          enddo
-       enddo
-       call outfld( trim(seasalt_names(m))//'DI',wetdia(:,:,m), pcols, lchnk)
-    enddo
-    call outfld( 'RH',RH(:,:), pcols, lchnk)
-
-    call aerosol_depvel_compute( ncol, pver, seasalt_nbin, temp, pmid, ram1, fv, wetdia, sslt_stk_crc, dns_aer_sst, &
-                                 vlc_dry,vlc_trb,vlc_grv)
+    call endrun(subname//" is not yet implemented")
 
   endsubroutine seasalt_depvel
+
+ ! subroutine seasalt_emis_frac(emis_frac)
+
+    ! CoefA
+    ! CoefB
+    ! CoefC
+    ! CoefD
+
+    ! From OsloAero:
+    ! New whitecap area fraction / air entrainment flux from eqn. 6 in Salter et al. (2015)
+    ! JCA & MS Using Hanson & Phillips 99 air entrainment vs. wind speed
+    ! (Note the uncertainty in the factor 2, written as 2 pluss/minus 1 in Eq. 6 -> possible tuning factor)
+ !   whitecapAreaFraction(:ncol) = (2.0_r8*10.0_r8**(-8.0_r8))*(u10m(:ncol)**3.74_r8)
+ !   whitecapAreaFraction(:ncol) = ocnfrc(:ncol) * (1._r8-icefrc(:ncol)) * whitecapAreaFraction(:ncol)
+ ! end subroutine seasalt_emis_frac
+
 
 end module seasalt_model
