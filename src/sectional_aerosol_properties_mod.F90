@@ -923,7 +923,7 @@ contains
     character(len=*), parameter :: subname = 'num_names'
 
     name_a = 'num_'//trim(int2str(bin_ndx))
-    name_c = 'num_'//trim(int2str(bin_ndx))//'_c'
+    name_c = 'num_'//trim(int2str(bin_ndx))//'_cw'
  !   call endrun(subname//' is not yet implemented')
 !     call rad_cnst_get_info(0,bin_ndx, num_name=name_a, num_name_cw=name_c)
 
@@ -939,9 +939,25 @@ contains
     character(len=*), intent(out) :: name_a ! constituent name of ambient aerosol MMR
     character(len=*), intent(out) :: name_c ! constituent name of cloud-borne aerosol MMR
 
+    integer :: range_ndx, ispec, specprop_ndx, spec_counter
+    character(len=10) :: specname
     character(len=*), parameter :: subname = 'mmr_names'
 
-    call endrun(subname//' is not yet implemented')
+        range_ndx = self%bins2ranges(bin_ndx)
+
+! TODO: make this into a function!
+    do ispec = 1, self%nspecies_tot()                                           ! loop through the species properties
+        if ( any(self%aer_spec_prop(ispec)%range_ndx == range_ndx) ) then    ! find out if the species is in the requested range
+            spec_counter = spec_counter + 1                                     ! if so, add to the counter
+            if ( spec_counter == species_ndx ) then                             ! if counter is equal to species index
+                specprop_ndx = ispec                                            ! then we know what species is meant!
+            end if
+        end if
+    end do
+
+    specname = self%aer_spec_prop(specprop_ndx)%specname
+    name_a = trim(specname)//'_R'//trim(int2str(range_ndx))
+    name_c = trim(name_a)//'_cw'
 
   end subroutine mmr_names
 
