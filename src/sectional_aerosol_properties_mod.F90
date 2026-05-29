@@ -80,10 +80,12 @@ module sectional_aerosol_properties_mod
      procedure :: resuspension_resize
      procedure :: rebin_bulk_fluxes
      procedure :: hydrophilic
+     procedure :: model_is
      procedure :: range_bounds
      procedure :: kappa
      procedure :: molecular_weight
      procedure :: specname
+
 
      final :: destructor
   end type sectional_aerosol_properties
@@ -1490,6 +1492,25 @@ contains
     hydrophilic = ( self%bin_centers_(bin_ndx)*1e9 > 50._r8 .and. self%bin_centers_(bin_ndx)*1e9 < 500._r8 )
 
   end function hydrophilic
+
+  !------------------------------------------------------------------------------
+  ! returns TRUE if sectional aerosol representation
+  !------------------------------------------------------------------------------
+  pure logical function model_is(self, query)
+    use string_utils, only: to_lower
+
+    class(modal_aerosol_properties), intent(in) :: self
+    character(len=*),               intent(in) :: query
+
+    if (trim(to_lower(query)) == 'oslo_sectional') then
+       model_is = .true.
+    else if (trim(query) == 'sectional') then
+       model_is = .true.
+    else
+       model_is = .false.
+    end if
+
+ end function model_is
 
   !------------------------------------------------------------------------------
   ! Returns specname with aer_spec_props index
