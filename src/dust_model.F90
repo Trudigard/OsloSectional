@@ -30,6 +30,8 @@ module dust_model
 
   ! private routines (previously in soil_erod_mod in CAM)
   private :: soil_erod_init
+  private :: dust_emis_fraction_bin
+  private :: dust_dist
 
   ! TODO: move to object?
   integer :: dust_nbin = 0
@@ -214,7 +216,6 @@ contains
 
   subroutine dust_emis( lchnk, ncol, dust_flux_in, cflx, aero_props )
 ! TODO: move dust_flux_in and cflx out of here somehow?
-! something like get_emissions
 
     !-----------------------------------------------------------------------
     ! Purpose: Interface to emission of all dusts.
@@ -259,7 +260,6 @@ contains
 
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-! TODO: move cflx out of here?
 ! TODO: use aerosol model internal indices instead
 
     do ibin = 1, dust_nbin
@@ -394,38 +394,39 @@ contains
   subroutine dust_emis_fraction_bin(nbin, bin_bounds, vol_frac)
     use string_utils,      only: int2str
 
-    implicit none
-
     ! input
     integer, intent(in)  :: nbin
     real(r8), intent(in) :: bin_bounds(nbin,2)
 
     ! local variables
-    real(r8)             :: vol(nbin)
-    real(r8)             :: D1, D2
-    real(r8)             :: h, vol_old
-    real(r8)             :: err=0.0001_r8, rel_err ! TODO: better error measure?
-    integer              :: ibin, i, j, n
+    real(r8)             :: vol(nbin)                 ! volume in each subinterval
+    real(r8)             :: D1, D2                    ! diameters at bin bounds
+    real(r8)             :: subint_width              ! width of each subinterval
+    real(r8)             :: vol_old                   ! volume of previous iteration
+    real(r8)             :: err=0.0001_r8, rel_err    ! TODO: better error measure?
+    integer              :: subint_number             ! number of subintervals in iteration
+    integer              :: ibin, iteration, isubint
 
     ! output
-    real(r8), intent(out):: vol_frac(nbin)          ! unitless
+    real(r8), intent(out):: vol_frac(nbin)            ! volume fraction of emitted dust in each bin
 
     do ibin = 1, nbin
         ! integrate function in log space for each bin diameter
-        n = 10
+        subint_number = 10      ! start with small subinterval number
         vol_old = 0.0_r8
 
-        D1 = log( bin_bounds(ibin,1) *1e6_r8 * 2 ) ! transform to diameter and um
-        D2 = log( bin_bounds(ibin,2) *1e6_r8 * 2 )
+        D1 = log( bin_bounds(ibin,1) *1.e6_r8 * 2._r8 )         ! transform to diameter and um
+        D2 = log( bin_bounds(ibin,2) *1.e6_r8 * 2._r8 )
 
-        do i = 1, 1000
-            h = (D2 - D1) / n ! with of each subinterval
+        do iteration = 1, 1000                                       ! loop to some large nr to make smaller and smaller increments
+            subint_width = (D2 - D1) / subint_number            ! with of each subinterval
             vol(ibin) = 0.5d0 * (dust_dist(D1) + dust_dist(D2)) ! at bounds -> only half of the trapezoid counts
 
-            do j = 1, n-1 ! calc volume for each sub-increment
-                vol(ibin) = vol(ibin) + dust_dist(D1 + i*h)
+            do isubint = 1, subint_number-1                           ! calc volume for each sub-increment
+                vol(ibin) = vol(ibin) + dust_dist(D1 + isubint*subint_width)
             end do
-            vol(ibin) = h*vol(ibin)
+
+            vol(ibin) = subint_width*vol(ibin)
 
             ! check for convergence
             rel_err = abs(vol(ibin) - vol_old) / (abs(vol(ibin)) )
@@ -433,11 +434,14 @@ contains
                 exit
             end if
 
-            n = n*2
+            subint_number = subint_number*2
             vol_old = vol(ibin)
+            vol(ibin) = 0._r8
         end do
 
-        if (j == 1000) write(iulog,*) 'bin', int2str(ibin), ' did not converge'
+        if (iteration == 1000) then
+            call endrun('ERROR: bin'//int2str(ibin)//' did not converge')
+        end if
 
     end do
 
@@ -451,7 +455,6 @@ contains
   real(r8) function dust_dist(logD_d)
     ! Size distribution of emitted dust
     ! local parameters and volume size distribution from Kok et al. (2011) eq. 6
-        implicit none
         real(r8), intent(in) :: logD_d           ! (um) size (within one bin)
         real(r8), parameter  :: c_V = 12.62_r8   ! (um) normalization constant volume
         real(r8), parameter  :: D_s = 3.5_r8     ! (um) median diameter by volume
@@ -462,6 +465,7 @@ contains
                     * exp(-1._r8 * (exp(logD_d) / lambda)**3)
 
         ! TODO: cut-off to set very small values to 0?
+
   end function dust_dist
 
 end module dust_model
