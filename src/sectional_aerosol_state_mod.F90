@@ -1,5 +1,5 @@
 module sectional_aerosol_state_mod
-
+! TODO: make cloud borne tracers
   use shr_kind_mod, only: r8 => shr_kind_r8
   use shr_spfn_mod, only: erf => shr_spfn_erf
   use aerosol_state_mod, only: aerosol_state, ptr2d_t
@@ -32,7 +32,8 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mmr(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), allocatable :: mmr(:, :, :)            ! (ncol, pver, range_nspecies)
+     real(r8), allocatable :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
+     real(r8), allocatable :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -45,6 +46,7 @@ module sectional_aerosol_state_mod
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), allocatable :: bin_numconc(:,:,:)
+     real(r8), allocatable :: bin_numconc_cw(:,:,:)
      integer, allocatable :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
@@ -135,6 +137,12 @@ contains
         return
     end if
 
+    allocate(newobj%bin_numconc_cw(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
     allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
@@ -148,10 +156,16 @@ contains
     end if
 
     newobj%bin_numconc = 0._r8
+    newobj%bin_numconc_cw = 0._r8
     newobj%num_transport_ndx = 0
 
     do irange = 1, newobj%sec_aero_props%nranges()
         allocate(newobj%aero_range_state(irange)%mmr(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
+        allocate(newobj%aero_range_state(irange)%mmr_cw(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
@@ -191,6 +205,7 @@ contains
         newobj%aero_range_state(irange)%dry_density = 0._r8
         newobj%aero_range_state(irange)%hygroscopicity = 0._r8
         newobj%aero_range_state(irange)%mmr = 0._r8
+        newobj%aero_range_state(irange)%mmr_cw = 0._r8
         newobj%aero_range_state(irange)%massfrac = 0._r8
         newobj%aero_range_state(irange)%range_name = ''
         newobj%aero_range_state(irange)%transport_ndx = 0
@@ -269,7 +284,9 @@ end if
     if (allocated(self%bin_numconc)) then
         deallocate(self%bin_numconc)
     end if
-
+    if (allocated(self%bin_numconc_cw)) then
+        deallocate(self%bin_numconc_cw)
+    end if
 end subroutine destructor
 
   !------------------------------------------------------------------------------
