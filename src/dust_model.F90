@@ -388,7 +388,7 @@ contains
   end  subroutine soil_erod_init
 
 !=============================================================================
-! Helper functions for dust emis (C. Brodowsky)
+! Helper functions for dust emis chrisvbr@uio.no
 !=============================================================================
 
   subroutine dust_emis_fraction_bin(nbin, bin_bounds, vol_frac)
@@ -404,7 +404,7 @@ contains
     real(r8)             :: subint_width              ! width of each subinterval
     real(r8)             :: vol_old                   ! volume of previous iteration
     real(r8)             :: err=0.0001_r8, rel_err    ! TODO: better error measure?
-    integer              :: subint_number             ! number of subintervals in iteration
+    real(r8)             :: subint_number             ! number of subintervals in iteration
     integer              :: ibin, iteration, isubint
 
     ! output
@@ -412,31 +412,47 @@ contains
 
     do ibin = 1, nbin
         ! integrate function in log space for each bin diameter
-        subint_number = 10      ! start with small subinterval number
+        subint_number = 5._r8      ! start with small subinterval number
         vol_old = 0.0_r8
+        vol(ibin) = 0._r8
 
-        D1 = log( bin_bounds(ibin,1) *1.e6_r8 * 2._r8 )         ! transform to diameter and um
+        D1 = log( bin_bounds(ibin,1) *1.e6_r8 * 2._r8 )                         ! transform to diameter and um
         D2 = log( bin_bounds(ibin,2) *1.e6_r8 * 2._r8 )
 
-        do iteration = 1, 1000                                       ! loop to some large nr to make smaller and smaller increments
-            subint_width = (D2 - D1) / subint_number            ! with of each subinterval
-            vol(ibin) = 0.5d0 * (dust_dist(D1) + dust_dist(D2)) ! at bounds -> only half of the trapezoid counts
+        ! initialize "vol_old" to a coarse distribution
+        subint_width = (D2 - D1) / subint_number                            ! with of each subinterval
+        vol_old = 0.5d0 * (dust_dist(D1) + dust_dist(D2))                 ! at bounds -> only half of the trapezoid counts
 
-            do isubint = 1, subint_number-1                           ! calc volume for each sub-increment
+        do isubint = 1, int(subint_number)-1                                     ! calc volume for each sub-increment
+            vol_old = vol_old + dust_dist(D1 + isubint*subint_width)
+        end do
+        vol_old = subint_width*vol_old
+
+        ! start with 10 subintervals for the actual calculation
+        subint_number = subint_number*2._r8
+
+        do iteration = 1, 1000                                                  ! loop to some large nr to make smaller and smaller increments
+
+            vol(ibin) = 0._r8
+
+            subint_width = (D2 - D1) / subint_number                            ! with of each subinterval
+            vol(ibin) = 0.5d0 * (dust_dist(D1) + dust_dist(D2))                 ! at bounds -> only half of the trapezoid counts
+
+            do isubint = 1, int(subint_number)-1                                ! calc volume for each sub-increment
                 vol(ibin) = vol(ibin) + dust_dist(D1 + isubint*subint_width)
             end do
 
-            vol(ibin) = subint_width*vol(ibin)
+            vol(ibin) = subint_width*vol(ibin)                                  ! times the width of the subinterval
 
             ! check for convergence
-            rel_err = abs(vol(ibin) - vol_old) / (abs(vol(ibin)) )
+            rel_err = abs(vol(ibin) - vol_old) / max( vol(ibin), 1.e-30_r8)     ! avoid divide by 0 and tiny values
             if ( rel_err < err ) then
                 exit
             end if
 
-            subint_number = subint_number*2
+            subint_number = subint_number*2._r8
             vol_old = vol(ibin)
-            vol(ibin) = 0._r8
+
         end do
 
         if (iteration == 1000) then
@@ -454,17 +470,17 @@ contains
 
   real(r8) function dust_dist(logD_d)
     ! Size distribution of emitted dust
-    ! local parameters and volume size distribution from Kok et al. (2011) eq. 6
-        real(r8), intent(in) :: logD_d           ! (um) size (within one bin)
+    ! local parameters and volume size distribution from Kok et al. (2011) eq. 6 (https://doi.org/10.1073/pnas.1014798108)
+        real(r8), intent(in) :: logD_d           ! (um) size (within one bin) (natural log)
+        real(r8)             :: D_d
         real(r8), parameter  :: c_V = 12.62_r8   ! (um) normalization constant volume
         real(r8), parameter  :: D_s = 3.5_r8     ! (um) median diameter by volume
         real(r8), parameter  :: lambda = 12.0_r8 ! (um) crack propagation length
         real(r8), parameter  :: sigma = 3.0_r8   ! geometric stndard deviation
 
-        dust_dist = (exp(logD_d) / c_V) * (1._r8 + erf(log(exp(logD_d)/D_s) / (sqrt(2._r8)*log(sigma)))) &
-                    * exp(-1._r8 * (exp(logD_d) / lambda)**3)
-
-        ! TODO: cut-off to set very small values to 0?
+        D_d = exp(logD_d)
+        dust_dist = (D_d / c_V) * (1._r8 + erf(log(D_d/D_s) / (sqrt(2._r8)*log(sigma)))) &
+                    * exp(-1._r8 * (D_d / lambda)**3)
 
   end function dust_dist
 
