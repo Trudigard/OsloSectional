@@ -1497,12 +1497,10 @@ contains
   ! returns TRUE if sectional aerosol representation
   !------------------------------------------------------------------------------
   pure logical function model_is(self, query)
-    use string_utils, only: to_lower
-
-    class(modal_aerosol_properties), intent(in) :: self
+    class(sectional_aerosol_properties), intent(in) :: self
     character(len=*),               intent(in) :: query
 
-    if (trim(to_lower(query)) == 'oslo_sectional') then
+    if (trim(query) == 'oslo_sectional') then
        model_is = .true.
     else if (trim(query) == 'sectional') then
        model_is = .true.

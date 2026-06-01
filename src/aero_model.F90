@@ -110,10 +110,8 @@ contains
     ! modal_aero: modal_aero_data_reg: allocate all kind of stuff, etc with number modes
     ! oslo aero: aero_register: lots of cnst_get_ind calls for all tracers, set aerosol types
 
-    ! TODO: find out how to get tracer indices -> part of constructor?
-
     if (masterproc) then
-        write(iulog,*) subname//' nothing to do here yet..'
+        write(iulog,*) subname//' nothing to do here..'
     end if
 
   end subroutine aero_model_register
