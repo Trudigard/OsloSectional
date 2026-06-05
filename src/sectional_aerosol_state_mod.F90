@@ -312,9 +312,6 @@ end subroutine destructor
 
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
-  !      if (masterproc .and. self%state%lchnk == 1) then
-  !          write(6,*)"DEBUG: bin_numconc in col 1: ", self%bin_numconc(1,:,1)
-  !      end if
     end do
 
     ! update the range properties
@@ -339,14 +336,12 @@ end subroutine destructor
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
             self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
-!            write(6,*)"DEBUG: get_transported maxval in range: ", irange, " for species number ", ispec, " is ", self%aero_range_state(irange)%mmr(:,:,ispec)
         end do
     end do
 
     do ibin = 1, self%sec_aero_props%nbins()
 
         self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
-   !     write(6,*)"DEBUG: get_transported maxval in bin ", ibin, " is ", maxval(self%bin_numconc(:self%ncol,:,ibin))
     end do
 
   end subroutine get_transported
