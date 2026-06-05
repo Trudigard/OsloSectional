@@ -44,47 +44,47 @@ module sectional_aerosol_properties_mod
 
    contains
      procedure :: number_transported
-     procedure :: get
-     procedure :: amcube
-     procedure :: density
-     procedure :: actfracs
-     procedure :: num_names
-     procedure :: mmr_names
-     procedure :: amb_num_name
-     procedure :: amb_mmr_name
-     procedure :: species_type
-     procedure :: icenuc_updates_num
-     procedure :: icenuc_updates_mmr
-     procedure :: apply_number_limits
-     procedure :: hetfrz_species
-     procedure :: optics_params
-     procedure :: nbins_rlist
-     procedure :: nspecies_tot
-     procedure :: range_nspecies
-     procedure :: nranges
-     procedure :: bin_centers
-     procedure :: bin_bounds
-     procedure :: particle_volume
-     procedure :: spec_range_ndx
-     procedure :: spec_bin_ndx
-     procedure :: spec_nrange
-     procedure :: spec_nbin
-     procedure :: spec_tracernames
-     procedure :: bins2ranges
-     procedure :: nspecies_per_bin_rlist
-     procedure :: alogsig_rlist
-     procedure :: soluble
-     procedure :: min_mass_mean_rad
-     procedure :: bin_name
-     procedure :: scav_diam
-     procedure :: resuspension_resize
-     procedure :: rebin_bulk_fluxes
-     procedure :: hydrophilic
-     procedure :: model_is
-     procedure :: range_bounds
-     procedure :: kappa
-     procedure :: molecular_weight
-     procedure :: specname
+     procedure :: get                       ! partially implemented
+     procedure :: amcube                    ! copied from CARMA
+     procedure :: density                   ! done
+     procedure :: actfracs                  ! from CARMA -> if we use effective critical supersat, this needs to be changed
+     procedure :: num_names                 ! done
+     procedure :: mmr_names                 ! done
+     procedure :: amb_num_name          ! TODO
+     procedure :: amb_mmr_name          ! TODO
+     procedure :: species_type          ! TODO
+     procedure :: icenuc_updates_num    ! TODO
+     procedure :: icenuc_updates_mmr    ! TODO
+     procedure :: apply_number_limits   ! ??TODO, maybe
+     procedure :: hetfrz_species        ! TODO
+     procedure :: optics_params         ! TODO
+     procedure :: nbins_rlist           ! TODO
+     procedure :: nspecies_tot              ! done
+     procedure :: range_nspecies            ! done
+     procedure :: nranges                   ! done
+     procedure :: bin_centers               ! done
+     procedure :: bin_bounds                ! done
+     procedure :: particle_volume           ! done
+     procedure :: spec_range_ndx            ! done
+     procedure :: spec_bin_ndx              ! done
+     procedure :: spec_nrange               ! done
+     procedure :: spec_nbin                 ! done
+     procedure :: spec_tracernames          ! done
+     procedure :: bins2ranges               ! done
+     procedure :: nspecies_per_bin_rlist ! TODO
+     procedure :: alogsig_rlist          ! TODO
+     procedure :: soluble               ! TODO
+     procedure :: min_mass_mean_rad     ! TODO
+     procedure :: bin_name              ! TODO
+     procedure :: scav_diam             ! TODO
+     procedure :: resuspension_resize   ! TODO
+     procedure :: rebin_bulk_fluxes         ! done
+     procedure :: hydrophilic           ! TODO: currently simple approximation
+     procedure :: model_is                  ! done
+     procedure :: range_bounds              ! done
+     procedure :: kappa                     ! done
+     procedure :: molecular_weight          ! done
+     procedure :: specname                  ! done
 
 
      final :: destructor
@@ -939,8 +939,6 @@ contains
 
     name_a = 'num_'//trim(int2str(bin_ndx))
     name_c = 'num_'//trim(int2str(bin_ndx))//'_cw'
- !   call endrun(subname//' is not yet implemented')
-!     call rad_cnst_get_info(0,bin_ndx, num_name=name_a, num_name_cw=name_c)
 
   end subroutine num_names
 

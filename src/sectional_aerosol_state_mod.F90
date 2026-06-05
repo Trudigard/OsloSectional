@@ -53,31 +53,31 @@ module sectional_aerosol_state_mod
 
    contains
 
-     procedure :: get_transported
-     procedure :: set_transported
-     procedure :: ambient_total_bin_mmr
-     procedure :: get_ambient_mmr_0list
-     procedure :: get_ambient_mmr_rlist
-     procedure :: get_cldbrne_mmr
-     procedure :: get_ambient_num
-     procedure :: get_cldbrne_num
-     procedure :: get_states
-     procedure :: icenuc_size_wght_arr
-     procedure :: icenuc_size_wght_val
-     procedure :: icenuc_type_wght
-     procedure :: update_bin
-     procedure :: hetfrz_size_wght
-     procedure :: hygroscopicity
-     procedure :: water_uptake
-     procedure :: dry_volume
-     procedure :: wet_volume
-     procedure :: water_volume
-     procedure :: wet_diameter
-     procedure :: convcld_actfrac
-     procedure :: wgtpct
-     procedure :: bin_dry_density
-     procedure :: update_range
-     procedure :: bin_species_mmr
+     procedure :: get_transported               ! done
+     procedure :: set_transported               ! done
+     procedure :: ambient_total_bin_mmr         ! done
+     procedure :: get_ambient_mmr_0list         ! done
+     procedure :: get_ambient_mmr_rlist   ! TODO
+     procedure :: get_cldbrne_mmr               ! done
+     procedure :: get_ambient_num               ! done
+     procedure :: get_cldbrne_num               ! done
+     procedure :: get_states                    ! done
+     procedure :: icenuc_size_wght_arr    ! TODO
+     procedure :: icenuc_size_wght_val    ! TODO
+     procedure :: icenuc_type_wght        ! TODO
+     procedure :: update_bin              ! TODO
+     procedure :: hetfrz_size_wght        ! TODO
+     procedure :: hygroscopicity                ! mostly done, implement list_ndx
+     procedure :: water_uptake            ! TODO
+     procedure :: dry_volume                    ! done
+     procedure :: wet_volume              ! TODO
+     procedure :: water_volume            ! TODO
+     procedure :: wet_diameter            ! TODO
+     procedure :: convcld_actfrac         ! TODO
+     procedure :: wgtpct                  ! TODO
+     procedure :: bin_dry_density               ! done
+     procedure :: update_range                  ! done
+     procedure :: bin_species_mmr               !done, duplicate of get_ambient_mmr?
      final :: destructor
 
   end type sectional_aerosol_state
@@ -389,8 +389,6 @@ end subroutine destructor
     range = self%sec_aero_props%bins2ranges(bin_ndx)
     mmr => self%aero_range_state(range)%mmr(:,:,species_ndx)
 
- !   call endrun(subname//' is not yet implemented')
-
   end subroutine get_ambient_mmr_0list
 
   !------------------------------------------------------------------------------
@@ -425,8 +423,6 @@ end subroutine destructor
     range = self%sec_aero_props%bins2ranges(bin_ndx)
     mmr => self%aero_range_state(range)%mmr_cw(:,:,species_ndx)
 
- !   call endrun(subname//' is not yet implemented')
-
   end subroutine get_cldbrne_mmr
 
   !------------------------------------------------------------------------------
@@ -440,7 +436,7 @@ end subroutine destructor
     character(len=*), parameter :: subname = 'get_ambient_num'
 
     num => self%bin_numconc(:,:,bin_ndx)
-!    call endrun("get_ambient_num")
+
   end subroutine get_ambient_num
 
   !------------------------------------------------------------------------------
@@ -454,7 +450,7 @@ end subroutine destructor
     character(len=*), parameter :: subname = 'get_cldbrne_num'
 
     num => self%bin_numconc_cw(:,:,bin_ndx)
-!    call endrun(get_cldbrne_num)
+
   end subroutine get_cldbrne_num
 
   !------------------------------------------------------------------------------
