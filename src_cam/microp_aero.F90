@@ -223,8 +223,8 @@ subroutine microp_aero_init(phys_state,pbuf2d)
    ! clim_modal_aero determines whether modal aerosols are used in the climate calculation.
    ! The modal aerosols can be either prognostic or prescribed.
    call rad_cnst_get_info(0, nmodes=nmodes, nbins=nbins)
-   clim_modal_aero = (nmodes > 0)
-   clim_carma_aero = (nbins> 0)
+   clim_modal_aero = .False.
+   clim_carma_aero = .False.
 
    ast_idx = pbuf_get_index('AST')
 
@@ -748,7 +748,7 @@ subroutine microp_aero_run ( &
    !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    ! Droplet Activation
 
-   if (clim_modal_aero .or. clim_carma_aero) then !.or. aero_modelname == 'oslo_sectional') then
+   if (clim_modal_aero .or. clim_carma_aero .or. aero_modelname == 'oslo_sectional') then
 
       ! for modal or carma aerosol
 
