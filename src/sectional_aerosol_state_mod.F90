@@ -274,27 +274,27 @@ end if
 
     character(len=*), parameter :: subname = 'destructor'
 
-    !call endrun(subname//' is not yet implemented')
-
     nullify(self%state)
     nullify(self%pbuf)
     if (allocated(self%aero_range_state)) then
         deallocate(self%aero_range_state)
     end if
-    !if (allocated(self%bin_numconc)) then
-    !    deallocate(self%bin_numconc)
-    !end if
-    !if (allocated(self%bin_numconc_cw)) then
-    !    deallocate(self%bin_numconc_cw)
-    !end if
-    nullify(self%bin_numconc)
-    nullify(self%bin_numconc_cw)
+    if (associated(self%bin_numconc)) then
+        deallocate(self%bin_numconc)
+        nullify(self%bin_numconc)
+    end if
+    if (associated(self%bin_numconc_cw)) then
+        deallocate(self%bin_numconc_cw)
+        nullify(self%bin_numconc_cw)
+    end if
+
 end subroutine destructor
 
   !------------------------------------------------------------------------------
   ! sets transported components
-  ! This aerosol model with the state of the transported aerosol     ! This updates the transported aerosol constituent array to match the aerosol model state.
-! constituents
+  ! This aerosol model with the state of the transported aerosol
+  ! This updates the transported aerosol constituent array to match the aerosol model state.
+  ! constituents
   ! (mass mixing ratios or number mixing ratios)
   !------------------------------------------------------------------------------
   subroutine set_transported( self, transported_array )
