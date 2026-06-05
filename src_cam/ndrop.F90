@@ -956,10 +956,10 @@ subroutine dropmixnuc( aero_props, aero_state, &
    call outfld('NDROPMIX', ndropmix, pcols, lchnk)
    call outfld('WTKE    ', wtke,     pcols, lchnk)
 
-  ! call ccncalc(aero_state, aero_props, state, cs, ccn)
-  ! do l = 1, psat
-  !    call outfld(ccn_name(l), ccn(1,1,l), pcols, lchnk)
-  ! enddo
+   call ccncalc(aero_state, aero_props, state, cs, ccn)
+   do l = 1, psat
+      call outfld(ccn_name(l), ccn(1,1,l), pcols, lchnk)
+   enddo
 
    ! do column tendencies
    do m = 1, nbin
