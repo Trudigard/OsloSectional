@@ -58,6 +58,8 @@ use modal_aerosol_state_mod, only: modal_aerosol_state
 use carma_aerosol_state_mod, only: carma_aerosol_state
 use sectional_aerosol_state_mod, only: sectional_aerosol_state
 
+use aero_model,     only: aero_modelname
+
 implicit none
 private
 save
@@ -234,17 +236,19 @@ subroutine microp_aero_init(phys_state,pbuf2d)
          aero_props_obj => carma_aerosol_properties()
       end if
       call ndrop_init(aero_props_obj)
+
+   else
+      aero_props_obj => sectional_aerosol_properties()
+      cldo_idx = pbuf_get_index('CLDO')
+       ! TODO: implement mmr_names in sectional_aerosol_properties_mod to make this work
+        call ndrop_init(aero_props_obj)
+
+      allocate(aero_state(begchunk:endchunk))
+      do c = begchunk, endchunk
+         pbuf => pbuf_get_chunk(pbuf2d, c)
+         aero_state(c)%obj => sectional_aerosol_state(phys_state(c), pbuf )
+      end do
    end if
-
-   aero_props_obj => sectional_aerosol_properties()
- ! TODO: implement mmr_names in sectional_aerosol_properties_mod to make this work
-   !  call ndrop_init(aero_props_obj)
-
-   allocate(aero_state(begchunk:endchunk))
-   do c = begchunk, endchunk
-      pbuf => pbuf_get_chunk(pbuf2d, c)
-      aero_state(c)%obj => sectional_aerosol_state(phys_state(c), pbuf )
-   end do
 
    if (clim_modal_aero) then
 
@@ -329,7 +333,7 @@ subroutine microp_aero_init(phys_state,pbuf2d)
          call endrun(routine//': ERROR required mode-species type not found')
       end if
 
-   else if (.not.clim_carma_aero) then
+   else if (.not.clim_carma_aero .and. .not. aero_modelname == 'oslo_sectional') then
 
       ! Props needed for BAM number concentration calcs.
 
@@ -603,9 +607,11 @@ subroutine microp_aero_run ( &
       end if
    end if
 
-   aero_state1_obj => sectional_aerosol_state(state1, pbuf)
+   if (aero_modelname =='oslo_sectional') then
+       aero_state1_obj => sectional_aerosol_state(state1, pbuf)
+   end if
 
-   if (clim_modal_aero.or.clim_carma_aero) then
+   if (clim_modal_aero.or.clim_carma_aero .or. (aero_modelname=='oslo_sectional')) then
 
       itim_old = pbuf_old_tim_idx()
 
@@ -742,7 +748,7 @@ subroutine microp_aero_run ( &
    !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    ! Droplet Activation
 
-   if (clim_modal_aero .or. clim_carma_aero) then
+   if (clim_modal_aero .or. clim_carma_aero) then !.or. aero_modelname == 'oslo_sectional') then
 
       ! for modal or carma aerosol
 
@@ -880,7 +886,7 @@ subroutine microp_aero_run ( &
    !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    !bulk aerosol ccn concentration (modal does it in ndrop, from dropmixnuc)
 
-   if ((.not. clim_modal_aero) .and. (.not.clim_carma_aero)) then
+   if ((.not. clim_modal_aero) .and. (.not.clim_carma_aero) .and. (.not. aero_modelname == 'oslo_sectional')) then
 
       ! ccn concentration as diagnostic
       call ndrop_bam_ccn(lchnk, ncol, maerosol, naer2)

@@ -422,11 +422,11 @@ contains
 !==================================================================================================
         ! TODO: figure out what to do with these
         ! alogsig -> alogsig(m) = log(sigmag(m))
-        ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
-        ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
-        alogsig = nan
-        f1 = nan
-        f2 = nan
+        ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m)) f28 -> if sigma = 1, then this is 0.5
+        ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)               f29 -> if sigma = 1, then this is 1
+        alogsig = 0._r8
+        f1 = 0.5_r8
+        f2 = 1._r8 !nan
 
         ! TODO: check indexer_ var in aerosol_properties mod. same as the indices from chemical pp?
         do ibin=1,oslo_sectional_nbins
@@ -589,11 +589,10 @@ contains
                 write(iulog,*) 'particle_volume in m3 = ',newobj%particle_volume_(ibin:min(ibin+4, oslo_sectional_nbins))
             end do
 
-
-            ! TODO: figure out what to do with these
-            ! alogsig -> alogsig(m) = log(sigmag(m))
-            ! f1 -> f1(m) = 0.5_r8*exp(2.5_r8*alogsig(m)*alogsig(m))
-            ! f2 -> f2(m) = 1._r8 + 0.25_r8*alogsig(m)
+            write(iulog,*) 'Parameters for activation calculation are uniform across all bins for the sectional model: '
+            write(iulog,*) 'f1 for abdul-razzak & gahn = ', f1(1) ! they are the same everywhere for sectional model
+            write(iulog,*) 'f2 for abdul-razzak & gahn = ', f2(1)
+            write(iulog,*) 'alogsig is = ', alogsig(1)
 
             do ibin=1,oslo_sectional_nbins
                 write(iulog,*) 'bin_bounds in nm = ', newobj%bin_bounds_(ibin,1)*1e9, &
@@ -734,7 +733,7 @@ contains
     end do
 
     if (present(list_ndx)) then
-        call endrun(subname//' list_ndx is not yet implemented')
+        call endrun(subname//' list_ndx in sectional_aerosol_state is not yet implemented')
     end if
 
     if (present(density)) then
@@ -746,7 +745,14 @@ contains
     end if
 
     if (present(hygro)) then
-        call endrun(subname//' hygro is not yet implemented')
+!        call endrun(subname//' hygro in sectional_aerosol_state is not yet implemented')
+! TODO: this is the hygroscopicity for each species.. should be mixed?
+        if (specprop_ndx /= 0) then
+            hygro = self%aer_spec_prop(specprop_ndx)%kappa
+        else
+            hygro = 0._r8
+        end if
+
     end if
 
     if (present(spectype)) then
@@ -766,15 +772,15 @@ contains
     end if
 
     if (present(specmorph)) then
-        call endrun(subname//' specmorph is not yet implemented')
+        call endrun(subname//' specmorph in sectional_aerosol_state is not yet implemented')
     end if
 
     if (present(refindex_sw)) then
-        call endrun(subname//' refindex_sw is not yet implemented')
+        call endrun(subname//' refindex_sw in sectional_aerosol_state is not yet implemented')
     end if
 
     if (present(refindex_lw)) then
-        call endrun(subname//' refindex_lw is not yet implemented')
+        call endrun(subname//' refindex_lw in sectional_aerosol_state is not yet implemented')
     end if
 
   end subroutine get
@@ -846,9 +852,8 @@ contains
     real(r8), intent(in) :: numconc ! number conc (1/m3)
 
     character(len=*), parameter :: subname = 'amcube'
-
-    amcube = -1.0_r8
-    ! TODO: do we need this? cannot call endrun, due to "pure elemental"
+! copied from CARMA
+    amcube = 3._r8/(4._r8*pi)*volconc/numconc
 
   end function amcube
 
@@ -908,8 +913,16 @@ contains
     real(r8),intent(out) :: fm       ! activation fraction for aerosol mass
 
     character(len=*), parameter :: subname = 'actfracs'
+! TODO: check activated fraction
 
-    call endrun(subname//' is not yet implemented')
+    fn = 0._r8
+    fm = 0._r8
+
+    if (smc < smax) then
+       fn = 1._r8
+       fm = 1._r8
+    end if
+!    call endrun(subname//' is not yet implemented')
 
   end subroutine actfracs
 
@@ -1055,8 +1068,11 @@ contains
     integer,  intent(in) :: istop           ! stop column index
     integer,  intent(in) :: m               ! mode or bin index
     character(len=*), parameter :: subname = 'apply_number_limits'
+! TODO: is this a modal thing?
 
-    call endrun(subname//' is not yet implemented')
+    return
+
+    !call endrun(subname//' is not yet implemented')
 
   end subroutine apply_number_limits
 
@@ -1316,6 +1332,7 @@ contains
     real(r8) :: res
     character(len=*), parameter :: subname = 'alogsig_rlist'
 
+    res = 0._r8                     ! sigma is 1, so logsig is 0
     call endrun(subname//' is not yet implemented')
 
   end function alogsig_rlist

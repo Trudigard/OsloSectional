@@ -32,8 +32,8 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mmr(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), allocatable :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
-     real(r8), allocatable :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
+     real(r8), pointer :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
+     real(r8), pointer :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -45,8 +45,8 @@ module sectional_aerosol_state_mod
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
-     real(r8), allocatable :: bin_numconc(:,:,:)
-     real(r8), allocatable :: bin_numconc_cw(:,:,:)
+     real(r8), pointer :: bin_numconc(:,:,:)
+     real(r8), pointer :: bin_numconc_cw(:,:,:)
      integer, allocatable :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
@@ -281,12 +281,14 @@ end if
     if (allocated(self%aero_range_state)) then
         deallocate(self%aero_range_state)
     end if
-    if (allocated(self%bin_numconc)) then
-        deallocate(self%bin_numconc)
-    end if
-    if (allocated(self%bin_numconc_cw)) then
-        deallocate(self%bin_numconc_cw)
-    end if
+    !if (allocated(self%bin_numconc)) then
+    !    deallocate(self%bin_numconc)
+    !end if
+    !if (allocated(self%bin_numconc_cw)) then
+    !    deallocate(self%bin_numconc_cw)
+    !end if
+    nullify(self%bin_numconc)
+    nullify(self%bin_numconc_cw)
 end subroutine destructor
 
   !------------------------------------------------------------------------------
@@ -310,9 +312,9 @@ end subroutine destructor
 
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
-        if (masterproc .and. self%state%lchnk == 1) then
-            write(6,*)"DEBUG: bin_numconc in col 1: ", self%bin_numconc(1,:,1)
-        end if
+  !      if (masterproc .and. self%state%lchnk == 1) then
+  !          write(6,*)"DEBUG: bin_numconc in col 1: ", self%bin_numconc(1,:,1)
+  !      end if
     end do
 
     ! update the range properties
@@ -384,11 +386,15 @@ end subroutine destructor
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: species_ndx  ! species index
     integer, intent(in) :: bin_ndx      ! bin index
-    real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
+    real(r8), pointer   :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
+    integer             :: range
 
     character(len=*), parameter :: subname = 'get_ambient_mmr_0list'
 
-    call endrun(subname//' is not yet implemented')
+    range = self%sec_aero_props%bins2ranges(bin_ndx)
+    mmr => self%aero_range_state(range)%mmr(:,:,species_ndx)
+
+ !   call endrun(subname//' is not yet implemented')
 
   end subroutine get_ambient_mmr_0list
 
@@ -416,11 +422,15 @@ end subroutine destructor
     class(sectional_aerosol_state), intent(in) :: self
     integer, intent(in) :: species_ndx  ! species index
     integer, intent(in) :: bin_ndx      ! bin index
-    real(r8), pointer :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
+    real(r8), pointer   :: mmr(:,:)       ! mass mixing ratios (ncol,nlev)
+    integer             :: range
 
     character(len=*), parameter :: subname = 'get_cldbrne_mmr'
 
-    call endrun(subname//' is not yet implemented')
+    range = self%sec_aero_props%bins2ranges(bin_ndx)
+    mmr => self%aero_range_state(range)%mmr_cw(:,:,species_ndx)
+
+ !   call endrun(subname//' is not yet implemented')
 
   end subroutine get_cldbrne_mmr
 
@@ -434,9 +444,8 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'get_ambient_num'
 
-    call endrun(subname//' is not yet implemented')
-
-    ! use bin_num, range_density and range_mass
+    num => self%bin_numconc(:,:,bin_ndx)
+!    call endrun("get_ambient_num")
   end subroutine get_ambient_num
 
   !------------------------------------------------------------------------------
@@ -449,8 +458,8 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'get_cldbrne_num'
 
-    call endrun(subname//' is not yet implemented')
-
+    num => self%bin_numconc_cw(:,:,bin_ndx)
+!    call endrun(get_cldbrne_num)
   end subroutine get_cldbrne_num
 
   !------------------------------------------------------------------------------
@@ -462,12 +471,23 @@ end subroutine destructor
     type(ptr2d_t), intent(out) :: raer(:)
     type(ptr2d_t), intent(out) :: qqcw(:)
 
-    integer :: ibin,ispc, iidx
+    integer :: ibin,ispec, indx
 
     character(len=*), parameter :: subname = 'get_states'
 
-    call endrun(subname//' is not yet implemented')
+    do ibin = 1, aero_props%nbins()
+        indx = aero_props%indexer(ibin, 0)
+        call self%get_ambient_num(ibin, raer(indx)%fld)
+        call self%get_cldbrne_num(ibin, qqcw(indx)%fld)
 
+        if ( self%sec_aero_props%nmasses(ibin) /= 0 ) then
+            do ispec = 1, self%sec_aero_props%nmasses(ibin)
+                indx = aero_props%indexer(ibin, ispec)
+                call self%get_ambient_mmr(ispec,ibin, raer(indx)%fld)
+                call self%get_cldbrne_mmr(ispec,ibin, qqcw(indx)%fld)
+            end do
+        end if
+    end do
 
   end subroutine get_states
 
