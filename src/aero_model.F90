@@ -502,7 +502,13 @@ end do
                     + range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
 
             ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
-            sflx_range_species(:ncol) = sflx_range(:ncol,irange) * massfrac(:ncol, pver)
+            do icol = 1, ncol
+                do ilev = 1, pver
+                    if (massfrac(icol, pver) > 0._r8) then
+                        sflx_range_species(icol) = sflx_range(icol,irange) * massfrac(icol, pver)
+                    end if
+                end do
+            end do
 
             species_tracername = master_aero_state(lchnk)%ptr%aero_range_state(irange)%range_name(ispec)
 
