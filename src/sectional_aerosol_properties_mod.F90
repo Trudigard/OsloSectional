@@ -956,21 +956,22 @@ contains
     character(len=10) :: specname
     character(len=*), parameter :: subname = 'mmr_names'
 
-        range_ndx = self%bins2ranges(bin_ndx)
-
+    range_ndx = self%bins2ranges(bin_ndx)
 ! TODO: make this into a function!
+    spec_counter = 0
     do ispec = 1, self%nspecies_tot()                                           ! loop through the species properties
         if ( any(self%aer_spec_prop(ispec)%range_ndx == range_ndx) ) then    ! find out if the species is in the requested range
             spec_counter = spec_counter + 1                                     ! if so, add to the counter
-            if ( spec_counter == species_ndx ) then                             ! if counter is equal to species index
+                if ( spec_counter == species_ndx ) then                             ! if counter is equal to species index
                 specprop_ndx = ispec                                            ! then we know what species is meant!
+                specname = self%aer_spec_prop(specprop_ndx)%specname
+                name_a = trim(specname)//'_R'//trim(int2str(range_ndx))
+                name_c = trim(name_a)//'_cw'
             end if
         end if
     end do
 
-    specname = self%aer_spec_prop(specprop_ndx)%specname
-    name_a = trim(specname)//'_R'//trim(int2str(range_ndx))
-    name_c = trim(name_a)//'_cw'
+
 
   end subroutine mmr_names
 
