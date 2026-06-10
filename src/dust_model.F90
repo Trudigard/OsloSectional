@@ -142,7 +142,7 @@ contains
 
     ! local variables
     integer               :: ispecprop, ind, istat, ibin, irange, idustspec
-    character(len=6)      :: type
+    character(len=10)     :: type
     real(r8), allocatable :: dust_bin_bounds(:,:)
     real(r8), allocatable :: bin_bounds(:,:)
 
@@ -210,7 +210,7 @@ contains
         end do
     end do
 
-    dust_active = dust_nrange > 0
+    dust_active = dust_nspecies > 0
     if (.not.dust_active) return
 
     if (is_zender_soil_erod_from_atm()) then

@@ -4,46 +4,68 @@
 module seasalt_model
   use shr_kind_mod, only: r8 => shr_kind_r8, cl => shr_kind_cl
   use ppgrid,       only: pcols, pver
+  use spmd_utils,      only: masterproc
+  use cam_logfile,     only: iulog
+  use cam_abortutils,  only: endrun
+  use aerosol_properties_mod, only: aerosol_properties
+  use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
 
   implicit none
   private
 
   public :: seasalt_nbin
-  public :: seasalt_nnum
   public :: seasalt_names
-  public :: seasalt_indices
+
   public :: seasalt_init
   public :: seasalt_emis
   public :: seasalt_active
-
-  public :: seasalt_depvel
+  public :: seasalt_nspecies
 
   logical :: seasalt_active = .false.
 
-  integer, parameter :: seasalt_nbin = 0
-  integer, parameter :: seasalt_nnum = 0
+  integer :: seasalt_nspecies = 0
+  integer :: seasalt_nbin = 0
+  integer :: seasalt_nrange = 0
+  integer :: seasalt_specprop_ndx
 
-  integer :: seasalt_indices(seasalt_nbin)
+  character(len=10), allocatable :: seasalt_names(:)
 
  contains
 
    !=============================================================================
    !=============================================================================
-   subroutine seasalt_init
+   subroutine seasalt_init(aero_props)
      use cam_history,   only: addfld, fieldname_len
      use constituents,  only: cnst_get_ind
-     use string_utils,      only: int2str
+     use string_utils,  only: int2str
+
+     type(sectional_aerosol_properties), intent(in) :: aero_props
+
+
+     ! local variables
+     integer            :: ispecprop, ibin, irange
+     character(len=10)  :: type
 
      character(len=fieldname_len) :: dummy
-    character(len=*), parameter :: subname = 'seasalt_init'
-    call endrun(subname//" is not yet implemented")
+     character(len=*), parameter :: subname = 'seasalt_init'
+
+     do ispecprop = 1, aero_props%nspecies_tot()
+        type = aero_props%spectype(ispecprop)
+        if (trim(type) == 'seasalt') then
+            seasalt_nspecies = seasalt_nspecies + 1
+            seasalt_specprop_ndx = ispecprop
+            seasalt_nbin = aero_props%spec_nbin(ispecprop)
+
+        end if
+    end do
+
+    seasalt_active = seasalt_nspecies > 0
 
    end subroutine seasalt_init
 
   !=============================================================================
   !=============================================================================
   subroutine seasalt_emis( u10cubed,  srf_temp, ocnfrc, ncol, cflx )
-
 
     ! dummy arguments
     real(r8), intent(in) :: u10cubed(:)

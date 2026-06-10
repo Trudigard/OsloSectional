@@ -124,6 +124,7 @@ contains
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
     use dust_model,     only: dust_init
+    use seasalt_model,  only: seasalt_init, seasalt_active
     use string_utils,   only: int2str
     use mo_setsox,      only : setsox, has_sox
   use ppgrid,               only: begchunk, endchunk, pcols, pver
@@ -174,6 +175,7 @@ contains
     end if
 
     call dust_init(aero_props)
+    call seasalt_init(aero_props)
 
 ! TODO: if drydep active:
     call inidrydep(rair, gravit)
