@@ -268,10 +268,6 @@ contains
     totalEmissionFlux(:) = 0.0_r8
     totalEmissionFlux(:ncol) = sum(dust_flux_in(:ncol,:), dim=2)
 
-if (masterproc) then
-   write(6,*)" DEBUG: dust_flux_in: ", maxval(abs(sum(dust_flux_in(:ncol,:), dim=2)))
-end if
-
     if (is_zender_soil_erod_from_atm()) then
         ! Filter away unreasonable values for soil erodibility
         ! (using low values e.g. gives emissions in greenland..)
