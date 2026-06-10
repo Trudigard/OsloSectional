@@ -6,6 +6,7 @@ module dust_model
   use spmd_utils,      only: masterproc
   use cam_logfile,     only: iulog
   use cam_abortutils,  only: endrun
+  use shr_dust_emis_mod,only: is_dust_emis_zender, is_zender_soil_erod_from_atm
 
   use aerosol_properties_mod, only: aerosol_properties
   use sectional_aerosol_properties_mod, only: sectional_aerosol_properties
@@ -54,7 +55,7 @@ module dust_model
 
   ! soil parameters from oslo_aero
   real(r8)          :: dust_emis_fact = 0._r8        ! tuning parameter for dust emissions
-  character(len=cl) :: soil_erod_file = 'soil_erod_file' ! full pathname for soil erodibility dataset
+  character(len=cl) :: soil_erod_file = 'none'       ! full pathname for soil erodibility dataset
 
   real(r8), allocatable ::  soil_erodibility(:,:)        ! soil erodibility factor
 
@@ -67,6 +68,7 @@ contains
 
     use namelist_utils,    only: find_group_name
     use spmd_utils,        only: mpicom, mstrid=>masterprocid, mpi_character, mpi_real8, MPI_SUCCESS
+    use shr_dust_emis_mod, only: shr_dust_emis_readnl
 
     character(len=*), intent(in) :: nlfile  ! filepath for file containing namelist input
 
@@ -101,8 +103,22 @@ contains
         call endrun(subname//' ERROR: Broadcasting soil_erod_file')
     end if
 
+    call shr_dust_emis_readnl(mpicom, 'drv_flds_in')
+
+    if ((soil_erod_file /= 'none') .and. (.not.is_zender_soil_erod_from_atm())) then
+       call endrun(subname//': should not specify soil_erod_file if Zender soil erosion is not in CAM')
+    end if
+
     ! Report
     if (masterproc) then
+        if (is_dust_emis_zender()) then
+          write(iulog,*) subname,': Zender_2003 dust emission method is being used.'
+        end if
+        if (is_zender_soil_erod_from_atm()) then
+          write(iulog,*) subname,': Zender soil erod file is handled in atm'
+          write(iulog,*) subname,': soil_erod_file = ',trim(soil_erod_file)
+          write(iulog,*) subname,': dust_emis_fact = ',dust_emis_fact
+        end if
         write(iulog, *) 'Dust namelist'
         write(iulog, *) 'dust_emis_fact: ', dust_emis_fact
         write(iulog, *) 'soil_erod_file: ', soil_erod_file
@@ -196,7 +212,9 @@ contains
     dust_active = dust_nrange > 0
     if (.not.dust_active) return
 
-    call soil_erod_init( dust_emis_fact, soil_erod_file )
+    if (is_zender_soil_erod_from_atm()) then
+        call soil_erod_init( dust_emis_fact, soil_erod_file )
+    end if
 
     ! calculate emission fraction per bin
 
@@ -239,16 +257,6 @@ contains
     real(r8) :: cflx_tmp(pcols,dust_nbin)
     character(len=*), parameter :: subname = 'dust_emis'
 
-    ! Filter away unreasonable values for soil erodibility
-    ! (using low values e.g. gives emissions in greenland..)
-    where(soil_erodibility(:,lchnk) < 0.1_r8)
-       soil_erod_tmp(:)=0.0_r8
-    elsewhere
-       soil_erod_tmp(:)=soil_erodibility(:,lchnk)
-    end where
-
-    totalEmissionFlux(:) = 0.0_r8
-    totalEmissionFlux = totalEmissionFlux + sum(dust_flux_in, dim=2)
 
     ! Note that following CESM use of "dust_emis_fact", the emissions are
     ! scaled by the INVERSE of the factor!!
@@ -257,21 +265,53 @@ contains
     ! As of NE-380: Oslo dust emissions are 2/3 of CAM emissions
     ! gives better AOD close to dust sources
 
+    totalEmissionFlux(:) = 0.0_r8
+    totalEmissionFlux(:ncol) = sum(dust_flux_in(:ncol,:), dim=2)
+
+if (masterproc) then
+   write(6,*)" DEBUG: dust_flux_in: ", maxval(abs(sum(dust_flux_in(:ncol,:), dim=2)))
+end if
+
+    if (is_zender_soil_erod_from_atm()) then
+        ! Filter away unreasonable values for soil erodibility
+        ! (using low values e.g. gives emissions in greenland..)
+        where(soil_erodibility(:,lchnk) < 0.1_r8)
+            soil_erod_tmp(:)=0.0_r8
+        elsewhere
+            soil_erod_tmp(:)=soil_erodibility(:,lchnk)
+        end where
+
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
 ! TODO: use aerosol model internal indices instead
 
-    do ibin = 1, dust_nbin
-        cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
-            *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
-        cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
-        do irange = 1, dust_nrange
-            ! emissions in kg/m2/s to ranges
-            if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
-                cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
-            end if
+        do ibin = 1, dust_nbin
+            cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
+                *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
+            cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
+            do irange = 1, dust_nrange
+                ! emissions in kg/m2/s to ranges
+                if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
+                    cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
+                end if
+            end do
         end do
-    end do
+
+    else ! Leung emissions
+
+        do ibin = 1, dust_nbin
+            cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
+                *totalEmissionFlux(:ncol) / dust_emis_fact
+            cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_species_ndx) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
+
+            do irange = 1, dust_nrange
+                ! emissions in kg/m2/s to ranges
+                if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
+                    cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
+                end if
+            end do
+        end do
+    end if
 
   end subroutine dust_emis
   !=============================================================================
