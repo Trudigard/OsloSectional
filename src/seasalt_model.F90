@@ -20,11 +20,8 @@ module seasalt_model
 
   logical :: seasalt_active = .false.
 
-  integer, parameter :: seasalt_nbin = 4
+  integer, parameter :: seasalt_nbin = 0
   integer, parameter :: seasalt_nnum = 0
-
-  character(len=6), parameter :: seasalt_names(seasalt_nbin) &
-       = (/'SSLT01', 'SSLT02', 'SSLT03', 'SSLT04'/)
 
   integer :: seasalt_indices(seasalt_nbin)
 
@@ -35,9 +32,9 @@ module seasalt_model
    subroutine seasalt_init
      use cam_history,   only: addfld, fieldname_len
      use constituents,  only: cnst_get_ind
+     use string_utils,      only: int2str
 
      character(len=fieldname_len) :: dummy
-     integer :: m
     character(len=*), parameter :: subname = 'seasalt_init'
     call endrun(subname//" is not yet implemented")
 
@@ -47,6 +44,7 @@ module seasalt_model
   !=============================================================================
   subroutine seasalt_emis( u10cubed,  srf_temp, ocnfrc, ncol, cflx )
 
+
     ! dummy arguments
     real(r8), intent(in) :: u10cubed(:)
     real(r8), intent(in) :: srf_temp(:)
@@ -55,8 +53,6 @@ module seasalt_model
     real(r8), intent(inout) :: cflx(:,:)
 
     ! local vars
-    integer :: ix,m
-    real(r8), parameter :: sslt_source(seasalt_nbin) = (/ 4.77e-15_r8, 5.19e-14_r8, 1.22e-13_r8, 6.91e-14_r8 /)
     character(len=*), parameter :: subname = 'seasalt_emis'
     call endrun(subname//" is not yet implemented")
 
@@ -64,40 +60,6 @@ module seasalt_model
 
   !=============================================================================
   !=============================================================================
-  subroutine seasalt_depvel( temp, pmid, q, ram1, fv, ncol, lchnk, vlc_dry,vlc_trb,vlc_grv )
-    use aerosol_depvel, only: aerosol_depvel_compute
-    use wv_saturation,  only: qsat
-    use cam_history,    only: outfld
-    use mo_constants,   only: dns_aer_sst=>seasalt_density
-
-    integer,  intent(in) :: ncol, lchnk
-    real(r8), intent(in) :: temp(:,:)  ! temperature
-    real(r8), intent(in) :: pmid(:,:)  ! mid point pressure
-    real(r8), intent(in) :: q(:,:)     ! water vapor
-    real(r8), intent(in) :: ram1(:)    ! aerodynamical resistance (s/m)
-    real(r8), intent(in) :: fv(:)      ! friction velocity (m/s)
-
-    real(r8), intent(out) :: vlc_trb(:,:)    !Turbulent deposn velocity (m/s)
-    real(r8), intent(out) :: vlc_grv(:,:,:)  !grav deposn velocity (m/s)
-    real(r8), intent(out) :: vlc_dry(:,:,:)  !dry deposn velocity (m/s)
-
-    real(r8) :: r
-    real(r8) :: wetdia(pcols,pver,seasalt_nbin)
-    real(r8) :: RH(pcols,pver),es(pcols,pver),qs(pcols,pver)  ! for wet radius calculation
-    real(r8),parameter:: c1=0.7674_r8, c2=3.0790_r8, c3=2.57e-11_r8,c4=-1.424_r8  ! wet radius calculation constants
-    integer :: m, i,k
-
-    ! set stokes correction to 1.0 for now not a bad assumption for our size range)
-    real(r8), parameter :: sslt_stk_crc(seasalt_nbin) = (/ 1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8 /)
-    real(r8), parameter :: sslt_smt_vwr(seasalt_nbin) = (/0.52e-6_r8,2.38e-6_r8,4.86e-6_r8,15.14e-6_r8/)
-
-    character(len=*), parameter :: subname = 'seasalt_depvel'
-
-    !-----------------------------------------------------------------------
-    call endrun(subname//" is not yet implemented")
-
-  endsubroutine seasalt_depvel
-
  ! subroutine seasalt_emis_frac(emis_frac)
 
     ! CoefA

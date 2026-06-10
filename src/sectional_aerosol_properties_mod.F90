@@ -85,6 +85,7 @@ module sectional_aerosol_properties_mod
      procedure :: kappa                     ! done
      procedure :: molecular_weight          ! done
      procedure :: specname                  ! done
+     procedure :: spectype                  ! done
 
 
      final :: destructor
@@ -1281,14 +1282,14 @@ contains
   !------------------------------------------------------------------------------
   ! returns number of bins containing species
   !------------------------------------------------------------------------------
-  function spec_tracernames(self, species_ndx, nranges)  result(res)
+  function spec_tracernames(self, species_ndx, spec_range_ndx)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_ndx, nranges
-    character(len=10) :: res(nranges)
+    integer, intent(in) :: species_ndx, spec_range_ndx
+    character(len=10) :: res
     character(len=*), parameter :: subname = 'spec_tracernames'
 
-    res = self%aer_spec_prop(species_ndx)%tracernames
+    res = self%aer_spec_prop(species_ndx)%tracernames(spec_range_ndx)
 
   end function spec_tracernames
 
@@ -1537,5 +1538,16 @@ contains
     species_name = self%aer_spec_prop(specprop_ndx)%specname
 
   end function specname
+  !------------------------------------------------------------------------------
+  ! Returns spectype with aer_spec_props index
+  !------------------------------------------------------------------------------
+  function spectype(self, specprop_ndx) result(species_type)
+    class(sectional_aerosol_properties), intent(in) :: self
+    integer, intent(in)           :: specprop_ndx
+    character(len=:), allocatable :: species_type
+
+    species_type = self%aer_spec_prop(specprop_ndx)%spectype
+
+  end function spectype
 
 end module sectional_aerosol_properties_mod
