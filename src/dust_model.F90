@@ -53,11 +53,10 @@ module dust_model
   class(aerosol_properties), pointer :: aero_props=>null()
 
   ! soil parameters from oslo_aero
-  real(r8)          :: dust_emis_fact = -1.e36_r8        ! tuning parameter for dust emissions
+  real(r8)          :: dust_emis_fact = 0._r8        ! tuning parameter for dust emissions
   character(len=cl) :: soil_erod_file = 'soil_erod_file' ! full pathname for soil erodibility dataset
 
   real(r8), allocatable ::  soil_erodibility(:,:)        ! soil erodibility factor
-  real(r8) :: soil_erod_fact                             ! tuning parameter for dust emissions
 
 contains
 
@@ -307,12 +306,10 @@ contains
     real(r8), parameter   :: twopi=2._r8*pi
     character(len=*), parameter :: subname = 'soil_erod_init'
 
-    soil_erod_fact = dust_emis_fact
-
     ! Summary to log file
     if (masterproc) then
        write(iulog,*) 'soil_erod_mod: soil erodibility dataset: ', trim(soil_erod_file)
-       write(iulog,*) 'soil_erod_mod: soil_erod_fact = ', soil_erod_fact
+       write(iulog,*) 'soil_erod_mod: dust_emis_fact = ', dust_emis_fact
     end if
 
     ! read in soil erodibility factors, similar to Zender's boundary conditions
