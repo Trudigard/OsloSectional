@@ -14,7 +14,7 @@ module aero_model
   use physics_buffer,    only: physics_buffer_desc
   use physconst,         only: gravit, rair
   use dust_model,        only: dust_active, dust_nspecies, dust_range_tracer_ndx, dust_bin_tracer_ndx, dust_specprop_ndx
-  use seasalt_model,     only: sslt_active=>seasalt_active, seasalt_names, seasalt_nbin
+  use seasalt_model,     only: sslt_active=>seasalt_active
   use spmd_utils,        only: masterproc
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index, pbuf_get_chunk
   use cam_history,       only: outfld
@@ -545,7 +545,6 @@ end do
   subroutine aero_model_wetdep( state, dt, dlf, cam_out, ptend, pbuf)
 
     use wetdep,        only : wetdepa_v1, wetdep_inputs_set, wetdep_inputs_t
-  !  use seasalt_model, only : sslt_names=>seasalt_names
 
     ! args
 

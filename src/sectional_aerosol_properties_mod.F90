@@ -1237,7 +1237,7 @@ contains
   end function spec_range_ndx
 
   !------------------------------------------------------------------------------
-  ! returns the upper or lower range idx TODO: change to array of idices?
+  ! returns the bin indices for a species
   !------------------------------------------------------------------------------
   function spec_bin_ndx(self, species_ndx, nbins)  result(res)
     ! TODO: needed?
