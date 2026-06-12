@@ -16,7 +16,6 @@ module seasalt_model
   ! public variables
   public :: seasalt_active
   public :: seasalt_nspecies
-  public :: seasalt_names     ! TODO: remove these some time?
 
   ! public procedures
   public :: seasalt_init
@@ -25,7 +24,6 @@ module seasalt_model
   ! initialization of public variables
   logical :: seasalt_active = .false.
   integer :: seasalt_nspecies = 0
-  character(len=10), allocatable :: seasalt_names(:)
 
   ! module variables
   integer :: seasalt_specprop_ndx(10)
@@ -173,7 +171,6 @@ module seasalt_model
     real(r8), parameter ::  f2 = 3.3_r8
     real(r8), parameter ::  r1 = 2.1_r8
     real(r8), parameter ::  r2 = 9.2_r8
-    real(r8), parameter ::  delta = 10._r8
 
     if (.not. seasalt_active) return
 
@@ -185,8 +182,6 @@ module seasalt_model
           Clarke      = 0.0_r8
           Smith       = 0.0_r8
 
-    ! calculate white cap -> get u10 from u10cubed
-
     bin_ndx = aero_props%spec_bin_ndx(seasalt_specprop_ndx(1), aero_props%spec_nbin(seasalt_specprop_ndx(1)))
     bin_centers = aero_props%bin_centers(aero_props%nbins())
 
@@ -195,7 +190,8 @@ module seasalt_model
 ! TODO: check unit of rpdry
 
         do icol = 1, ncol
-            wcap = 3.84e-6_r8 * u10cubed(icol) ** (3.41_r8/3._r8)      ! in percent, ie., 75%, wcap = 0.75
+            wcap = 3.84e-6_r8 * u10cubed(icol)      ! in percent, ie., 75%, wcap = 0.75
+!    W(:ncol)=3.84e-6_r8*u10cubed(:ncol)*0.1_r8 ! whitecap area
 
             rpdry = bin_centers(ibin) ! in m
             rpdry_cm = rpdry * 100._r8
@@ -225,11 +221,11 @@ module seasalt_model
 
             !Monahan
             B_Mona = (0.38_r8 - log10(r80)) / 0.65_r8
-            Monahan = 1.373_r8 * u10cubed(icol) ** (3.41_r8/3._r8) * r80 ** (-3._r8) * &
+            Monahan = 1.373_r8 * u10cubed(icol) * r80 ** (-3._r8) * &
                  (1._r8 + 0.057_r8 * r80**1.05_r8) * 10._r8 ** (1.19_r8 * exp(- B_Mona **2))
 
             !Smith
-            u14 = u10cubed(icol) ** (1._r8/3._r8) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
+            u14 = u10cubed(icol) ** (1._r8/3.41_r8) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
             A1A92 = 10._r8 ** (0.0676_r8 * u14 + 2.430_r8)
             A2A92 = 10._r8 ** (0.9590_r8 * u14**0.5_r8 - 1.476_r8)
             Smith = A1A92*exp(-f1 *(log(r80 / r1))**2) + A2A92*exp(-f2 * (log(r80 / r2))**2)     ! dF/dr   [#/m2/s/um]
@@ -244,7 +240,7 @@ module seasalt_model
   !          if (rdry .lt. 2._r8) then    ! cut at 2.0 um
                 ncflx = Clarke
             else
-                if (u10cubed(icol)**(1._r8/3._r8) .lt. 9._r8) then
+                if (u10cubed(icol)**(1._r8/3.41_r8) .lt. 9._r8) then
                     ncflx = Monahan
                 else
                     if (Monahan .gt. Smith) then

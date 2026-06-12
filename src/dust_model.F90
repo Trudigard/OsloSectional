@@ -14,14 +14,12 @@ module dust_model
   implicit none
   private
 
-  ! Public data (TODO: move to object?) also, we have index-mania now!
-  ! TODO: use internal indices for the aerosol scheme, connect only with get_transported/set_transported
+  ! public
+  public :: dust_active
   public :: dust_nspecies
-  public :: dust_bin_tracer_ndx     ! indices of num_ tracers containing dust (from const_get_ind)
+  public :: dust_bin_tracer_ndx     ! indices of num_ tracers containing dust (from const_get_ind)-> in state range obj
   public :: dust_range_tracer_ndx   ! indices of DU_ tracers (from const_get_ind)
   public :: dust_specprop_ndx       ! index in the species object array
-  public :: dust_active
-  public :: dust_names
 
   ! Public procedures
   public :: dust_emis
@@ -38,8 +36,6 @@ module dust_model
   integer, allocatable :: dust_bin_ndx(:) ! object internal bin index (array index for bins containing dust) -> aer_spec_prop
   integer, allocatable :: dust_range_ndx(:) ! object internal bin index (array index for bins containing dust) -> aer_spec_prop
   integer :: dust_specprop_ndx(10) = 0 ! object internal index
-  character(len=10), allocatable :: dust_bin_names(:)
-  character(len=10), allocatable :: dust_names(:)
 
   ! TODO: move to obj somehow, currently the format in the base obj. is too rigid?
   integer, protected, allocatable :: dust_bin_tracer_ndx(:)
@@ -146,6 +142,8 @@ contains
     real(r8), allocatable :: dust_bin_bounds(:,:)
     real(r8), allocatable :: bin_bounds(:,:)
 
+    character(len=fieldname_len) :: dummy
+
     character(len=*), parameter :: subname = 'dust_init'
 
     dust_nspecies = 0
@@ -169,14 +167,6 @@ contains
     end do
 
     ! find ndst from aero_props species props or nr of DU_ tracers -> move these to sectional_aerosol_properties?
-    allocate( dust_names(dust_nrange), stat=istat )
-    if (istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_names'")
-    end if
-    allocate( dust_bin_names(dust_nbin), stat=istat )
-    if (istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_bin_names'")
-    end if
     allocate(dust_bin_tracer_ndx(dust_nbin), stat=istat )
     if ( istat /= 0 ) then
         call endrun(subname//":: ERROR could not allocate 'dust_bin_tracer_ndx'")
@@ -198,15 +188,14 @@ contains
         call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
 
-! TODO: use model-internal indices instead! no "cnst_get_ind" anymore
+! Get indices in q array for emissions
     do ibin = 1, dust_nbin
-        dust_bin_names(ibin) = 'num_'//int2str(dust_bin_ndx(ibin))
-        call cnst_get_ind(dust_bin_names(ibin), dust_bin_tracer_ndx(ibin))
+        dummy = 'num_'//int2str(dust_bin_ndx(ibin))
+        call cnst_get_ind(dummy, dust_bin_tracer_ndx(ibin))
     end do
     do idustspec = 1, dust_nspecies
         do irange = 1, dust_nrange
             call cnst_get_ind(aero_props%spec_tracernames(dust_specprop_ndx(idustspec), irange), dust_range_tracer_ndx(irange))
-            dust_names(irange) = aero_props%spec_tracernames(dust_specprop_ndx(idustspec), irange)
         end do
     end do
 
