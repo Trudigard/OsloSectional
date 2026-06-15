@@ -26,7 +26,6 @@ module sectional_aerosol_properties_mod
      real(r8)                :: kappa
      logical                 :: mixed           ! true if internally mixed
      !TODO: add hydrophilic/phobic
-     ! integer               :: idx             ! indices of species tracers
      character(len=10), allocatable :: tracernames(:) ! e.g. DU_R3
      end type aerosol_species_properties
 
@@ -86,8 +85,8 @@ module sectional_aerosol_properties_mod
      procedure :: molecular_weight          ! done
      procedure :: specname                  ! done
      procedure :: spectype                  ! done
-
-
+     procedure :: spec_bin_q_ndx  ! TODO
+     procedure :: spec_mmr_q_ndx  ! TODO
      final :: destructor
   end type sectional_aerosol_properties
 
@@ -489,6 +488,7 @@ contains
                 trim(oslo_sectional_species_properties(ispec)%specname)//'_R'//&
                 trim(int2str(oslo_sectional_species_properties(ispec)%range_ndx(irange)))
             end do
+
         end do
 
 !==================================================================================================
@@ -497,51 +497,54 @@ contains
 
         allocate(newobj,stat=ierr)
         if ( ierr/=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj")
         end if
 
         allocate(newobj%bins2ranges_(oslo_sectional_nbins), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%bins2ranges")
         end if
 
         allocate(newobj%range_nspecies_(oslo_sectional_nranges), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%range_nspecies")
         end if
 
         allocate(newobj%bin_centers_(oslo_sectional_nbins), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%bin_centers")
         end if
 
         allocate(newobj%bin_bounds_(oslo_sectional_nbins, 2), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%bin_bounds")
         end if
 
         allocate(newobj%range_bounds_(oslo_sectional_nranges, 2), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%range_bounds")
         end if
 
         allocate(newobj%aer_spec_prop(oslo_sectional_nspecies_tot), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%aer_spec_prop")
         end if
 
         allocate(newobj%particle_volume_(oslo_sectional_nbins), stat=ierr)
         if( ierr /=0 ) then
-            nullify(newobj)
-            return
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%particle_volume")
         end if
+
+        do ispec = 1, oslo_sectional_nspecies_tot
+            allocate(newobj%aer_spec_prop(ispec)%bin_ndx(oslo_sectional_species_properties(ispec)%nbin), stat=ierr)
+            if( ierr /=0 ) then
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%aer_spec_prop%bin_ndx")
+            end if
+            allocate(newobj%aer_spec_prop(ispec)%range_ndx(oslo_sectional_species_properties(ispec)%nrange), stat=ierr)
+            if( ierr /=0 ) then
+            call endrun(subname// ": ERROR "//int2str(ierr)//" allocating newobj%aer_spec_prop%range_ndx")
+            end if
+        end do
 
         newobj%bins2ranges_ = bins2ranges
         newobj%nranges_ = oslo_sectional_nranges
@@ -551,7 +554,6 @@ contains
         newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :) * 1.e-9_r8            ! nm to m
         newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
         newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
-    ! TODO: allocate aer_spec_props%bin_ndx and range_ndx?
         newobj%particle_volume_ = 4/3*pi*(newobj%bin_centers_**3)
 
         ! deallocate local variables
@@ -609,14 +611,14 @@ contains
                 write(iulog ,*) 'sectional aerosol species properties: '
                 write(iulog ,*) 'species name = ', newobj%aer_spec_prop(ind)%specname
                 write(iulog ,*) 'species type = ', newobj%aer_spec_prop(ind)%spectype
-                write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange) ! TODO: is there a nicer way?
+                write(iulog ,*) 'range indices = ', newobj%aer_spec_prop(ind)%range_ndx(1), ' : ', newobj%aer_spec_prop(ind)%range_ndx(newobj%aer_spec_prop(ind)%nrange)
                 write(iulog ,*) 'density = ', newobj%aer_spec_prop(ind)%density
                 write(iulog ,*) 'molecular_weight = ', newobj%aer_spec_prop(ind)%molecular_weight
                 write(iulog ,*) 'kappa = ', newobj%aer_spec_prop(ind)%kappa
                 write(iulog ,*) 'mixed = ', newobj%aer_spec_prop(ind)%mixed
                 write(iulog ,*) 'nrange = ', newobj%aer_spec_prop(ind)%nrange
                 write(iulog ,*) 'nbin = ', newobj%aer_spec_prop(ind)%nbin
-                write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx) ! TODO: is there a nicer way?
+                write(iulog ,*) 'bin_indices = ', newobj%aer_spec_prop(ind)%bin_ndx(1), ' : ', maxval(newobj%aer_spec_prop(ind)%bin_ndx)
                 write(iulog ,*) 'tracer names = ', newobj%aer_spec_prop(ind)%tracernames(:newobj%aer_spec_prop(ind)%nrange)
             end do
         end if
@@ -1239,15 +1241,15 @@ contains
   !------------------------------------------------------------------------------
   ! returns the bin indices for a species
   !------------------------------------------------------------------------------
-  function spec_bin_ndx(self, species_ndx, nbins)  result(res)
+  function spec_bin_ndx(self, specprop_ndx, specbin_ndx)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_ndx, nbins
+    integer, intent(in) :: specbin_ndx, specprop_ndx
     integer :: ibin
-    integer :: res(nbins)
+    integer :: res
     character(len=*), parameter :: subname = 'spec_bin_ndx'
 
-    res = self%aer_spec_prop(species_ndx)%bin_ndx
+    res = self%aer_spec_prop(specprop_ndx)%bin_ndx(specbin_ndx)
 
   end function spec_bin_ndx
 
@@ -1549,5 +1551,42 @@ contains
     species_type = self%aer_spec_prop(specprop_ndx)%spectype
 
   end function spectype
+
+  !------------------------------------------------------------------------------
+  ! Returns CAM q array index for species bin number concentrations
+  !------------------------------------------------------------------------------
+  function spec_bin_q_ndx(self, specprop_ndx, spec_bin_ndx) result(bin_q_ndx)
+     use cam_history, only: fieldname_len
+     use constituents, only: cnst_get_ind
+
+     class(sectional_aerosol_properties), intent(in) :: self
+     integer, intent(in) :: specprop_ndx, spec_bin_ndx
+     character(len=fieldname_len) :: dummy
+     integer             :: bin_q_ndx
+
+     bin_q_ndx = 0
+     dummy = 'num_'//int2str(self%aer_spec_prop(specprop_ndx)%bin_ndx(spec_bin_ndx))
+     call cnst_get_ind(dummy, bin_q_ndx)
+
+  end function spec_bin_q_ndx
+  !------------------------------------------------------------------------------
+  ! Returns CAM q array index for species range mmr
+  !------------------------------------------------------------------------------
+  function spec_mmr_q_ndx(self, specprop_ndx, spec_range_ndx) result(mmr_q_ndx)
+     use cam_history, only: fieldname_len
+     use constituents, only: cnst_get_ind
+
+     class(sectional_aerosol_properties), intent(in) :: self
+     integer, intent(in) :: specprop_ndx, spec_range_ndx
+     character(len=fieldname_len) :: dummy
+     integer             :: mmr_q_ndx
+
+     mmr_q_ndx = 0
+
+     dummy = self%aer_spec_prop(specprop_ndx)%tracernames(spec_range_ndx)
+     call cnst_get_ind(dummy, mmr_q_ndx)
+
+  end function spec_mmr_q_ndx
+
 
 end module sectional_aerosol_properties_mod
