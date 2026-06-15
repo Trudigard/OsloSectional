@@ -2,6 +2,8 @@
 ! Seasalt for Bulk Aerosol Model
 !===============================================================================
 module seasalt_model
+
+! TODO: clean up and move stuff to the object
   use shr_kind_mod, only: r8 => shr_kind_r8, cl => shr_kind_cl
   use ppgrid,       only: pcols, pver
   use spmd_utils,      only: masterproc
@@ -14,23 +16,14 @@ module seasalt_model
   private
 
   ! public variables
-  public :: seasalt_active
-  public :: seasalt_nspecies
+  seasalt_active = .false.
 
   ! public procedures
   public :: seasalt_init
   public :: seasalt_emis
 
-  ! initialization of public variables
-  logical :: seasalt_active = .false.
-  integer :: seasalt_nspecies = 0
-
   ! module variables
-  integer :: seasalt_specprop_ndx(10)
-
-  ! positions in q arrays
-  integer, allocatable :: seasalt_bin_tracer_ndx(:,:)
-  integer, allocatable :: seasalt_range_tracer_ndx(:,:)
+  integer :: seasalt_specprop_ndx
 
   contains
 
@@ -44,53 +37,22 @@ module seasalt_model
      type(sectional_aerosol_properties), intent(in) :: aero_props
 
      ! local variables
-     integer              :: ispecprop, ibin, irange, nname, isaltspec
+     integer              :: ispecprop, ibin, irange
      integer              :: specprop_ndx
-     integer, allocatable :: bin_ndx(:,:)
      character(len=10)    :: type
-     character(len=10)    :: names_tmp(200)
 
      character(len=fieldname_len) :: dummy
      character(len=*), parameter :: subname = 'seasalt_init'
 
     ! Initalize seasalt vars
-     nname = 0
 
      do ispecprop = 1, aero_props%nspecies_tot()
         type = aero_props%spectype(ispecprop)
 
         if (trim(type) == 'seasalt') then
-            seasalt_nspecies = seasalt_nspecies + 1
-            seasalt_specprop_ndx(seasalt_nspecies) = ispecprop
+            seasalt_active = .true.
+            seasalt_specprop_ndx = ispecprop
         end if
-    end do
-
-    seasalt_active = seasalt_nspecies > 0
-
-    if ( .not. seasalt_active ) return
-
-    allocate(seasalt_bin_tracer_ndx(seasalt_nspecies, aero_props%nbins())) ! use all bins
-    allocate(seasalt_range_tracer_ndx(seasalt_nspecies, aero_props%nranges()))
-    allocate(bin_ndx(seasalt_nspecies, aero_props%nbins()))
-
-    ! loop through different seasalt species, if there is more than one
-    do isaltspec = 1, seasalt_nspecies
-        specprop_ndx = seasalt_specprop_ndx(isaltspec)
-
-        ! get indices of bins with the correct seasalt species in them
-        bin_ndx(isaltspec,:aero_props%spec_nbin(specprop_ndx)) = aero_props%spec_bin_ndx(specprop_ndx, aero_props%spec_nbin(specprop_ndx))
-
-        ! Get the indices for the bins containing sea salt
-        do ibin = 1, aero_props%spec_nbin(specprop_ndx)
-            dummy = 'num_'//int2str(bin_ndx(isaltspec,ibin))
-            call cnst_get_ind(dummy, seasalt_bin_tracer_ndx(isaltspec,ibin))
-        end do
-
-        ! Get the indices for the range/mmr tracers
-        do irange = 1, aero_props%spec_nrange(specprop_ndx)
-            dummy = aero_props%spec_tracernames(specprop_ndx, irange)
-            call cnst_get_ind(dummy, seasalt_range_tracer_ndx(isaltspec,irange))
-        end do
     end do
 
    end subroutine seasalt_init
@@ -98,7 +60,7 @@ module seasalt_model
   !=============================================================================
   !=============================================================================
   subroutine seasalt_emis( u10cubed,  srf_temp, ocnfrc, ncol, cflx, aero_props )
-
+! TODO: https://acp.copernicus.org/articles/11/4587/2011/acp-11-4587-2011.pdf
     ! dummy arguments
     real(r8), intent(in) :: u10cubed(:)
     real(r8), intent(in) :: srf_temp(:)
@@ -172,9 +134,12 @@ module seasalt_model
     real(r8), parameter ::  r1 = 2.1_r8
     real(r8), parameter ::  r2 = 9.2_r8
 
-    if (.not. seasalt_active) return
+ !   if (.not. seasalt_active) return
 
-    allocate(bin_ndx(aero_props%spec_nbin(seasalt_specprop_ndx(1))))
+! -> get q-array indices for emissions from aero_props%sped_bin_q_ndx(ispec, spec_bin_ndx) and spec_mmr_q_ndx(ispec, spec_range_ndx)
+
+
+    allocate(bin_ndx(aero_props%spec_nbin(seasalt_specprop_ndx)))
     allocate(bin_centers(aero_props%nbins()))
           ! Add any surface flux here.
           ncflx       = 0.0_r8
@@ -182,11 +147,11 @@ module seasalt_model
           Clarke      = 0.0_r8
           Smith       = 0.0_r8
 
-    bin_ndx = aero_props%spec_bin_ndx(seasalt_specprop_ndx(1), aero_props%spec_nbin(seasalt_specprop_ndx(1)))
+    bin_ndx = aero_props%spec_bin_ndx(seasalt_specprop_ndx, aero_props%spec_nbin(seasalt_specprop_ndx))
     bin_centers = aero_props%bin_centers(aero_props%nbins())
 
    ! do ibin = seasalt_bin_start, seasalt_bin_end
-    do ibin = bin_ndx(1), bin_ndx(aero_props%spec_nbin(seasalt_specprop_ndx(1)))
+    do ibin = bin_ndx(1), bin_ndx(aero_props%spec_nbin(seasalt_specprop_ndx))
 ! TODO: check unit of rpdry
 
         do icol = 1, ncol
