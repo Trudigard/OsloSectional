@@ -2,6 +2,8 @@
 ! Dust for Bulk Aerosol Model
 !===============================================================================
 module dust_model
+
+! TODO: clean up and move stuff to the object
   use shr_kind_mod,    only: r8 => shr_kind_r8, cl => shr_kind_cl
   use spmd_utils,      only: masterproc
   use cam_logfile,     only: iulog
@@ -15,11 +17,8 @@ module dust_model
   private
 
   ! public
-  public :: dust_active
-  public :: dust_nspecies
-  public :: dust_bin_tracer_ndx     ! indices of num_ tracers containing dust (from const_get_ind)-> in state range obj
-  public :: dust_range_tracer_ndx   ! indices of DU_ tracers (from const_get_ind)
   public :: dust_specprop_ndx       ! index in the species object array
+  public :: dust_active
 
   ! Public procedures
   public :: dust_emis
@@ -32,30 +31,17 @@ module dust_model
   private :: dust_dist
 
   ! TODO: move to object?
-  integer :: dust_nspecies = 0
-  integer, allocatable :: dust_bin_ndx(:) ! object internal bin index (array index for bins containing dust) -> aer_spec_prop
-  integer, allocatable :: dust_range_ndx(:) ! object internal bin index (array index for bins containing dust) -> aer_spec_prop
-  integer :: dust_specprop_ndx(10) = 0 ! object internal index
-
-  ! TODO: move to obj somehow, currently the format in the base obj. is too rigid?
-  integer, protected, allocatable :: dust_bin_tracer_ndx(:)
-  integer, protected, allocatable :: dust_range_tracer_ndx(:)
-
-  ! TODO: get proper distribution & map onto bins, 11 dust bins currently (e.g. Kok et al 2011) see dust_emis
-  real(r8), allocatable :: emis_fraction_in_bin(:)
-
+  integer :: dust_specprop_ndx = 0 ! object internal index
   logical :: dust_active = .false.
-  class(aerosol_properties), pointer :: aero_props=>null()
 
-  ! soil parameters from oslo_aero
+  ! Module vars
+  !class(aerosol_properties), pointer :: aero_props=>null()
+  real(r8), allocatable :: emis_fraction_in_bin(:)
   real(r8)          :: dust_emis_fact = 0._r8        ! tuning parameter for dust emissions
+
+  ! for Zender emissions
   character(len=cl) :: soil_erod_file = 'none'       ! full pathname for soil erodibility dataset
-
   real(r8), allocatable ::  soil_erodibility(:,:)        ! soil erodibility factor
-
-! local
-  integer :: dust_nbin = 0
-  integer :: dust_nrange = 0
 
 contains
 
@@ -109,17 +95,16 @@ contains
 
     ! Report
     if (masterproc) then
+        write(iulog, *) 'Dust namelist'
+        write(iulog, *) 'dust_emis_fact: ', dust_emis_fact
+        write(iulog, *) 'soil_erod_file: ', soil_erod_file
         if (is_dust_emis_zender()) then
           write(iulog,*) subname,': Zender_2003 dust emission method is being used.'
         end if
         if (is_zender_soil_erod_from_atm()) then
           write(iulog,*) subname,': Zender soil erod file is handled in atm'
           write(iulog,*) subname,': soil_erod_file = ',trim(soil_erod_file)
-          write(iulog,*) subname,': dust_emis_fact = ',dust_emis_fact
         end if
-        write(iulog, *) 'Dust namelist'
-        write(iulog, *) 'dust_emis_fact: ', dust_emis_fact
-        write(iulog, *) 'soil_erod_file: ', soil_erod_file
     end if
 
   end subroutine dust_readnl
@@ -131,6 +116,7 @@ contains
 
     use constituents,  only: cnst_get_ind
     use string_utils,      only: int2str
+     use cam_history,   only: addfld, fieldname_len
 
    ! use soil_erod_mod, only: soil_erod_init ! TODO, QUESTION: Oslo_aero has its own nearly identical version, why?
 
@@ -139,83 +125,31 @@ contains
     ! local variables
     integer               :: ispecprop, ind, istat, ibin, irange, idustspec
     character(len=10)     :: type
-    real(r8), allocatable :: dust_bin_bounds(:,:)
-    real(r8), allocatable :: bin_bounds(:,:)
-
     character(len=fieldname_len) :: dummy
 
     character(len=*), parameter :: subname = 'dust_init'
 
-    dust_nspecies = 0
-    dust_nrange = 0
-    dust_nbin = 0
-
     do ispecprop = 1, aero_props%nspecies_tot() !TODO: currently this just works with one dust species
         type = aero_props%spectype(ispecprop)
         if (trim(type) == 'dust') then
-            dust_nspecies = dust_nspecies + 1
-            dust_specprop_ndx(dust_nspecies) = ispecprop
-            dust_nrange = aero_props%spec_nrange(ispecprop)
-            dust_nbin = aero_props%spec_nbin(ispecprop)
-
-            allocate(dust_bin_ndx(dust_nbin), dust_range_ndx(dust_nrange))
-
-            dust_bin_ndx = aero_props%spec_bin_ndx(ispecprop, dust_nbin)
-            dust_range_ndx = aero_props%spec_range_ndx(ispecprop, dust_nrange)
+            dust_specprop_ndx = ispecprop
+            dust_active = .true.
             exit ! TODO: Change this to allow for more dust species/compositions
         end if
     end do
 
-    ! find ndst from aero_props species props or nr of DU_ tracers -> move these to sectional_aerosol_properties?
-    allocate(dust_bin_tracer_ndx(dust_nbin), stat=istat )
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_bin_tracer_ndx'")
-    end if
-    allocate(dust_range_tracer_ndx(dust_nrange), stat=istat )
-    if ( istat /= 0) then
-        call endrun(subname//":: ERROR could not allocate 'dust_range_tracer_ndx'")
-    end if
-    allocate(bin_bounds(aero_props%nbins(), 2), stat=istat)
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'bin_bounds'")
-    end if
-    allocate(dust_bin_bounds(dust_nbin, 2), stat=istat)
-    if ( istat /= 0 ) then
-        call endrun(subname//":: ERROR could not allocate 'dust_bin_bounds'")
-    end if
-    allocate(emis_fraction_in_bin(dust_nbin), stat=istat)
+    allocate(emis_fraction_in_bin(aero_props%spec_nbin(dust_specprop_ndx)), stat=istat)
     if (istat/=0) then
         call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
-
-! Get indices in q array for emissions
-    do ibin = 1, dust_nbin
-        dummy = 'num_'//int2str(dust_bin_ndx(ibin))
-        call cnst_get_ind(dummy, dust_bin_tracer_ndx(ibin))
-    end do
-    do idustspec = 1, dust_nspecies
-        do irange = 1, dust_nrange
-            call cnst_get_ind(aero_props%spec_tracernames(dust_specprop_ndx(idustspec), irange), dust_range_tracer_ndx(irange))
-        end do
-    end do
-
-    dust_active = dust_nspecies > 0
-    if (.not.dust_active) return
 
     if (is_zender_soil_erod_from_atm()) then
         call soil_erod_init( dust_emis_fact, soil_erod_file )
     end if
 
     ! calculate emission fraction per bin
+    call dust_emis_fraction_bin(aero_props%spec_nbin(dust_specprop_ndx), aero_props, emis_fraction_in_bin)
 
-    bin_bounds = aero_props%bin_bounds(aero_props%nbins())
-    dust_bin_bounds(:,1) = bin_bounds(dust_bin_ndx(:dust_nbin),1)
-    dust_bin_bounds(:,2) = bin_bounds(dust_bin_ndx(:dust_nbin),2)
-
-    call dust_emis_fraction_bin(dust_nbin, dust_bin_bounds, emis_fraction_in_bin)
-
-    deallocate(bin_bounds)
-    deallocate(dust_bin_bounds)
   end subroutine dust_init
 
   !==============================================================================
@@ -244,7 +178,7 @@ contains
     integer  :: icol, ibin, irange, idustspec
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: totalEmissionFlux(pcols)    ! sum emission flux over all sizes
-    real(r8) :: cflx_tmp(pcols,dust_nbin)
+    real(r8), allocatable :: cflx_tmp(:,:)
     character(len=*), parameter :: subname = 'dust_emis'
 
 
@@ -254,6 +188,8 @@ contains
     ! same formulation as MAM now and tune later
     ! As of NE-380: Oslo dust emissions are 2/3 of CAM emissions
     ! gives better AOD close to dust sources
+
+    allocate(cflx_tmp(pcols, aero_props%spec_nbin(dust_specprop_ndx)))
 
     totalEmissionFlux(:) = 0.0_r8
     totalEmissionFlux(:ncol) = sum(dust_flux_in(:ncol,:), dim=2)
@@ -267,36 +203,46 @@ contains
             soil_erod_tmp(:)=soil_erodibility(:,lchnk)
         end where
 
+! TODO: loop through all bins/ranges, have object deal with species_nbins/species_nranges?
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-! TODO: use aerosol model internal indices instead
-        do idustspec = 1, dust_nspecies
-            do ibin = 1, dust_nbin
-                cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
-                    *totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol)/(dust_emis_fact)*1.15_r8
-                cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_specprop_ndx(idustspec)) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
-                do irange = 1, dust_nrange
-                    ! emissions in kg/m2/s to ranges
-                    if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
-                        cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
-                    end if
-                end do
+        do ibin = 1, aero_props%spec_nbin(dust_specprop_ndx)
+
+            cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
+                                     * totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol) &
+                                     / (dust_emis_fact)*1.15_r8
+
+            ! emission in nr/m2/s
+            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx_tmp(:ncol, ibin) &
+                                                                            / aero_props%density(dust_specprop_ndx) &
+                                                                            / aero_props%particle_volume(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin))
+
+            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+                ! emissions in kg/m2/s to ranges
+                if (aero_props%bins2ranges(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin)) == aero_props%spec_range_ndx(dust_specprop_ndx, irange)) then
+                    cflx(:ncol, aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)) = cflx(:ncol, aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)) &
+                                                                                       + cflx_tmp(:ncol, ibin)
+                end if
             end do
         end do
+
     else ! Leung emissions
+        do ibin = 1, aero_props%spec_nbin(dust_specprop_ndx)
 
-        do idustspec = 1, dust_nspecies
-            do ibin = 1, dust_nbin
-                cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
-                    *totalEmissionFlux(:ncol) / dust_emis_fact
-                cflx(:ncol, dust_bin_tracer_ndx(ibin)) = cflx_tmp(:ncol, ibin) / aero_props%density(dust_specprop_ndx(idustspec)) / aero_props%particle_volume(dust_bin_ndx(ibin)) ! emission in nr/m2/s
+            cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
+                                    * totalEmissionFlux(:ncol) &
+                                    / dust_emis_fact
+            ! emission in nr/m2/s
+            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx_tmp(:ncol, ibin) &
+                                                                            / aero_props%density(dust_specprop_ndx) &
+                                                                            / aero_props%particle_volume(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin))
 
-                do irange = 1, dust_nrange
-                    ! emissions in kg/m2/s to ranges
-                    if (aero_props%bins2ranges(dust_bin_ndx(ibin)) == dust_range_ndx(irange)) then
-                        cflx(:ncol, dust_range_tracer_ndx(irange)) = cflx(:ncol, dust_range_tracer_ndx(irange)) + cflx_tmp(:ncol, ibin)
-                    end if
-                end do
+            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+                ! emissions in kg/m2/s to ranges
+                if (aero_props%bins2ranges(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin)) == aero_props%spec_range_ndx(dust_specprop_ndx, irange)) then
+                    cflx(:ncol, aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)) = cflx(:ncol, aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)) &
+                                                                                       + cflx_tmp(:ncol, ibin)
+                end if
             end do
         end do
     end if
@@ -305,8 +251,6 @@ contains
   !=============================================================================
   !=============================================================================
   subroutine soil_erod_init( dust_emis_fact, soil_erod_file )
-
-! TODO, QUESTION: This is the oslo_aero version but it hardly differs from soil_erod_mod, which one to use?
 
   use ppgrid,           only: pcols, begchunk, endchunk
   use cam_pio_utils,    only: cam_pio_openfile
@@ -416,12 +360,12 @@ contains
 ! Helper functions for dust emis chrisvbr@uio.no
 !=============================================================================
 
-  subroutine dust_emis_fraction_bin(nbin, bin_bounds, vol_frac)
+  subroutine dust_emis_fraction_bin(nbin, aero_props, vol_frac)
     use string_utils,      only: int2str
 
     ! input
     integer, intent(in)  :: nbin
-    real(r8), intent(in) :: bin_bounds(nbin,2)
+    type(sectional_aerosol_properties), intent(in) :: aero_props
 
     ! local variables
     real(r8)             :: vol(nbin)                 ! volume in each subinterval
@@ -441,8 +385,8 @@ contains
         vol_old = 0.0_r8
         vol(ibin) = 0._r8
 
-        D1 = log( bin_bounds(ibin,1) *1.e6_r8 * 2._r8 )                         ! transform to diameter and um
-        D2 = log( bin_bounds(ibin,2) *1.e6_r8 * 2._r8 )
+        D1 = log( aero_props%bin_bounds(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin),1) *1.e6_r8 * 2._r8 ) ! transform to diameter and um
+        D2 = log( aero_props%bin_bounds(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin),2) *1.e6_r8 * 2._r8 )
 
         ! initialize "vol_old" to a coarse distribution
         subint_width = (D2 - D1) / subint_number                            ! with of each subinterval

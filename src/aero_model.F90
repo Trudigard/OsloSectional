@@ -13,8 +13,7 @@ module aero_model
   use physics_types,     only: physics_state, physics_ptend, physics_ptend_init
   use physics_buffer,    only: physics_buffer_desc
   use physconst,         only: gravit, rair
-  use dust_model,        only: dust_active, dust_nspecies, dust_range_tracer_ndx, dust_bin_tracer_ndx, dust_specprop_ndx
-  use seasalt_model,     only: sslt_active=>seasalt_active
+  use dust_model,        only: dust_specprop_ndx
   use spmd_utils,        only: masterproc
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index, pbuf_get_chunk
   use cam_history,       only: outfld
@@ -124,7 +123,7 @@ contains
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
     use dust_model,     only: dust_init
-    use seasalt_model,  only: seasalt_init, seasalt_active
+    use seasalt_model,  only: seasalt_init
     use string_utils,   only: int2str
     use mo_setsox,      only : setsox, has_sox
   use ppgrid,               only: begchunk, endchunk, pcols, pver
@@ -138,7 +137,7 @@ contains
     type(physics_state),    intent(in)    :: phys_state(begchunk:endchunk)     ! Physics state variables
 
     ! local vars
-    integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk, idustspec
+    integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk
     integer           :: spec_nrange, ind, irange
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical           :: history_dust    ! Output dust
@@ -191,17 +190,15 @@ contains
         call add_default (dummy, 1, ' ')
     endif
 
-    if (dust_active) then
+  !  if (dust_active) then
 
-        do idustspec = 1, dust_nspecies
-            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx(idustspec))
-                dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx(idustspec), irange)) // 'SF'
+            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+                dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx, irange)) // 'SF'
                 call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dummy)//' dust surface emission')
                 if (history_aerosol) then
                     call add_default (dummy, 1, ' ')
                 endif
             end do
-        end do
 
        dummy = 'DSTSFMBL'
        call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
@@ -214,7 +211,7 @@ contains
        if (history_aerosol) then
           call add_default (dummy, 1, ' ')
        endif
-    endif
+!    endif
 
 aerosol_names = ''
 ind = 0
@@ -777,7 +774,7 @@ call endrun(subname//":: is not yet implemented")
      !use oslo_aero_control, only: dms_from_ocn ! DMS
      use constituents,      only: cnst_get_ind, sflxnam
      !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
-     use dust_model,        only: dust_active, dust_emis
+     use dust_model,        only: dust_emis
 
      ! Arguments:
 
@@ -787,7 +784,7 @@ call endrun(subname//":: is not yet implemented")
     ! local vars
 
     integer  :: lchnk, ncol
-    integer  :: m, idustspec, irange
+    integer  :: m, irange
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: sflx(pcols)   ! accumulate over all bins for output
     !integer  :: pndx_fdms  ! DMS surface flux physics index
@@ -797,27 +794,25 @@ call endrun(subname//":: is not yet implemented")
     lchnk = state%lchnk
     ncol  = state%ncol
 
-    if (dust_active) then
+ !   if (dust_active) then
 
         call dust_emis( lchnk, ncol, cam_in%dstflx, cam_in%cflx, aero_props )
 
        ! some dust emis diagnostics ...
        sflx(:)=0._r8
-       do idustspec = 1, dust_nspecies
-            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx(idustspec))
-                m = dust_range_tracer_ndx(irange)
+            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+                m = aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)
                 sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m)
-                call outfld(trim(aero_props%spec_tracernames(dust_specprop_ndx(idustspec), irange))//'SF',cam_in%cflx(:,m),pcols, lchnk)
+                call outfld(trim(aero_props%spec_tracernames(dust_specprop_ndx, irange))//'SF',cam_in%cflx(:,m),pcols, lchnk)
             end do
     ! TODO: make this work for bins?
             !        do ibin = 1, dust_nbin
     !            m = dust_bin_tracer_ndx(ibin)
     !            sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m)
     !            call outfld(trim(aero_props%bin//'SF',cam_in%cflx(:,m),pcols, lchnk)
-       enddo
        call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
        call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
-    endif
+  !  endif
     !call endrun(subname//":: is not yet implemented")
   end subroutine aero_model_emissions
 

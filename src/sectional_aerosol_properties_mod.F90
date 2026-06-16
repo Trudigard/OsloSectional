@@ -1190,13 +1190,14 @@ contains
   !------------------------------------------------------------------------------
   ! returns bin bounds
   !------------------------------------------------------------------------------
-  function bin_bounds(self, nbins) result(res)
+  function bin_bounds(self, bin_ndx, bound) result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: nbins
-    real(r8) :: res(nbins,2)
+    integer, intent(in) :: bin_ndx
+    integer, intent(in) :: bound     ! 1 for lower, 2 for upper
+    real(r8) :: res
     character(len=*), parameter :: subname = 'bin_bounds'
 
-    res = self%bin_bounds_(:min(nbins,size(self%bin_bounds_)),:)
+    res = self%bin_bounds_(bin_ndx, bound)
 
   end function bin_bounds
 
@@ -1226,30 +1227,31 @@ contains
 
   end function particle_volume
   !------------------------------------------------------------------------------
-  ! returns the upper or lower range idx TODO: change to array of idices?
+  ! returns the index of a range
   !------------------------------------------------------------------------------
-  function spec_range_ndx(self, species_ndx, nranges)  result(res)
+  function spec_range_ndx(self, specprop_ndx, ind)  result(res)
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_ndx, nranges
-    integer :: res(nranges)
+    integer, intent(in) :: specprop_ndx ! location in the aer_spec_props object
+    integer, intent(in) :: ind          ! location in the aer_spec_props(species)%range_ndx array
+    integer :: res
     character(len=*), parameter :: subname = 'spec_range_ndx'
 
-    res = self%aer_spec_prop(species_ndx)%range_ndx
+    res = self%aer_spec_prop(specprop_ndx)%range_ndx(ind)
 
   end function spec_range_ndx
 
   !------------------------------------------------------------------------------
   ! returns the bin indices for a species
   !------------------------------------------------------------------------------
-  function spec_bin_ndx(self, specprop_ndx, specbin_ndx)  result(res)
+  function spec_bin_ndx(self, specprop_ndx, ind)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: specbin_ndx, specprop_ndx
+    integer, intent(in) :: ind, specprop_ndx
     integer :: ibin
     integer :: res
     character(len=*), parameter :: subname = 'spec_bin_ndx'
 
-    res = self%aer_spec_prop(specprop_ndx)%bin_ndx(specbin_ndx)
+    res = self%aer_spec_prop(specprop_ndx)%bin_ndx(ind)
 
   end function spec_bin_ndx
 
@@ -1270,7 +1272,7 @@ contains
   !------------------------------------------------------------------------------
   ! returns number of bins containing species
   !------------------------------------------------------------------------------
-  function spec_nbin(self, species_ndx)  result(res)
+  pure function spec_nbin(self, species_ndx)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
     integer, intent(in) :: species_ndx

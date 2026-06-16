@@ -16,11 +16,14 @@ module seasalt_model
   private
 
   ! public variables
-  seasalt_active = .false.
+  public :: seasalt_active
 
   ! public procedures
   public :: seasalt_init
   public :: seasalt_emis
+
+  ! initialize public
+  logical :: seasalt_active = .false.
 
   ! module variables
   integer :: seasalt_specprop_ndx
