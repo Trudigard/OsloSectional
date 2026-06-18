@@ -14,6 +14,7 @@ module aero_model
   use physics_buffer,    only: physics_buffer_desc
   use physconst,         only: gravit, rair
   use dust_model,        only: dust_specprop_ndx
+  use seasalt_model,     only: seasalt_specprop_ndx
   use spmd_utils,        only: masterproc
   use physics_buffer,    only: pbuf_get_field, pbuf_get_index, pbuf_get_chunk
   use cam_history,       only: outfld
@@ -41,14 +42,14 @@ module aero_model
 
  ! Misc private data
 
-  integer :: so4_ndx, cb2_ndx, oc2_ndx, nit_ndx
-  integer :: soa_ndx, soai_ndx, soam_ndx, soab_ndx, soat_ndx, soax_ndx
+  !integer :: so4_ndx, cb2_ndx, oc2_ndx, nit_ndx
+  !integer :: soa_ndx, soai_ndx, soam_ndx, soab_ndx, soat_ndx, soax_ndx
 
   ! aerosol_nl Namelist variables
 !  character(len=16), allocatable :: wetdep_list(:)
 !  character(len=16), allocatable :: drydep_list(:)
 
-  integer :: ndrydep = 0
+  !integer :: ndrydep = 0
   integer :: nwetdep = 0
   logical :: drydep_lq(pcnst)
   logical :: wetdep_lq(pcnst)
@@ -138,13 +139,12 @@ contains
 
     ! local vars
     integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk
-    integer           :: spec_nrange, ind, irange
+    integer           :: ind, irange
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical           :: history_dust    ! Output dust
     logical           :: history_chemistry ! Output Chemistry
     character(len=2)  :: unit_basename ! Units 'kg' or '1'
     character(len=10) :: aerosol_names(500)
-    character(len=10), allocatable :: spec_names(:)
     character(len=20) :: dummy
     type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
 
@@ -192,13 +192,13 @@ contains
 
     if (aero_props%is_active('dust')) then
 
-            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
-                dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx, irange)) // 'SF'
-                call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dummy)//' dust surface emission')
-                if (history_aerosol) then
-                    call add_default (dummy, 1, ' ')
-                endif
-            end do
+        do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+            dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx, irange)) // 'SF'
+            call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dummy)//' dust surface emission')
+            if (history_aerosol) then
+                call add_default (dummy, 1, ' ')
+            endif
+        end do
 
        dummy = 'DSTSFMBL'
        call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
@@ -213,18 +213,31 @@ contains
        endif
     endif
 
-aerosol_names = ''
-ind = 0
-do ispec = 1, aero_props%nspecies_tot()
-    spec_nrange = aero_props%spec_nrange(ispec)
-    allocate(spec_names(spec_nrange))
-    do irange = 1, spec_nrange
-        spec_names(irange) = aero_props%spec_tracernames(ispec, irange)
-        ind = ind+1
-        aerosol_names(ind) = spec_names(irange)
+    if (aero_props%is_active('seasalt')) then
+
+        do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
+            dummy = trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange)) // 'SF'
+            call addfld (dummy,horiz_only, 'A','kg/m2/s',trim(dummy)//' seasalt surface emission')
+            if (history_aerosol) then
+                call add_default (dummy, 1, ' ')
+            endif
+        end do
+
+        dummy = 'SSTSFMBL'
+        call addfld (dummy,horiz_only, 'A','kg/m2/s','Mobilization flux at surface')
+        if (history_aerosol) then
+           call add_default (dummy, 1, ' ')
+        endif
+    endif
+
+    aerosol_names = ''
+    ind = 0
+    do ispec = 1, aero_props%nspecies_tot()
+        do irange = 1, aero_props%spec_nrange(ispec)
+            ind = ind+1
+            aerosol_names(ind) = aero_props%spec_tracernames(ispec, irange)
+        end do
     end do
-    deallocate(spec_names)
-end do
 
 do ibin = 1, aero_props%nbins()
     aerosol_names(ind + ibin) = "num_"//int2str(ibin)
@@ -775,7 +788,7 @@ call endrun(subname//":: is not yet implemented")
      use constituents,      only: cnst_get_ind, sflxnam
      !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
      use dust_model,        only: dust_emis
-     use seasalt_model,     only: seasalt_emis, seasalt_specprop_ndx
+     use seasalt_model,     only: seasalt_emis
 
      ! Arguments:
 
@@ -830,14 +843,14 @@ call endrun(subname//":: is not yet implemented")
         sflx(:)=0._r8
         call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
 
-        !do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
+        do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
          !   if (masterproc) then
          !       write(iulog,*) "DEBUG: range index for seasalt: ", irange
          !   end if
 
-        !    sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange))
-        !    call outfld(trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange)),pcols, lchnk)
-        !end do
+            sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange))
+!            call outfld(trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange)),pcols, lchnk))
+        end do
     end if
 
 
