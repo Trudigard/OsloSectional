@@ -190,7 +190,7 @@ contains
         call add_default (dummy, 1, ' ')
     endif
 
-  !  if (dust_active) then
+    if (aero_props%is_active('dust')) then
 
             do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
                 dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx, irange)) // 'SF'
@@ -211,7 +211,7 @@ contains
        if (history_aerosol) then
           call add_default (dummy, 1, ' ')
        endif
-!    endif
+    endif
 
 aerosol_names = ''
 ind = 0
@@ -775,6 +775,7 @@ call endrun(subname//":: is not yet implemented")
      use constituents,      only: cnst_get_ind, sflxnam
      !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
      use dust_model,        only: dust_emis
+     use seasalt_model,     only: seasalt_emis, seasalt_specprop_ndx
 
      ! Arguments:
 
@@ -788,32 +789,58 @@ call endrun(subname//":: is not yet implemented")
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: sflx(pcols)   ! accumulate over all bins for output
     !integer  :: pndx_fdms  ! DMS surface flux physics index
+    real(r8) :: u10cubed(pcols)
+    real (r8), parameter :: z0=0.0001_r8  ! m roughness length over oceans--from ocean model
 
     character(len=*), parameter :: subname = 'aero_model_emissions'
 
     lchnk = state%lchnk
     ncol  = state%ncol
 
- !   if (dust_active) then
+    if (aero_props%is_active('dust')) then
 
         call dust_emis( lchnk, ncol, cam_in%dstflx, cam_in%cflx, aero_props )
 
        ! some dust emis diagnostics ...
-       sflx(:)=0._r8
-            do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
-                m = aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)
-                sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m)
-                call outfld(trim(aero_props%spec_tracernames(dust_specprop_ndx, irange))//'SF',cam_in%cflx(:,m),pcols, lchnk)
-            end do
-    ! TODO: make this work for bins?
+        sflx(:)=0._r8
+        do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
+            sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange))
+            call outfld(trim(aero_props%spec_tracernames(dust_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(dust_specprop_ndx,irange)),pcols, lchnk)
+        end do
+    ! TODO: make this work for bins? but that should include all species..
             !        do ibin = 1, dust_nbin
-    !            m = dust_bin_tracer_ndx(ibin)
+    !            m = (ibin)
     !            sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,m)
     !            call outfld(trim(aero_props%bin//'SF',cam_in%cflx(:,m),pcols, lchnk)
-       call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
-       call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
-  !  endif
-    !call endrun(subname//":: is not yet implemented")
+        call outfld('DSTSFMBL',sflx(:),pcols,lchnk)
+        call outfld('LND_MBL',soil_erod_tmp(:),pcols, lchnk )
+
+    endif
+
+    if (aero_props%is_active('seasalt')) then
+        u10cubed(:ncol) = sqrt(state%u(:ncol,pver)**2+state%v(:ncol,pver)**2)
+        ! move the winds to 10m high from the midpoint of the gridbox:
+        ! follows Tie and Seinfeld and Pandis, p.859 with math.
+
+        u10cubed(:ncol)=u10cubed(:ncol)*log(10._r8/z0)/log(state%zm(:ncol,pver)/z0)
+
+        ! we need them to the 3.41 power, according to Gong et al., 1997:
+        u10cubed(:ncol)=u10cubed(:ncol)**3.41_r8
+
+        sflx(:)=0._r8
+    !    call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
+
+        !do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
+         !   if (masterproc) then
+         !       write(iulog,*) "DEBUG: range index for seasalt: ", irange
+         !   end if
+
+        !    sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange))
+        !    call outfld(trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange)),pcols, lchnk)
+        !end do
+    end if
+
+
   end subroutine aero_model_emissions
 
   subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,  &
