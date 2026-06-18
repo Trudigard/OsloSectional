@@ -80,13 +80,14 @@ module sectional_aerosol_properties_mod
      procedure :: rebin_bulk_fluxes         ! done
      procedure :: hydrophilic           ! TODO: currently simple approximation
      procedure :: model_is                  ! done
+     procedure :: is_active                  ! done
      procedure :: range_bounds              ! done
      procedure :: kappa                     ! done
      procedure :: molecular_weight          ! done
      procedure :: specname                  ! done
      procedure :: spectype                  ! done
-     procedure :: spec_bin_q_ndx  ! TODO
-     procedure :: spec_mmr_q_ndx  ! TODO
+     procedure :: spec_bin_q_ndx  ! done
+     procedure :: spec_mmr_q_ndx  ! done
      final :: destructor
   end type sectional_aerosol_properties
 
@@ -1272,14 +1273,31 @@ contains
   !------------------------------------------------------------------------------
   ! returns number of bins containing species
   !------------------------------------------------------------------------------
-  pure function spec_nbin(self, species_ndx)  result(res)
+  function spec_nbin(self, specprop_ndx, spectype)  result(res)
     ! TODO: needed?
     class(sectional_aerosol_properties), intent(in) :: self
-    integer, intent(in) :: species_ndx
+    integer, optional, intent(in)   :: specprop_ndx
+    character(len=*), optional, intent(in) :: spectype
+    integer :: ispecprop
     integer :: res
     character(len=*), parameter :: subname = 'spec_nbin'
 
-    res = self%aer_spec_prop(species_ndx)%nbin
+
+    if (present(spectype)) then
+        do ispecprop = 1, self%nspecies_tot()
+            if (masterproc) then
+                write(6,*)"DEBUG: spectype: ", trim(spectype)
+                write(6,*)"species spectype: ", trim(self%aer_spec_prop(ispecprop)%spectype)
+            end if
+            if (trim(spectype) == trim(self%aer_spec_prop(ispecprop)%spectype)) then
+                res = self%aer_spec_prop(ispecprop)%nbin
+            end if
+        end do
+    else if (present(specprop_ndx)) then
+        res = self%aer_spec_prop(specprop_ndx)%nbin
+    else
+        call endrun("spec_nbin could not be defined")
+    end if
 
   end function spec_nbin
 
@@ -1529,7 +1547,24 @@ contains
        model_is = .false.
     end if
 
- end function model_is
+  end function model_is
+  !------------------------------------------------------------------------------
+  ! returns TRUE if given species is active
+  !------------------------------------------------------------------------------
+  pure logical function is_active(self, spectype)
+    class(sectional_aerosol_properties), intent(in) :: self
+    character(len=*),                    intent(in) :: spectype
+    integer :: ispec
+
+    is_active = .false.
+
+    do ispec = 1, self%nspecies_tot_
+        if (trim(self%aer_spec_prop(ispec)%spectype) == trim(spectype)) then
+            is_active = .true.
+        end if
+    end do
+
+  end function is_active
 
   !------------------------------------------------------------------------------
   ! Returns specname with aer_spec_props index
