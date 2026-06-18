@@ -131,7 +131,7 @@ contains
     use aero_deposition_cam, only: aero_deposition_cam_init
     use aer_drydep_mod,  only: inidrydep
 
-    !use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
+    use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
     ! args
     type(physics_buffer_desc), pointer :: pbuf2d(:,:)
@@ -154,7 +154,7 @@ contains
     fracis_idx      = pbuf_get_index('FRACIS')
     prain_idx       = pbuf_get_index('PRAIN')
 
-    !call oslo_aero_ocean_init() ! DMS
+    call oslo_aero_ocean_init() ! DMS
 
     ! TODO: fix this :)
     call phys_getopts( history_aerosol_out   = history_aerosol, &
@@ -784,9 +784,9 @@ call endrun(subname//":: is not yet implemented")
   !=============================================================================
   !=============================================================================
   subroutine aero_model_emissions( state, cam_in )
-     !use oslo_aero_control, only: dms_from_ocn ! DMS
+     use oslo_aero_control, only: dms_from_ocn ! DMS
      use constituents,      only: cnst_get_ind, sflxnam
-     !use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
+     use oslo_aero_ocean,   only: oslo_aero_dms_emis ! DMS
      use dust_model,        only: dust_emis
      use seasalt_model,     only: seasalt_emis
 
@@ -801,7 +801,7 @@ call endrun(subname//":: is not yet implemented")
     integer  :: m, irange
     real(r8) :: soil_erod_tmp(pcols)
     real(r8) :: sflx(pcols)   ! accumulate over all bins for output
-    !integer  :: pndx_fdms  ! DMS surface flux physics index
+    integer  :: pndx_fdms  ! DMS surface flux physics index
     real(r8) :: u10cubed(pcols)
     real (r8), parameter :: z0=0.0001_r8  ! m roughness length over oceans--from ocean model
 
