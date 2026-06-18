@@ -18,7 +18,6 @@ module dust_model
 
   ! public
   public :: dust_specprop_ndx       ! index in the species object array
-  public :: dust_active
 
   ! Public procedures
   public :: dust_emis
@@ -32,7 +31,6 @@ module dust_model
 
   ! TODO: move to object?
   integer :: dust_specprop_ndx = 0 ! object internal index
-  logical :: dust_active = .false.
 
   ! Module vars
   !class(aerosol_properties), pointer :: aero_props=>null()
@@ -133,12 +131,11 @@ contains
         type = aero_props%spectype(ispecprop)
         if (trim(type) == 'dust') then
             dust_specprop_ndx = ispecprop
-            dust_active = .true.
             exit ! TODO: Change this to allow for more dust species/compositions
         end if
     end do
 
-    allocate(emis_fraction_in_bin(aero_props%spec_nbin(dust_specprop_ndx)), stat=istat)
+    allocate(emis_fraction_in_bin(aero_props%spec_nbin(spectype='dust')), stat=istat)
     if (istat/=0) then
         call endrun(subname//":: Error could not allocate 'emis_fraction_in_bin'")
     end if
@@ -148,7 +145,7 @@ contains
     end if
 
     ! calculate emission fraction per bin
-    call dust_emis_fraction_bin(aero_props%spec_nbin(dust_specprop_ndx), aero_props, emis_fraction_in_bin)
+    call dust_emis_fraction_bin(aero_props%spec_nbin(spectype='dust'), aero_props, emis_fraction_in_bin)
 
   end subroutine dust_init
 
@@ -189,7 +186,8 @@ contains
     ! As of NE-380: Oslo dust emissions are 2/3 of CAM emissions
     ! gives better AOD close to dust sources
 
-    allocate(cflx_tmp(pcols, aero_props%spec_nbin(dust_specprop_ndx)))
+    allocate(cflx_tmp(pcols, aero_props%spec_nbin(spectype='dust')))
+    cflx_tmp = 0._r8
 
     totalEmissionFlux(:) = 0.0_r8
     totalEmissionFlux(:ncol) = sum(dust_flux_in(:ncol,:), dim=2)
@@ -206,15 +204,16 @@ contains
 ! TODO: loop through all bins/ranges, have object deal with species_nbins/species_nranges?
     ! Sectional model: dust is emitted to the bins, then transferred to ranges
     ! TODO: check compatability with bins! this needs to be number concentration, mass to ranges
-        do ibin = 1, aero_props%spec_nbin(dust_specprop_ndx)
+        do ibin = 1, aero_props%spec_nbin(spectype='dust')
 
             cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
                                      * totalEmissionFlux(:ncol)*soil_erod_tmp(:ncol) &
                                      / (dust_emis_fact)*1.15_r8
 
             ! emission in nr/m2/s
-            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx_tmp(:ncol, ibin) &
-                                                                            / aero_props%density(dust_specprop_ndx) &
+            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) &
+                                                                            + cflx_tmp(:ncol, ibin) &
+                                                                            / aero_props%density(dust_specprop_ndx) &      ! convert to nr flux
                                                                             / aero_props%particle_volume(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin))
 
             do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
@@ -227,14 +226,15 @@ contains
         end do
 
     else ! Leung emissions
-        do ibin = 1, aero_props%spec_nbin(dust_specprop_ndx)
+        do ibin = 1, aero_props%spec_nbin(spectype='dust')
 
             cflx_tmp(:ncol, ibin) = -1.0_r8*emis_fraction_in_bin(ibin) & ! calculate dust flux kg/m2/s
                                     * totalEmissionFlux(:ncol) &
                                     / dust_emis_fact
             ! emission in nr/m2/s
-            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx_tmp(:ncol, ibin) &
-                                                                            / aero_props%density(dust_specprop_ndx) &
+            cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) = cflx(:ncol, aero_props%spec_bin_q_ndx(dust_specprop_ndx,ibin)) &       ! add up, since multiple species go into this
+                                                                            + cflx_tmp(:ncol, ibin) &
+                                                                            / aero_props%density(dust_specprop_ndx) &      ! convert to nr flux
                                                                             / aero_props%particle_volume(aero_props%spec_bin_ndx(dust_specprop_ndx, ibin))
 
             do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
