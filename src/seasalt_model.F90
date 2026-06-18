@@ -256,7 +256,8 @@ module seasalt_model
             ! mass flux
 
             do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
-                if (aero_props%bins2ranges(aero_props%spec_bin_ndx(seasalt_specprop_ndx, sslt_bin)) == aero_props%spec_range_ndx(seasalt_specprop_ndx, irange)) then
+
+            if (aero_props%bins2ranges(aero_props%spec_bin_ndx(seasalt_specprop_ndx, sslt_bin)) == aero_props%spec_range_ndx(seasalt_specprop_ndx, irange)) then
 
                 cflx(icol, aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx, irange)) = &
                                                                                     cflx(icol, aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx, irange)) &

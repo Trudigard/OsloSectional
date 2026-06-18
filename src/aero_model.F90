@@ -828,7 +828,7 @@ call endrun(subname//":: is not yet implemented")
         u10cubed(:ncol)=u10cubed(:ncol)**3.41_r8
 
         sflx(:)=0._r8
-    !    call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
+        call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
 
         !do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
          !   if (masterproc) then

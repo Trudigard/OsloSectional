@@ -1285,10 +1285,6 @@ contains
 
     if (present(spectype)) then
         do ispecprop = 1, self%nspecies_tot()
-            if (masterproc) then
-                write(6,*)"DEBUG: spectype: ", trim(spectype)
-                write(6,*)"species spectype: ", trim(self%aer_spec_prop(ispecprop)%spectype)
-            end if
             if (trim(spectype) == trim(self%aer_spec_prop(ispecprop)%spectype)) then
                 res = self%aer_spec_prop(ispecprop)%nbin
             end if
