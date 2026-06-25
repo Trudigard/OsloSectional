@@ -32,8 +32,8 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mmr(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), pointer :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
-     real(r8), pointer :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
+     real(r8), pointer     :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
+     real(r8), pointer     :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -47,7 +47,9 @@ module sectional_aerosol_state_mod
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
      real(r8), pointer :: bin_numconc(:,:,:)
      real(r8), pointer :: bin_numconc_cw(:,:,:)
-     integer, allocatable :: num_transport_ndx(:)
+     real(r8), pointer :: wet_radius(:,:,:)           ! wet radius at bin center -> wet_radius*2 = dgnumwet
+     real(r8), pointer :: qaerwat(:,:,:)              ! aerosol water concentration (g/g)
+     integer, allocatable  :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
 
@@ -70,9 +72,9 @@ module sectional_aerosol_state_mod
      procedure :: hygroscopicity                ! mostly done, implement list_ndx
      procedure :: water_uptake            ! TODO
      procedure :: dry_volume                    ! done
-     procedure :: wet_volume              ! TODO
-     procedure :: water_volume            ! TODO
-     procedure :: wet_diameter            ! TODO
+     procedure :: wet_volume                    ! done (copied from modal)
+     procedure :: water_volume                  ! done (copied from modal)
+     procedure :: wet_diameter                  ! done (wet_radius stored internally)
      procedure :: convcld_actfrac         ! TODO
      procedure :: wgtpct                  ! TODO
      procedure :: bin_dry_density               ! done
@@ -138,6 +140,18 @@ contains
     end if
 
     allocate(newobj%bin_numconc_cw(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%wet_radius(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+    if( ierr /= 0 ) then
+        nullify(newobj)
+        return
+    end if
+
+    allocate(newobj%qaerwat(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
     if( ierr /= 0 ) then
         nullify(newobj)
         return
@@ -287,7 +301,14 @@ end if
         deallocate(self%bin_numconc_cw)
         nullify(self%bin_numconc_cw)
     end if
-
+    if (associated(self%wet_radius)) then
+        deallocate(self%wet_radius)
+        nullify(self%wet_radius)
+    end if
+    if (associated(self%qaerwat)) then
+        deallocate(self%qaerwat)
+        nullify(self%qaerwat)
+    end if
 end subroutine destructor
 
   !------------------------------------------------------------------------------
@@ -615,7 +636,7 @@ end subroutine destructor
     real(r8),intent(out) :: qaerwat(ncol,nlev)  ! aerosol water concentration (g/g)
 
     character(len=*), parameter :: subname = 'water_uptake'
-
+! TODO: get sulfate to work first!!
     call endrun(subname//' is not yet implemented')
 
   end subroutine water_uptake
@@ -666,8 +687,10 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'wet_volume'
 
-    call endrun(subname//' is not yet implemented')
-! dry_volume + water volume
+    dryvol = self%dry_volume(aero_props, list_ndx, bin_ndx, ncol, nlev)
+    watervol = self%water_volume(aero_props, list_ndx, bin_ndx, ncol, nlev)
+
+    vol = watervol + dryvol
 
   end function wet_volume
 
@@ -691,7 +714,12 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'water_volume'
 
-    call endrun(subname//' is not yet implemented')
+    call self%water_uptake(aero_props, list_ndx, bin_ndx, ncol, nlev, dgnumwet, qaerwat)
+
+    vol(:ncol,:nlev) = qaerwat(:ncol,:nlev)*rh2odens
+    where (vol<0._r8)
+       vol = 0._r8
+    end where
 
   end function water_volume
 
@@ -706,12 +734,9 @@ end subroutine destructor
 
     real(r8) :: diam(ncol,nlev)
 
-    real(r8), pointer :: dgnumwet(:,:,:)
-
     character(len=*), parameter :: subname = 'wet_diameter'
 
-    call endrun(subname//' is not yet implemented')
-! wet_volume/bin_num
+    diam = 2._r8 * self%wet_radius(ncol, nlev, bin_ndx)
 
   end function wet_diameter
 
