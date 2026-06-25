@@ -121,6 +121,8 @@ contains
   subroutine aero_model_init( pbuf2d, phys_state)
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
+    use chem_mods,   only : gas_pcnst
+    use mo_tracname,              only: solsym
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
     use dust_model,     only: dust_init
@@ -138,7 +140,7 @@ contains
     type(physics_state),    intent(in)    :: phys_state(begchunk:endchunk)     ! Physics state variables
 
     ! local vars
-    integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk
+    integer           :: m, id, ierr, ibin, ispec, ichunk, lchnk, icnst
     integer           :: ind, irange
     logical           :: history_aerosol ! Output MAM or SECT aerosol tendencies
     logical           :: history_dust    ! Output dust
@@ -275,7 +277,15 @@ contains
     ! TODO: call aero_wetdep_init()
 
     if(aero_props%is_active('sulfate')) then
-    ! TODO: if active(sulfate or nitrate) call gasaerexch_init()
+        do icnst = 1, gas_pcnst
+            call addfld('GS_'//trim(solsym(icnst)),horiz_only, 'A','kg/m2/s', &
+                trim(solsym(icnst))//' gas chemistry tendency')
+            if (history_aerosol .or. history_chemistry) then
+                call add_default ('GS_'//trim(solsym(icnst)), 1, ' ')
+            endif
+        end do
+
+        ! TODO: if active(sulfate or nitrate) call gasaerexch_init()
         return
     end if
     end subroutine aero_model_init
@@ -729,7 +739,9 @@ call endrun(subname//":: is not yet implemented")
       delt, reaction_rates, tfld, pmid, pdel, mbar, relhum, zm, qh2o, cwat,     &
       cldfr, cldnum, airdens, invariants, del_h2so4_gasprod, vmr0, vmr, pbuf )
 
-    use chem_mods,   only : gas_pcnst
+    use chem_mods,    only : gas_pcnst, adv_mass
+    use mo_tracname,  only: solsym
+    use time_manager, only: get_nstep
 
     !-----------------------------------------------------------------------
     !      ... dummy arguments
@@ -761,7 +773,7 @@ call endrun(subname//":: is not yet implemented")
 
 
     ! local vars
-    integer, parameter :: nmodes_aq_chem = 1
+!    integer, parameter :: nmodes_aq_chem = 1
     integer  :: icol,ilev
     integer  :: l_aero
     integer  :: imode,icnst,itrac
@@ -772,8 +784,8 @@ call endrun(subname//":: is not yet implemented")
     real(r8) :: vmrcw(ncol,pver,gas_pcnst)   ! cloud-borne aerosol (vmr)
     real(r8) :: del_h2so4_aeruptk(ncol,pver)
     real(r8) :: del_h2so4_aqchem(ncol,pver)
-    real(r8) :: mmr_cond_vap_start_of_timestep(pcols,pver,N_COND_VAP)
-    real(r8) :: mmr_cond_vap_gasprod(pcols,pver,N_COND_VAP)
+   ! real(r8) :: mmr_cond_vap_start_of_timestep(pcols,pver,N_COND_VAP)
+   ! real(r8) :: mmr_cond_vap_gasprod(pcols,pver,N_COND_VAP)
     real(r8) :: del_soa_lv_gasprod(ncol,pver)
     real(r8) :: del_soa_sv_gasprod(ncol,pver)
     real(r8) :: dvmrdt_sv1(ncol,pver,gas_pcnst)
@@ -781,31 +793,21 @@ call endrun(subname//":: is not yet implemented")
     real(r8) :: mmr_tend_ncols(ncol, pver, gas_pcnst)
     real(r8) :: mmr_tend_pcols(pcols, pver, gas_pcnst)
     integer  :: cond_vap_idx
-    real(r8) :: aqso4(ncol,nmodes_aq_chem)   ! aqueous phase chemistry
-    real(r8) :: aqh2so4(ncol,nmodes_aq_chem) ! aqueous phase chemistry
-    real(r8) :: aqso4_h2o2(ncol)             ! SO4 aqueous phase chemistry due to H2O2
-    real(r8) :: aqso4_o3(ncol)               ! SO4 aqueous phase chemistry due to O3
+!    real(r8) :: aqso4(ncol,nmodes_aq_chem)   ! aqueous phase chemistry
+!    real(r8) :: aqh2so4(ncol,nmodes_aq_chem) ! aqueous phase chemistry
+ !   real(r8) :: aqso4_h2o2(ncol)             ! SO4 aqueous phase chemistry due to H2O2
+ !   real(r8) :: aqso4_o3(ncol)               ! SO4 aqueous phase chemistry due to O3
     real(r8) :: xphlwc(ncol,pver)            ! pH value multiplied by lwc
     real(r8) :: delt_inverse                 ! 1 / timestep
     real(r8), pointer :: pblh(:)
     character(len=32) :: name
 
-    integer :: l_h2so4
+    integer :: l_h2so4, l_dms, l_so2
+    character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
     nstep = get_nstep()
 
     delt_inverse = 1.0_r8 / delt
-    GS_SOA(:ncol,lchnk) = 0._r8
-    GS_H2SO4(:ncol,lchnk) = 0._r8
-    GS_DMS(:ncol,lchnk) = 0._r8
-    GS_SO2(:ncol,lchnk) = 0._r8
-    GS_isoprene(:ncol,lchnk) = 0._r8
-    GS_monoterp(:ncol,lchnk) = 0._r8
-    AQ_H2SO4(:ncol,lchnk) = 0._r8
-    AQ_SO4_A2_OCW(:ncol,lchnk) = 0._r8
-    AQ_SO2(:ncol,lchnk) = 0._r8
-
-    character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
     ! indices of gases to condense
     call cnst_get_ind('H2SO4'  ,l_h2so4, abort=.true.)
@@ -814,7 +816,7 @@ call endrun(subname//":: is not yet implemented")
     call cnst_get_ind('DMS'    ,l_dms,   abort=.true.) !dimethyl sulfide
 
     ! Get height of boundary layer (needed for boundary layer nucleation)
-    call pbuf_get_field(pbuf, pblh_idx, pblh)
+   ! call pbuf_get_field(pbuf, pblh_idx, pblh)
 
     ! calculate tendency due to gas phase chemistry and processes
     dvmrdt(:ncol,:,:) = (vmr(:ncol,:,:) - vmr0(:ncol,:,:)) / delt
@@ -825,23 +827,18 @@ call endrun(subname//":: is not yet implemented")
        end do
 
        call cnst_get_ind(trim(solsym(icnst)), l_aero, abort=.false.)
-       if ( l_aero == l_h2so4 ) then
-          GS_H2SO4(:ncol,lchnk) = GS_H2SO4(:ncol,lchnk) + wrk(:ncol)
-       else if ( l_aero == l_dms ) then
-          GS_DMS(:ncol, lchnk) = GS_DMS(:ncol,lchnk) + wrk(:ncol)
-       else if ( l_aero == l_so2) then
-          GS_SO2(:ncol, lchnk) = GS_SO2(:ncol,lchnk) + wrk(:ncol)
+
+! TODO: check that there are not multiple species contributing to one output field
+       if ( l_aero == l_h2so4 .or. l_aero == l_dms .or. l_aero == l_so2 ) then
+           call outfld( 'GS_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
+       end if
+
+       if ( l_aero == l_dms) then ! .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
+          call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
+          if ( l_aero == l_dms ) then
+             call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
+          endif
        endif
-
-       name = 'GS_'//trim(solsym(icnst))
-       call outfld( name, wrk(:ncol), ncol, lchnk )
-
-       if ( l_aero == l_dms .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
-         call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
-         if ( l_aero == l_dms ) then
-            call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
-         endif
-      endif
     enddo
 
 
