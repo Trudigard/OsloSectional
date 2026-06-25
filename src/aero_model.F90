@@ -98,7 +98,7 @@ contains
 
     ! initialize props
     ! nlfile input optional
-    !
+    ! TODO: initialize gasaerexch
 
   end subroutine aero_model_readnl
 
@@ -126,7 +126,7 @@ contains
     use dust_model,     only: dust_init
     use seasalt_model,  only: seasalt_init
     use string_utils,   only: int2str
-    use mo_setsox,      only : setsox, has_sox
+    !use mo_setsox,      only : setsox, has_sox
   use ppgrid,               only: begchunk, endchunk, pcols, pver
     use aero_deposition_cam, only: aero_deposition_cam_init
     use aer_drydep_mod,  only: inidrydep
@@ -239,9 +239,9 @@ contains
         end do
     end do
 
-do ibin = 1, aero_props%nbins()
-    aerosol_names(ind + ibin) = "num_"//int2str(ibin)
-end do
+    do ibin = 1, aero_props%nbins()
+        aerosol_names(ind + ibin) = "num_"//int2str(ibin)
+    end do
 
     do m = 1,ibin+ind
 
@@ -272,8 +272,13 @@ end do
        endif
     enddo
 
-    ! call aero_wetdep_init()
-  end subroutine aero_model_init
+    ! TODO: call aero_wetdep_init()
+
+    if(aero_props%is_active('sulfate')) then
+    ! TODO: if active(sulfate or nitrate) call gasaerexch_init()
+        return
+    end if
+    end subroutine aero_model_init
 
   !=============================================================================
   !=============================================================================
@@ -720,23 +725,16 @@ call endrun(subname//":: is not yet implemented")
 
   !=============================================================================
   !=============================================================================
-  subroutine aero_model_gasaerexch( state, loffset, ncol, lchnk, troplev, delt, reaction_rates, &
-                                    tfld, pmid, pdel, mbar, relhum, &
-                                    zm,  qh2o, cwat, cldfr, cldnum, &
-                                    airdens, invariants, del_h2so4_gasprod,  &
-                                    vmr0, vmr, pbuf )
-
+  subroutine aero_model_gasaerexch( state, loffset, ncol, lchnk, troplev,       &
+      delt, reaction_rates, tfld, pmid, pdel, mbar, relhum, zm, qh2o, cwat,     &
+      cldfr, cldnum, airdens, invariants, del_h2so4_gasprod, vmr0, vmr, pbuf )
 
     use chem_mods,   only : gas_pcnst
-    use mo_aerosols, only : aerosols_formation, has_aerosols
-    use mo_setsox,   only : setsox, has_sox
-    use mo_setsoa,   only : setsoa, has_soa
 
     !-----------------------------------------------------------------------
     !      ... dummy arguments
     !-----------------------------------------------------------------------
-        ! dummy args
-    type(physics_state), intent(in) :: state           ! Physics state variables
+    type(physics_state), intent(in) :: state       ! Physics state variables
     integer,  intent(in) :: loffset                ! offset applied to modal aero "pointers"
     integer,  intent(in) :: ncol                   ! number columns in chunk
     integer,  intent(in) :: lchnk                  ! chunk index
@@ -753,31 +751,99 @@ call endrun(subname//":: is not yet implemented")
     real(r8), intent(in) :: del_h2so4_gasprod(:,:)
     real(r8), intent(in) :: zm(:,:)
     real(r8), intent(in) :: qh2o(:,:)
-    real(r8), intent(in) :: cwat(:,:)          ! cloud liquid water content (kg/kg)
+    real(r8), intent(in) :: cwat(:,:)              ! cloud liquid water content (kg/kg)
     real(r8), intent(in) :: cldfr(:,:)
-    real(r8), intent(in) :: cldnum(:,:)       ! droplet number concentration (#/kg)
-    real(r8), intent(in) :: vmr0(:,:,:)       ! initial mixing ratios (before gas-phase chem changes)
-    real(r8), intent(inout) :: vmr(:,:,:)         ! mixing ratios ( vmr )
+    real(r8), intent(in) :: cldnum(:,:)            ! droplet number concentration (#/kg)
+    real(r8), intent(in) :: vmr0(:,:,:)            ! initial mixing ratios (before gas-phase chem changes)
+    real(r8), intent(inout) :: vmr(:,:,:)          ! mixing ratios ( vmr )
 
     type(physics_buffer_desc), pointer :: pbuf(:)
 
+
     ! local vars
+    integer, parameter :: nmodes_aq_chem = 1
+    integer  :: icol,ilev
+    integer  :: l_aero
+    integer  :: imode,icnst,itrac
+    integer  :: nstep
+    real(r8) :: wrk(ncol)
+    real(r8) :: dvmrcwdt(ncol,pver,gas_pcnst)
+    real(r8) :: dvmrdt(ncol,pver,gas_pcnst)
+    real(r8) :: vmrcw(ncol,pver,gas_pcnst)   ! cloud-borne aerosol (vmr)
+    real(r8) :: del_h2so4_aeruptk(ncol,pver)
+    real(r8) :: del_h2so4_aqchem(ncol,pver)
+    real(r8) :: mmr_cond_vap_start_of_timestep(pcols,pver,N_COND_VAP)
+    real(r8) :: mmr_cond_vap_gasprod(pcols,pver,N_COND_VAP)
+    real(r8) :: del_soa_lv_gasprod(ncol,pver)
+    real(r8) :: del_soa_sv_gasprod(ncol,pver)
+    real(r8) :: dvmrdt_sv1(ncol,pver,gas_pcnst)
+    real(r8) :: dvmrcwdt_sv1(ncol,pver,gas_pcnst)
+    real(r8) :: mmr_tend_ncols(ncol, pver, gas_pcnst)
+    real(r8) :: mmr_tend_pcols(pcols, pver, gas_pcnst)
+    integer  :: cond_vap_idx
+    real(r8) :: aqso4(ncol,nmodes_aq_chem)   ! aqueous phase chemistry
+    real(r8) :: aqh2so4(ncol,nmodes_aq_chem) ! aqueous phase chemistry
+    real(r8) :: aqso4_h2o2(ncol)             ! SO4 aqueous phase chemistry due to H2O2
+    real(r8) :: aqso4_o3(ncol)               ! SO4 aqueous phase chemistry due to O3
+    real(r8) :: xphlwc(ncol,pver)            ! pH value multiplied by lwc
+    real(r8) :: delt_inverse                 ! 1 / timestep
+    real(r8), pointer :: pblh(:)
+    character(len=32) :: name
 
-    real(r8) :: vmrcw(ncol,pver,gas_pcnst)            ! cloud-borne aerosol (vmr)
+    integer :: l_h2so4
 
-    real(r8) ::  aqso4(ncol,1)               ! aqueous phase chemistry
-    real(r8) ::  aqh2so4(ncol,1)             ! aqueous phase chemistry
-    real(r8) ::  aqso4_h2o2(ncol)            ! SO4 aqueous phase chemistry due to H2O2
-    real(r8) ::  aqso4_o3(ncol)              ! SO4 aqueous phase chemistry due to O3
-    real(r8) ::  xphlwc(ncol,pver)           ! pH value multiplied by lwc
+    nstep = get_nstep()
+
+    delt_inverse = 1.0_r8 / delt
+    GS_SOA(:ncol,lchnk) = 0._r8
+    GS_H2SO4(:ncol,lchnk) = 0._r8
+    GS_DMS(:ncol,lchnk) = 0._r8
+    GS_SO2(:ncol,lchnk) = 0._r8
+    GS_isoprene(:ncol,lchnk) = 0._r8
+    GS_monoterp(:ncol,lchnk) = 0._r8
+    AQ_H2SO4(:ncol,lchnk) = 0._r8
+    AQ_SO4_A2_OCW(:ncol,lchnk) = 0._r8
+    AQ_SO2(:ncol,lchnk) = 0._r8
 
     character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
-    !call endrun(subname//":: is not yet implemented")
+    ! indices of gases to condense
+    call cnst_get_ind('H2SO4'  ,l_h2so4, abort=.true.)
+    ! gas phase species
+    call cnst_get_ind('SO2'    ,l_so2,   abort=.true.) !sulfur dioxide
+    call cnst_get_ind('DMS'    ,l_dms,   abort=.true.) !dimethyl sulfide
 
-    if (masterproc) then
-        write(iulog,*) subname, ":: is not yet implemented, no SO4 or Nitrate has been added"
-    end if
+    ! Get height of boundary layer (needed for boundary layer nucleation)
+    call pbuf_get_field(pbuf, pblh_idx, pblh)
+
+    ! calculate tendency due to gas phase chemistry and processes
+    dvmrdt(:ncol,:,:) = (vmr(:ncol,:,:) - vmr0(:ncol,:,:)) / delt
+    do icnst = 1, gas_pcnst
+       wrk(:) = 0._r8
+       do ilev = 1,pver
+          wrk(:ncol) = wrk(:ncol) + dvmrdt(:ncol,ilev,icnst)*adv_mass(icnst)/mbar(:ncol,ilev)*pdel(:ncol,ilev)/gravit
+       end do
+
+       call cnst_get_ind(trim(solsym(icnst)), l_aero, abort=.false.)
+       if ( l_aero == l_h2so4 ) then
+          GS_H2SO4(:ncol,lchnk) = GS_H2SO4(:ncol,lchnk) + wrk(:ncol)
+       else if ( l_aero == l_dms ) then
+          GS_DMS(:ncol, lchnk) = GS_DMS(:ncol,lchnk) + wrk(:ncol)
+       else if ( l_aero == l_so2) then
+          GS_SO2(:ncol, lchnk) = GS_SO2(:ncol,lchnk) + wrk(:ncol)
+       endif
+
+       name = 'GS_'//trim(solsym(icnst))
+       call outfld( name, wrk(:ncol), ncol, lchnk )
+
+       if ( l_aero == l_dms .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
+         call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
+         if ( l_aero == l_dms ) then
+            call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
+         endif
+      endif
+    enddo
+
 
   end subroutine aero_model_gasaerexch
 
