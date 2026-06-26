@@ -840,7 +840,32 @@ call endrun(subname//":: is not yet implemented")
           endif
        endif
     enddo
+! TODO: aq phase production of SO4
 
+! TODO: condensation (condtend) + nucleation
+ !   call condtend_sub_super(lchnk, ncol, tfld, pmid, relhum, )
+! condtend input: lchnk, ncol, pmid
+    !h2ommr: layer specific humidity
+    ! t: temperature
+    ! h2so4pc: sulfuric acid concentration
+    ! oxidorg: organic vapour concentration -> set to 0. for now
+    ! coagnuc: coagulation sink -> set to 0. for now
+    ! zm: height at layer midpoint
+    ! pblht: planetary boundary layer height [m]
+    ! d_form: particle size at calculated formation rate [m] -> diameter
+    ! dt: timestep (output is weighted by this)
+! condtend inout:
+    !nuclrate: nucleation rate [#/m3/s]
+    ! nuclrate_pbl_o: nucleation in pbl rate output
+    ! formrate : formation rate output
+    ! formrate_pbl_o: formation in pbl rate output
+    ! orgnucl_o: concentration of organics for output
+    ! h2so4nucl_o: concentration of sulfuric acid for output
+    !
+
+! TODO: coagulation (coagtend)
+! TODO: cloud coagulation
+! Unit conversions
 
   end subroutine aero_model_gasaerexch
 
