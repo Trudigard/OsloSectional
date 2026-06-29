@@ -121,7 +121,7 @@ contains
   subroutine aero_model_init( pbuf2d, phys_state)
 
     use mo_chem_utls,   only: get_inv_ndx, get_spc_ndx
-    use chem_mods,   only : gas_pcnst
+    use chem_mods,      only : gas_pcnst
     use mo_tracname,              only: solsym
     use cam_history,    only: addfld, add_default, horiz_only
     use phys_control,   only: phys_getopts
@@ -129,9 +129,10 @@ contains
     use seasalt_model,  only: seasalt_init
     use string_utils,   only: int2str
     !use mo_setsox,      only : setsox, has_sox
-  use ppgrid,               only: begchunk, endchunk, pcols, pver
+  use ppgrid,           only: begchunk, endchunk, pcols, pver
     use aero_deposition_cam, only: aero_deposition_cam_init
     use aer_drydep_mod,  only: inidrydep
+    use condtend,       only: condensation_init
 
     use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
@@ -156,6 +157,7 @@ contains
     fracis_idx      = pbuf_get_index('FRACIS')
     prain_idx       = pbuf_get_index('PRAIN')
 
+    call condensation_init(aero_props)
     call oslo_aero_ocean_init() ! DMS
 
     ! TODO: fix this :)

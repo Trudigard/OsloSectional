@@ -3,7 +3,7 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
 !smb++ sectional
                 nuclrate, nuclrate_pbl_o, formrate, formrate_pbl_o,  &
                 orgnucl_o, h2so4nucl_o, grsoa_o, grh2so4_o, dt, &
-                d_form)
+                radius)
 
 !smb-- sectional
 
@@ -21,13 +21,13 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
     use wv_saturation,  only: qsat_water
     use physconst,      only: avogad, rair
     use ppgrid,         only: pcols, pver, pverp
-    use aerosoldef, only : MODE_IDX_SO4SOA_AIT, rhopart, l_so4_a1, l_soa_lv, l_so4_na, l_soa_na
-    use commondefinitions, only: originalNumberMedianRadius
+ !   use aerosoldef, only : MODE_IDX_SO4SOA_AIT, rhopart, l_so4_a1, l_soa_lv, l_so4_na, l_soa_na
+  !  use commondefinitions, only: originalNumberMedianRadius
     use cam_history,    only: outfld
     use phys_control,   only: phys_getopts
     use chem_mods,      only: adv_mass
-    use m_spc_id,       only : id_H2SO4, id_soa_lv
-    use const,          only : volumeToNumber
+    use m_spc_id,       only : id_H2SO4
+ !   use const,          only : volumeToNumber
 
     implicit none
 
@@ -45,7 +45,7 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
     real(r8), intent(in)  :: zm(pcols,pver)           ! Height at layer midpoints (m)
     real(r8), intent(in)  :: pblht(pcols)             ! Planetary boundary layer height (m)
     !smb++sectional
-    real(r8), intent(in)  :: d_form                   ! Particle size at calculated formation rate [m]
+    real(r8), intent(in)  :: radius                   ! Particle size at calculated formation rate [m]
     ! because the timestep may be divided in two, the output needs to be averaged over all timesteps
     ! therefore we track this in these variables
     real(r8), intent(inout)  :: nuclrate(pcols, pver)           ! Nucleation rate output
@@ -89,7 +89,7 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
 
     real(r8)              :: orgforgrowth(pcols,pver) ! Organic vapour mass available for growth
     !smb++ sectional this is now taken as input.
-    !real(r8)              :: d_form                   ! Particle size at calculated formation rate [m]
+    !real(r8)              :: radius                   ! Particle size at calculated formation rate [m]
     !smb-- sectional
     real(r8)              :: gr(pcols,pver), grh2so4(pcols,pver), grorg(pcols,pver) !growth rates
     real(r8)              :: vmolh2so4, vmolorg       ! [m/s] molecular speed of condenseable gases
@@ -100,7 +100,8 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
     integer               :: pbl_nucleation           ! Nucleation parameterization for the boundary layer
     real(r8)              :: molmass_h2so4            ! molecular mass of h2so4 [g/mol]
     real(r8)              :: molmass_soa              ! molecular mass of soa [g/mol]
-
+!TODO: fix this l_so4_na
+    integer               :: l_so4_na
    ! Variables for binary nucleation parameterization
    real(r8)              :: zrhoa, zrh, zt, zt2, zt3, zlogrh, zlogrh2, zlogrh3, zlogrhoa, zlogrhoa2, zlogrhoa3, x, zxmole, zix
    real(r8)              :: zjnuc, zntot, zrc, zrxc
@@ -120,12 +121,11 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
 
     !-- Get molecular mass of h2so4 and soa_lv (cka)
     molmass_h2so4=adv_mass(id_H2SO4)
-    molmass_soa=adv_mass(id_SOA_LV)
+
+! TODO: make this something sensible:
+    l_so4_na = 1
 
     !-- Formation diameters (m). Nucleated particles are inserted to SO4(n), same size used for soa  (cka)
-    !smb++sectional now taken as input
-    !d_form=2._r8*originalNumberMedianRadius(MODE_IDX_SO4SOA_AIT)
-    !smb--sectional
 
     !-- Conversion of H2SO4 from kg/kg to #/cm3
     !-- and calculation of relative humidity (needed by binary nucleation parameterization)
@@ -369,8 +369,8 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
             !-- Lehtinen 2007 parameterization for apparent formation rate
             !   diameters in nm, growth rate in nm h-1, coagulation in s-1
 
-            call appformrate(nuclsize_bin(i,k), d_form*1.E9_r8, nuclrate_bin(i,k), formrate_bin(i,k), coagnuc(i,k), gr(i,k))
-            call appformrate(nuclsize_pbl(i,k), d_form*1.E9_r8, nuclrate_pbl(i,k), formrate_pbl(i,k), coagnuc(i,k), gr(i,k))
+            call appformrate(nuclsize_bin(i,k), radius*2.E9_r8, nuclrate_bin(i,k), formrate_bin(i,k), coagnuc(i,k), gr(i,k))
+            call appformrate(nuclsize_pbl(i,k), radius*2.E9_r8, nuclrate_pbl(i,k), formrate_pbl(i,k), coagnuc(i,k), gr(i,k))
 
             formrate_bin(i,k)=MAX(MIN(formrate_bin(i,k),1.E3_r8),0._r8)
             formrate_pbl(i,k)=MAX(MIN(formrate_pbl(i,k),1.E3_r8),0._r8)
@@ -384,7 +384,7 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
 
             nuclvolume(i,k) = (formrate_bin(i,k) + formrate_pbl(i,k)) & ! [particles/cm3]
                             *1.0e6_r8                                 & !==> [particles / m3 /]
-                            *d_form**3*pi/6._r8                       & !==> [m3_{aer} / m3_{air} / sec]
+                            *2._r8*radius**3*pi/6._r8                       & !==> [m3_{aer} / m3_{air} / sec]
                             / rhoair(i,k)                               !==> m3_{aer} / kg_{air} /sec
            !smb-- sectional
             !Estimate how much is organic based on growth-rate
@@ -396,8 +396,8 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuc
 
             ! Nucleated so4 and soa mass mixing ratio per second [kg kg-1 s-1]
             ! used density of particle phase, not of condensing gas
-            nuclso4(i,k)=rhopart(l_so4_na)*nuclvolume(i,k)*frach2so4
-            nuclorg(i,k)=rhopart(l_soa_na)*nuclvolume(i,k)*(1.0_r8-frach2so4)
+! TODO: find rhopart
+ !           nuclso4(i,k)=rhopart(l_so4_na)*nuclvolume(i,k)*frach2so4
 
         end do
     end do
