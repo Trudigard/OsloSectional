@@ -741,9 +741,11 @@ call endrun(subname//":: is not yet implemented")
       delt, reaction_rates, tfld, pmid, pdel, mbar, relhum, zm, qh2o, cwat,     &
       cldfr, cldnum, airdens, invariants, del_h2so4_gasprod, vmr0, vmr, pbuf )
 
-    use chem_mods,    only : gas_pcnst, adv_mass
-    use mo_tracname,  only: solsym
-    use time_manager, only: get_nstep
+    use chem_mods,      only : gas_pcnst, adv_mass
+    use mo_tracname,    only: solsym
+    use time_manager,   only: get_nstep
+    use condtend,       only: condtend_sub_super
+    use mo_mass_xforms, only: vmr2mmr, mmr2vmr, mmr2vmri
 
     !-----------------------------------------------------------------------
     !      ... dummy arguments
@@ -768,14 +770,18 @@ call endrun(subname//":: is not yet implemented")
     real(r8), intent(in) :: cwat(:,:)              ! cloud liquid water content (kg/kg)
     real(r8), intent(in) :: cldfr(:,:)
     real(r8), intent(in) :: cldnum(:,:)            ! droplet number concentration (#/kg)
-    real(r8), intent(in) :: vmr0(:,:,:)            ! initial mixing ratios (before gas-phase chem changes)
-    real(r8), intent(inout) :: vmr(:,:,:)          ! mixing ratios ( vmr )
+    real(r8), intent(in) :: vmr0(:,:,:)            ! initial mixing ratios (before gas-phase chem changes) from chemistry
+    real(r8), intent(inout) :: vmr(:,:,:)          ! mixing ratios ( vmr ) from chemistry, includes gas
 
     type(physics_buffer_desc), pointer :: pbuf(:)
 
 
     ! local vars
 !    integer, parameter :: nmodes_aq_chem = 1
+
+    real(r8) :: mmr_gas(ncol, pver, gas_pcnst)
+    real(r8) :: mmr_cond_vap_gasprod0(ncol, pver) ! TODO: add dimension n_cond_vap for several condensing species
+    real(r8) :: mmr_cond_vap_gasprod(ncol, pver) ! TODO: add dimension n_cond_vap for several condensing species
     integer  :: icol,ilev
     integer  :: l_aero
     integer  :: imode,icnst,itrac
@@ -805,20 +811,27 @@ call endrun(subname//":: is not yet implemented")
     character(len=32) :: name
 
     integer :: l_h2so4, l_dms, l_so2
+    integer  :: imozart
+    integer :: pblh_idx = 0
+
     character(len=*), parameter :: subname = 'aero_model_gasaerexch'
 
     nstep = get_nstep()
 
     delt_inverse = 1.0_r8 / delt
 
+    ! Get height of boundary layer for boundary layer nucleation
+    pblh_idx = pbuf_get_index('pblh')
+
     ! indices of gases to condense
     call cnst_get_ind('H2SO4'  ,l_h2so4, abort=.true.)
     ! gas phase species
     call cnst_get_ind('SO2'    ,l_so2,   abort=.true.) !sulfur dioxide
     call cnst_get_ind('DMS'    ,l_dms,   abort=.true.) !dimethyl sulfide
+    call cnst_get_ind(trim(solsym(1)), imozart, abort=.true.)
 
     ! Get height of boundary layer (needed for boundary layer nucleation)
-   ! call pbuf_get_field(pbuf, pblh_idx, pblh)
+    call pbuf_get_field(pbuf, pblh_idx, pblh)
 
     ! calculate tendency due to gas phase chemistry and processes
     dvmrdt(:ncol,:,:) = (vmr(:ncol,:,:) - vmr0(:ncol,:,:)) / delt
@@ -831,21 +844,40 @@ call endrun(subname//":: is not yet implemented")
        call cnst_get_ind(trim(solsym(icnst)), l_aero, abort=.false.)
 
 ! TODO: check that there are not multiple species contributing to one output field
-       if ( l_aero == l_h2so4 .or. l_aero == l_dms .or. l_aero == l_so2 ) then
+       if ( l_aero == l_h2so4-imozart .or. l_aero == l_dms-imozart .or. l_aero == l_so2-imozart ) then
            call outfld( 'GS_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
        end if
 
-       if ( l_aero == l_dms) then ! .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
-          call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
-          if ( l_aero == l_dms ) then
-             call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
-          endif
-       endif
+!       if ( l_aero == l_dms) then ! .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
+!         call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
+!             call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
+!        if (masterproc) then
+!            write(6,*) 'DEBUG: DMS sink (kg/m2/s): ', maxval(wrk(:ncol)), minval(wrk(:ncol))
+!        endif
+!    end if
     enddo
+
+    ! Unit conversions for gases
+    call vmr2mmr( vmr0, mmr_gas, mbar, ncol )
+
+    ! get mass mixing ratios at start of time step
+! TODO: make this so it works for several species -> e.g. add "precursor" attribute to object ?
+    mmr_cond_vap_gasprod0(:ncol, :) = mmr_gas(:ncol, :, l_h2so4-imozart)
+
+ !   call qqcw2vmr(lchnk, vmrcw, mbar, ncol, loffset, pbuf)
+! TODO: add cloud water aerosol
+    vmrcw = 0._r8
+
 ! TODO: aq phase production of SO4
 
 ! TODO: condensation (condtend) + nucleation
- !   call condtend_sub_super(lchnk, ncol, tfld, pmid, relhum, )
+    call condtend_sub_super(lchnk, mmr_gas, mmr_cond_vap_gasprod, tfld, pmid, &
+        pdel, delt, ncol, pblh, zm, qh2o, aero_props, master_aero_state(lchnk)%ptr)
+
+      ! osloaerosec: mmr_tend_pcols is gas vmr converted to mmr
+      ! mmr_cond_vap_gasprod
+      !
+
 ! condtend input: lchnk, ncol, pmid
     !h2ommr: layer specific humidity
     ! t: temperature
@@ -868,6 +900,8 @@ call endrun(subname//":: is not yet implemented")
 ! TODO: coagulation (coagtend)
 ! TODO: cloud coagulation
 ! Unit conversions
+
+    return
 
   end subroutine aero_model_gasaerexch
 
@@ -945,6 +979,10 @@ call endrun(subname//":: is not yet implemented")
 
 
   end subroutine aero_model_emissions
+
+  !=============================================================================
+  ! private methods
+  !=============================================================================
 
   subroutine aero_depvel_part( ncol, t, pmid, ram1, fv, vlc_dry, vlc_trb, vlc_grv,  &
                                      radius_part, density_part, lchnk )
