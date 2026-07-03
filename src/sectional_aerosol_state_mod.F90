@@ -363,6 +363,11 @@ end subroutine destructor
     do ibin = 1, self%sec_aero_props%nbins()
 
         self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
+        if (masterproc) then
+!    write(6,*) 'DEBUG: gasLost/density/volume', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
+!    write(6,*) 'DEBUG: and * fracNucl', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) *(1.0_r8-fracNucl(i,k))
+    write(6,*) 'DEBUG: bin_numconc ', maxval(self%bin_numconc)
+end if
     end do
 
   end subroutine get_transported
@@ -578,7 +583,15 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'update_bin'
 
-    call endrun(subname//' is not yet implemented')
+    !call endrun(subname//' is not yet implemented')
+! TODO: fix this for ranges
+! currently a copy of modal
+    if (tnd_ndx > 0) then
+        tend(col_ndx, lyr_ndx, tnd_ndx) = - delnum_sum/dtime
+    else
+        self%bin_numconc(col_ndx, lyr_ndx, bin_ndx) = self%bin_numconc(col_ndx, lyr_ndx, bin_ndx) - delnum_sum
+    end if
+
 
     ! bin_num(bin_ndx) = bin_num + tendency
   end subroutine update_bin

@@ -10,6 +10,7 @@ module condtend
    use chem_mods,    only: adv_mass !molecular weights from mozart
    use ppgrid,       only: pcols, pver, pverp
    use constituents, only: cnst_get_ind
+  use spmd_utils,        only: masterproc
 
 ! Sectional aerosol specific stuff
    use aerosol_properties_mod,           only: aerosol_properties
@@ -187,7 +188,7 @@ contains
       implicit none
 
       type(sectional_aerosol_properties), intent(in) :: aero_props
-      type(sectional_aerosol_state), intent(in) :: aero_state
+      type(sectional_aerosol_state), intent(inout) :: aero_state
 
 
       ! arguments
@@ -406,7 +407,7 @@ end subroutine condtend_sub_super
       implicit none
 
       type(sectional_aerosol_properties), intent(in) :: aero_props
-      type(sectional_aerosol_state), intent(in) :: aero_state
+      type(sectional_aerosol_state), intent(inout) :: aero_state
 
 
        !++smb sectional
@@ -494,7 +495,7 @@ end subroutine condtend_sub_super
        real(r8) :: nuclsoa(pcols,pver)                ! [kg/kg/s] Nucleated soa mass tendency from RM's parameterization
        !smb++ sectional
        real(r8) :: dummy  !
-       integer  :: ibin ! indices
+       integer  :: ibin, irange ! indices
 
        !smb-- sectional
 
@@ -534,8 +535,12 @@ end subroutine condtend_sub_super
 
                 !smb-- sectional
 
-
                 !smb++ sectional
+                ! Calculate number concentration in each bin :
+                numberConcentration_sec(i,k, :) = 0.0_r8
+
+                !Go though all bins receiving condensation
+
                 ! condensation sink to sectional bin:
                    do ibin = 1, aero_props%nbins()
 
@@ -545,7 +550,11 @@ end subroutine condtend_sub_super
                                                           !==> [1/s]
                    end do !Loop over receivers
                 !smb-- sectional
-
+if (masterproc) then
+  !  write(6,*) 'condensationSink_sec', condensationSink_sec
+    write(6,*) 'numberConcentration_sec', maxval(numberConcentration_sec(i,k,:))
+  !  write(6,*) 'cond_sink_norm', cond_sink_norm
+end if
 
                 !Find concentration after condensation of all
                 !condenseable vapours
@@ -591,10 +600,10 @@ end subroutine condtend_sub_super
 ! TODO: check, how is intermediateConcentration h2so4pc, and how is soa_lv_forNucleation = coagnuc?
        call aeronucl(lchnk, ncol, temperature, pmid, qh20, &
                    intermediateConcentration(:,:), soa_lv_forNucleation, &
-                   coagulationSink, nuclnum, nuclso4 nuclsoa, zm, pblh, &
+                   coagulationSink, nuclnum, nuclso4, nuclsoa, zm, pblh, &
                    nuclrate, nuclrate_pbl_o, formrate, formrate_pbl_o, &
                    orgnucl_o, h2so4nucl_o, grsoa_o, grh2so4_o, dt, &
-                   bin_centers(1) &
+                   bin_centers(1), aero_props &
                )
 
        !smb++ sectional
@@ -638,15 +647,26 @@ end subroutine condtend_sub_super
                 ! condensationSinkFraction_sec: [frc] fraction to the particular bin
                 ! fracNucl: [frc] fraction nucleated
                 ! get number from gasLost
-                     aero_state%bin_numconc(i, k, ibin) = aero_state%bin_numconc(i,k,ibin) &
-                     + gasLost(i,k) * aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) & ! get number out of mass
-                     *(1.0_r8-fracNucl(i,k)) &
-                     *condensationSinkFraction_sec(i,k, ibin)  ! fraction to the particular bin
+! TODO: fix update_bin
+! TODO: fix update_bin -> mmr to correct range
+                call aero_state%update_bin(ibin, i, k, 0._r8, gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), dt, tend)
+!                     aero_state%bin_numconc(i, k, ibin) = aero_state%bin_numconc(i,k,ibin) &
+!                     + gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) + 34798._r8 * real(ibin)*real(i)*real(k) ! & ! get number out of mass
+ !                    *(1.0_r8-fracNucl(i,k)) !&
+!                     *condensationSinkFraction_sec(i,k, ibin)  ! fraction to the particular bin
+!if (masterproc) then
+!    write(6,*) 'DEBUG: gasLost/density/volume', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
+!    write(6,*) 'DEBUG: and * fracNucl', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) *(1.0_r8-fracNucl(i,k))
+!    write(6,*) 'DEBUG: bin_numconc ', aero_state%bin_numconc(i,k,ibin)
+!end if
+                irange = aero_props%bins2ranges(ibin)
 
-                irange = bins2ranges(ibin)
-                ispec = ??
+!                ispec = ??
                 ! add mass to the range:
-                aero_state%aero_range_state(irange)%
+!                aero_state%aero_range_state(irange)%mmr(i,k,ispec) = aero_state%aero_range_state(irange)%mmr(i,k,ispec) &
+!                     + gasLost(i,k)*(1.0_r8-fracNucl(i,k)) &
+!                     *condensationSinkFraction_sec(i,k, ibin)
+
              end do
              !smb-- sectional
              !H2SO4 condensate
@@ -856,10 +876,10 @@ subroutine sec_moveMass(massDistrib, numberConc_old, leave_sec, rhoAir, decrease
 
 end subroutine sec_moveMass
 
-subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, coagnuc, nuclnum, nuclso4, nuclorg, zm, pblht, &
+subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, oxidorg, coagnuc, nuclnum, nuclso4, nuclorg, zm, pblht, &
                 nuclrate, nuclrate_pbl_o, formrate, formrate_pbl_o,  &
                 orgnucl_o, h2so4nucl_o, grsoa_o, grh2so4_o, dt, &
-                radius)
+                radius, aero_props)
 
     use shr_kind_mod,   only: r8 => shr_kind_r8
     use wv_saturation,  only: qsat_water
@@ -875,6 +895,8 @@ subroutine aeronucl(lchnk, ncol, t, pmid, h2ommr, h2so4pc, coagnuc, nuclnum, nuc
     use shr_const_mod,    only: shr_const_rgas
 
     !-- Arguments
+    class(sectional_aerosol_properties), intent(in) :: aero_props
+
     real(r8), intent(in)  :: dt                ! timestep (output is weighted by this)
     integer,  intent(in)  :: lchnk             ! chunk identifier
     integer,  intent(in)  :: ncol              ! number of atmospheric column
