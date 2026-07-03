@@ -177,9 +177,6 @@ contains
         call aero_deposition_cam_init(aero_props)
     end if
 
-    call dust_init(aero_props)
-    call seasalt_init(aero_props)
-
 ! TODO: if drydep active:
     call inidrydep(rair, gravit)
 
@@ -195,6 +192,7 @@ contains
     endif
 
     if (aero_props%is_active('dust')) then
+        call dust_init(aero_props)
 
         do irange = 1, aero_props%spec_nrange(dust_specprop_ndx)
             dummy = trim(aero_props%spec_tracernames(dust_specprop_ndx, irange)) // 'SF'
@@ -218,6 +216,7 @@ contains
     endif
 
     if (aero_props%is_active('seasalt')) then
+        call seasalt_init(aero_props)
 
         do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
             dummy = trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange)) // 'SF'
