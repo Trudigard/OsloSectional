@@ -607,8 +607,11 @@ subroutine microp_aero_run ( &
       end if
    end if
 
+! TODO: check singleton use for oslo_sectional
    if (aero_modelname =='oslo_sectional') then
-       aero_state1_obj => sectional_aerosol_state(state1, pbuf)
+       ! Reuse the pre-initialized singleton object so that bin_numconc and
+       ! aero_range_state%mmr are already populated from set_transported.
+       aero_state1_obj => aero_state(lchnk)%obj
    end if
 
    if (clim_modal_aero.or.clim_carma_aero .or. (aero_modelname=='oslo_sectional')) then
@@ -908,11 +911,16 @@ subroutine microp_aero_run ( &
       deallocate(factnum)
    end if
 
+! TODO: check singleton use for oslo_sectional
+   ! Only deallocate for modal/carma aerosol, not for oslo_sectional whose
+   ! aero_state1_obj points to the persistent singleton owned by this module.
    if (associated(aero_state1_obj)) then
-      ! destroy the aerosol state object
-      deallocate(aero_state1_obj)
+      if (aero_modelname /= 'oslo_sectional') then
+        ! Destroy the aerosol state 1 object
+        deallocate(aero_state1_obj)
+      end if
       nullify(aero_state1_obj)
-   endif
+    end if
 
  end subroutine microp_aero_run
 

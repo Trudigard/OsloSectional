@@ -193,7 +193,7 @@ module aerosol_state_mod
      !------------------------------------------------------------------------------
      subroutine aero_update_bin( self, bin_ndx, col_ndx, lyr_ndx, delmmr_sum, delnum_sum, tnd_ndx, dtime, tend )
        import :: aerosol_state, r8
-       class(aerosol_state), intent(in) :: self
+       class(aerosol_state), intent(inout) :: self
        integer, intent(in) :: bin_ndx                ! bin number
        integer, intent(in) :: col_ndx                ! column index
        integer, intent(in) :: lyr_ndx                ! vertical layer index

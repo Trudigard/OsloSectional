@@ -873,6 +873,9 @@ call endrun(subname//":: is not yet implemented")
     call condtend_sub_super(lchnk, mmr_gas, mmr_cond_vap_gasprod, tfld, pmid, &
         pdel, delt, ncol, pblh, zm, qh2o, aero_props, master_aero_state(lchnk)%ptr)
 
+if (masterproc) then
+    write(6,*) "DEBUG: maxval aero_model_gasaerexch bin_numconc: ", maxval(master_aero_state(lchnk)%ptr%bin_numconc(:,:,:))
+end if
       ! osloaerosec: mmr_tend_pcols is gas vmr converted to mmr
       ! mmr_cond_vap_gasprod
       !
@@ -967,15 +970,14 @@ call endrun(subname//":: is not yet implemented")
         call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
 
         do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
-         !   if (masterproc) then
-         !       write(iulog,*) "DEBUG: range index for seasalt: ", irange
-         !   end if
-
             sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange))
 !            call outfld(trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange)),pcols, lchnk))
         end do
     end if
 
+if (masterproc) then
+    write(6,*) "DEBUG: maxval aero_model_emissions bin_numconc: ", maxval(master_aero_state(lchnk)%ptr%bin_numconc(:,:,:))
+end if
 
   end subroutine aero_model_emissions
 

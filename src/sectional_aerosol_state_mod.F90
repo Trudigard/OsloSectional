@@ -127,6 +127,7 @@ contains
        return
     end if
 
+    master_aero_state(lchnk)%ptr => newobj
     newobj%state => state
     newobj%pbuf => pbuf
     newobj%sec_aero_props => sectional_aerosol_properties()
@@ -325,14 +326,23 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'set_transported'
 
+
+if (masterproc) then
+    write(6,*) "DEBUG: maxval set_transported bin_numconc: ", maxval(self%bin_numconc(:,:,1))
+end if
+
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
-            self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
+            self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = transported_array(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
+
+!            self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
         end do
     end do
 
     do ibin = 1, self%sec_aero_props%nbins()
-        self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
+        self%bin_numconc(:,:,ibin) = transported_array(:self%ncol,:,self%num_transport_ndx(ibin))
+
+        !self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
     end do
 
     ! update the range properties
@@ -353,23 +363,28 @@ end subroutine destructor
     integer               :: irange, ispec, ibin
 
     character(len=*), parameter :: subname = 'get_transported'
-
+if (masterproc) then
+    write(6,*) "DEBUG: maxval get_transported bin_numconc: ", maxval(self%bin_numconc(:,:,1))
+end if
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
-            self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
+            transported_array(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
+
+!            self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
         end do
     end do
 
     do ibin = 1, self%sec_aero_props%nbins()
+        transported_array(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
 
-        self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
-        if (masterproc) then
+   !     self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
+
+    end do
+if (masterproc) then
 !    write(6,*) 'DEBUG: gasLost/density/volume', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
 !    write(6,*) 'DEBUG: and * fracNucl', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) *(1.0_r8-fracNucl(i,k))
-    write(6,*) 'DEBUG: bin_numconc ', maxval(self%bin_numconc)
+    write(6,*) 'DEBUG: transported_array in get_transported ', maxval(transported_array(:self%ncol,:,self%num_transport_ndx(1)))
 end if
-    end do
-
   end subroutine get_transported
 
   !------------------------------------------------------------------------
@@ -571,7 +586,7 @@ end if
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   subroutine update_bin( self, bin_ndx, col_ndx, lyr_ndx, delmmr_sum, delnum_sum, tnd_ndx, dtime, tend )
-    class(sectional_aerosol_state), intent(in) :: self
+    class(sectional_aerosol_state), intent(inout) :: self
     integer, intent(in) :: bin_ndx                ! bin number
     integer, intent(in) :: col_ndx                ! column index
     integer, intent(in) :: lyr_ndx                ! vertical layer index
@@ -583,16 +598,16 @@ end if
 
     character(len=*), parameter :: subname = 'update_bin'
 
-    !call endrun(subname//' is not yet implemented')
 ! TODO: fix this for ranges
 ! currently a copy of modal
     if (tnd_ndx > 0) then
-        tend(col_ndx, lyr_ndx, tnd_ndx) = - delnum_sum/dtime
+       ! tend(col_ndx, lyr_ndx, tnd_ndx) = - delnum_sum/dtime
+       tend(col_ndx,lyr_ndx,tnd_ndx) = -delnum_sum/dtime
     else
         self%bin_numconc(col_ndx, lyr_ndx, bin_ndx) = self%bin_numconc(col_ndx, lyr_ndx, bin_ndx) - delnum_sum
     end if
 
-
+! update range
     ! bin_num(bin_ndx) = bin_num + tendency
   end subroutine update_bin
 

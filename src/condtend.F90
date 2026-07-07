@@ -466,6 +466,8 @@ end subroutine condtend_sub_super
 
       real(r8), dimension(pcols)                       :: tracer_coltend
 
+      real(r8), allocatable :: tend(:,:,:)
+
 
       real(r8)       :: intermediateConcentration(pcols,pver)
       real(r8)       :: rhoAir(pcols,pver)                           ![kg/m3] density of air
@@ -502,17 +504,27 @@ end subroutine condtend_sub_super
        allocate(condensationsink_sec(aero_props%nbins()))
        allocate(numberconcentration_sec(ncol,pver,aero_props%nbins()))
        allocate(condensationsinkfraction_sec(ncol,pver,aero_props%nbins()))
+
+       allocate(tend(ncol, pver, gas_pcnst))
        !Initialize h2so4 and soa nucl variables
        coagulationSink = 0.0_r8
        condensationsinkfraction_sec = 0.0_r8
        numberconcentration_sec = 0.0_r8
        tmp_num => null()
 
+       do k = 1, pver
+           do i = 1, ncol
+                !Air density
+                rhoAir(i,k) = pmid(i,k)/rair/temperature(i,k)
+           end do
+        end do
+
        do ibin = 1, aero_props%nbins()
         ! No looping through species, mmr is added afterwards
           call aero_state%get_ambient_num(ibin, tmp_num)
-          numberconcentration_sec(:,:,ibin) = tmp_num(:,:)
+          numberconcentration_sec(:ncol,:,ibin) = tmp_num(:ncol,:) / rhoAir(:ncol,:)  ![#/m3] number concentration
        enddo
+
        do k=1,pver
            do i=1,ncol
 
@@ -524,20 +536,6 @@ end subroutine condtend_sub_super
                 !NB: The following is duplicated code, coordinate with koagsub!!
                 !Initialize number concentration for this receiver
 
-                !Air density
-                rhoAir(i,k) = pmid(i,k)/rair/temperature(i,k)
-
-                !smb++ sectional
-                ! Calculate number concentration in each bin :
-                numberConcentration_sec(i,k, :) = 0.0_r8
-
-                !Go though all bins receiving condensation
-
-                !smb-- sectional
-
-                !smb++ sectional
-                ! Calculate number concentration in each bin :
-                numberConcentration_sec(i,k, :) = 0.0_r8
 
                 !Go though all bins receiving condensation
 
@@ -550,11 +548,6 @@ end subroutine condtend_sub_super
                                                           !==> [1/s]
                    end do !Loop over receivers
                 !smb-- sectional
-if (masterproc) then
-  !  write(6,*) 'condensationSink_sec', condensationSink_sec
-    write(6,*) 'numberConcentration_sec', maxval(numberConcentration_sec(i,k,:))
-  !  write(6,*) 'cond_sink_norm', cond_sink_norm
-end if
 
                 !Find concentration after condensation of all
                 !condenseable vapours
@@ -638,8 +631,8 @@ end if
                                      + q(i,k,l_h2so4_chem)            & !cold
                                      - intermediateConcentration(i,k)    !cnew
 
-             ! TODO: Add nuceated mass to smallest bin and range
-
+             ! Add nucleated number to smallest bin (#/kg/s * s = #/kg)
+              call aero_state%update_bin(1, i, k, 0._r8, -nuclnum(i,k)*dt, 0, dt, tend)
              !H2SO4 condensate
              do ibin=1, aero_props%nbins()
                 ! bin_numconc (#/kg)
@@ -647,9 +640,9 @@ end if
                 ! condensationSinkFraction_sec: [frc] fraction to the particular bin
                 ! fracNucl: [frc] fraction nucleated
                 ! get number from gasLost
-! TODO: fix update_bin
 ! TODO: fix update_bin -> mmr to correct range
-                call aero_state%update_bin(ibin, i, k, 0._r8, gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), dt, tend)
+ !               call aero_state%update_bin(ibin, i, k, 0._r8, gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), dt, tend)
+!                call aero_state%update_bin(ibin, i, k, 0._r8, -1._r8*gasLost(i,k) * (1._r8-fracNucl(i,k)) * condensationSinkFraction_sec(i,k, ibin) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), 0, dt, tend)
 !                     aero_state%bin_numconc(i, k, ibin) = aero_state%bin_numconc(i,k,ibin) &
 !                     + gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) + 34798._r8 * real(ibin)*real(i)*real(k) ! & ! get number out of mass
  !                    *(1.0_r8-fracNucl(i,k)) !&
@@ -681,7 +674,7 @@ end if
 ! organics here
 
              !condenseable vapours
-  !           q(i,k,l_h2so4_chem)  = intermediateConcentration(i,k)
+             q(i,k,l_h2so4_chem)  = intermediateConcentration(i,k)
 
              !smb++sectional grow particles in sectional scheme:
     ! TODO: make Sec_movemass routine
