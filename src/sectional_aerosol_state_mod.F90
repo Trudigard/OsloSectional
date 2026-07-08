@@ -326,11 +326,6 @@ end subroutine destructor
 
     character(len=*), parameter :: subname = 'set_transported'
 
-
-if (masterproc) then
-    write(6,*) "DEBUG: maxval set_transported bin_numconc: ", maxval(self%bin_numconc(:,:,1))
-end if
-
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
             self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = transported_array(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
@@ -363,9 +358,7 @@ end if
     integer               :: irange, ispec, ibin
 
     character(len=*), parameter :: subname = 'get_transported'
-if (masterproc) then
-    write(6,*) "DEBUG: maxval get_transported bin_numconc: ", maxval(self%bin_numconc(:,:,1))
-end if
+
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
             transported_array(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
@@ -380,11 +373,7 @@ end if
    !     self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
 
     end do
-if (masterproc) then
-!    write(6,*) 'DEBUG: gasLost/density/volume', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
-!    write(6,*) 'DEBUG: and * fracNucl', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) *(1.0_r8-fracNucl(i,k))
-    write(6,*) 'DEBUG: transported_array in get_transported ', maxval(transported_array(:self%ncol,:,self%num_transport_ndx(1)))
-end if
+
   end subroutine get_transported
 
   !------------------------------------------------------------------------

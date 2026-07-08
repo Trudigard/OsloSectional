@@ -175,6 +175,7 @@ contains
 
 !==========================================================================================
 ! Condensation + Nucleation called from aero_model
+! manages time sub-stepping by calling condtend_sub
 !==========================================================================================
 
    subroutine condtend_sub_super(lchnk, q, cond_vap_gasprod, temperature, &
@@ -217,13 +218,12 @@ contains
       real(r8) :: formrate_pbl(pcols,pver) ![kg/kg] tracer lost
       real(r8) :: formrate(pcols,pver)     ![kg/kg] tracer lost
       real(r8) :: h2so4nucl(pcols,pver)    ! h2so4 in nucleation code
-!      real(r8) :: orgnucl(pcols,pver)      ! organics in nucleation code
+      real(r8) :: orgnucl(pcols,pver)      ! organics in nucleation code
       real(r8) :: grh2so4(pcols,pver)      ! growth rate h2so4
-!      real(r8) :: grsoa(pcols,pver)        ! growth rate SOA
+      real(r8) :: grsoa(pcols,pver)        ! growth rate SOA
       real(r8) :: coagnucl(pcols,pver)     ! coagulation in nucleation
 
-      real(r8), allocatable :: numconc_old(:,:,:) ![#/m3] number concentration before
-      real(r8), allocatable :: numconc_new(:,:,:)![#/m3] number concentration new
+      real(r8), allocatable :: numconc_new(:,:,:) ![#/m3] number concentration new
       real(r8), allocatable :: leaveSec(:,:,:) ![kg/kg] tracer lost
       real(r8), allocatable :: leaveSec_dummy(:,:,:) ![kg/kg] tracer lost
       real(r8), pointer :: tmp_num(:,:)
@@ -243,12 +243,10 @@ contains
 
       !-----------------------------------------------------------------------------------
 
-      allocate(numconc_old(ncol, pver, aero_props%nbins()))
       allocate(numconc_new(ncol, pver, aero_props%nbins()))
       allocate(leaveSec_dummy(ncol, pver, aero_props%nbins()))
       allocate(leaveSec(ncol, pver, aero_props%nbins()))
       !initialization
-      numconc_old = 0.0_r8
       numconc_new = 0.0_r8
 
       q_t0(:ncol,:,:)    = q(:,:,:) ! in case timestep needs to be decreased.
@@ -273,7 +271,7 @@ contains
       tmp_num => null()
       do ibin = 1, aero_props%nbins()
           call aero_state%get_ambient_num(ibin, tmp_num)
-          numconc_old(:,:,ibin) = tmp_num(:,:)
+          numconc_new(:,:,ibin) = tmp_num(:,:)
       end do
 
       ! run until no need to split time any longer
@@ -291,7 +289,8 @@ contains
                dt_local = dt_local/2.0_r8
                cnt      = 1
                nr_dt    = nr_dt*2
-               q(:,:,:) = q_t0(:,:,:)
+               q(:ncol,:,:) = q_t0(:ncol,:,:)
+               numconc_new(:ncol, :, :) = aero_state%bin_numconc(:ncol,:,:)    ! is reset if timestep is decreased.
                coltend(:,:) = 0.0_r8
                coltend_dummy(:,:) = 0.0_r8
                nuclrate_pbl(:,:) = 0.0_r8
@@ -308,6 +307,14 @@ contains
            else if (nr_dt .eq. cnt) then ! if not, check if count is eq to number of splits
                !if (nr_dt .eq. cnt) then
                notDone=.FALSE.
+               ! update bin with numconc from nucleation
+! TODO: add nucleation
+! TODO: add ranges
+               do i = 1, ncol
+                   do k = 1, pver
+                       call aero_state%update_bin(1, i, k, 0._r8, -nuclnum(i,k)*dt, 0, dt, tend)
+                   end do
+                end do
            else ! if not done and no need to split timestep again, add one to count.
                cnt=cnt+1
            end if
@@ -378,7 +385,7 @@ contains
 
 !      end do
 
-      deallocate(numconc_old, numconc_new)
+      deallocate(numconc_new)
 
    end subroutine condtend_sub_super
 
@@ -402,7 +409,7 @@ contains
                 leaveSec,                                                       &
            !smb--sectional
                pmid, pdel, dt, ncol, pblh,zm,qh20,                              &
-               aero_props, aero_state)
+               aero_props, aero_state, numconc_new)
 
 
 
@@ -411,8 +418,9 @@ contains
 
       ! dummy arguments
       type(sectional_aerosol_properties), intent(in) :: aero_props
-      type(sectional_aerosol_state), intent(inout) :: aero_state
+      type(sectional_aerosol_state), intent(in) :: aero_state
 
+      real(r8), intent(inout) :: numconc_new(:,:,:) ![#/m3] number concentration new
 
        !++smb sectional
       real(r8), intent(inout)  :: nuclrate (:,:)            ! Nucleation rate output
@@ -481,6 +489,7 @@ contains
        real(r8) :: nuclnum(pcols,pver)                ! [#/m3/s] nucleation number rate from RM's parameterization
        real(r8) :: nuclso4(pcols,pver)                ! [kg/kg/s] Nucleated so4 mass tendency from RM's parameterization
        real(r8) :: nuclsoa(pcols,pver)                ! [kg/kg/s] Nucleated soa mass tendency from RM's parameterization
+       real(r8), allocatable :: rho_part(:, :, :)
        !smb++ sectional
        real(r8) :: dummy  !
        integer  :: ibin, irange ! indices
@@ -494,13 +503,16 @@ contains
        allocate(condensationsink_sec(aero_props%nbins()))
        allocate(numberconcentration_sec(ncol,pver,aero_props%nbins()))
        allocate(condensationsinkfraction_sec(ncol,pver,aero_props%nbins()))
-
+       allocate(rho_part(ncol,pver,aero_props%nbins()))
        allocate(tend(ncol, pver, gas_pcnst))
        !Initialize h2so4 and soa nucl variables
        coagulationSink = 0.0_r8
        condensationsinkfraction_sec = 0.0_r8
        numberconcentration_sec = 0.0_r8
        tmp_num => null()
+       coltend_o = 0.0_r8
+       leaveSec = 0.0_r8
+       split_dt       = .FALSE.
 
        do k = 1, pver
            do i = 1, ncol
@@ -511,8 +523,9 @@ contains
 
        do ibin = 1, aero_props%nbins()
         ! No looping through species, mmr is added afterwards
-          call aero_state%get_ambient_num(ibin, tmp_num)
-          numberconcentration_sec(:ncol,:,ibin) = tmp_num(:ncol,:) / rhoAir(:ncol,:)  ![#/m3] number concentration
+!          call aero_state%get_ambient_num(ibin, tmp_num)
+          numberconcentration_sec(:ncol,:,ibin) = numconc_new(:ncol, :, ibin) / rhoAir(:ncol,:)  ![#/m3] number concentration
+          rho_part(:ncol,:,ibin) = aero_state%bin_dry_density(ibin, ncol)
        enddo
 
        do k=1,pver
@@ -621,8 +634,6 @@ contains
                                      + q(i,k,l_h2so4_chem)            & !cold
                                      - intermediateConcentration(i,k)    !cnew
 
-             ! Add nucleated number to smallest bin (#/kg/s * s = #/kg)
-              call aero_state%update_bin(1, i, k, 0._r8, -nuclnum(i,k)*dt, 0, dt, tend)
              !H2SO4 condensate
              do ibin=1, aero_props%nbins()
                 ! bin_numconc (#/kg)
@@ -631,17 +642,9 @@ contains
                 ! fracNucl: [frc] fraction nucleated
                 ! get number from gasLost
 ! TODO: fix update_bin -> mmr to correct range
- !               call aero_state%update_bin(ibin, i, k, 0._r8, gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), dt, tend)
+! TODO: condensation does not change the number!! -> add mass to ranges
+!                numconc(i, k, ibin) = numconc(i, k, ibin) + gasLost(i,k) * (1._r8-fracNucl(i,k)) * condensationSinkFraction_sec(i,k, ibin) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
 !                call aero_state%update_bin(ibin, i, k, 0._r8, -1._r8*gasLost(i,k) * (1._r8-fracNucl(i,k)) * condensationSinkFraction_sec(i,k, ibin) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin), 0, dt, tend)
-!                     aero_state%bin_numconc(i, k, ibin) = aero_state%bin_numconc(i,k,ibin) &
-!                     + gasLost(i,k) / aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) + 34798._r8 * real(ibin)*real(i)*real(k) ! & ! get number out of mass
- !                    *(1.0_r8-fracNucl(i,k)) !&
-!                     *condensationSinkFraction_sec(i,k, ibin)  ! fraction to the particular bin
-!if (masterproc) then
-!    write(6,*) 'DEBUG: gasLost/density/volume', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin)
-!    write(6,*) 'DEBUG: and * fracNucl', gasLost(i,k)/ aero_props%density(sulfate_specprop_ndx) / aero_props%particle_volume(ibin) *(1.0_r8-fracNucl(i,k))
-!    write(6,*) 'DEBUG: bin_numconc ', aero_state%bin_numconc(i,k,ibin)
-!end if
                 irange = aero_props%bins2ranges(ibin)
 
 !                ispec = ??
@@ -651,17 +654,6 @@ contains
 !                     *condensationSinkFraction_sec(i,k, ibin)
 
              end do
-             !smb-- sectional
-             !H2SO4 condensate
-!             q(i,k,chemistryIndex(l_so4_a1)) = q(i,k,chemistryIndex(l_so4_a1))         &
-!                            + gasLost(i,k)*(1.0_r8-fracNucl(i,k)) &
-                            !smb++ sectional must substract the fraction which goes to the sectional particles:
-!                            *(1-sum(condensationSinkFraction_sec(i,k,:)))
-                            !smb-- sectional
-
-             !Add nucleated mass to soa_na mode
-             !smb++sectional sectional don't add to so4_na directly, must go to sectional scheme (done later)
-! organics here
 
              !condenseable vapours
              q(i,k,l_h2so4_chem)  = intermediateConcentration(i,k)
@@ -669,8 +661,11 @@ contains
              !smb++sectional grow particles in sectional scheme:
     ! TODO: make Sec_movemass routine
     ! removed median radius because not used
- !            call sec_moveMass(q(i,k,:), numberConcentration_sec(i,k,:), leaveSec(i,k,:), &
- !                           rhoAir(i,k), split_dt, aero_props)
+             call sec_moveMass(q(i,k,:), numberConcentration_sec(i,k,:), leaveSec(i,k,:), &
+                            rhoAir(i,k), split_dt, aero_props, aero_state, rho_part(i, k,:), numconc_new(i, k,:))
+
+             ! Add nucleated number to smallest bin after redistribution (#/kg/s * s = #/kg)
+             numconc_new(i, k, 1) = numconc_new(i, k, 1) + nuclnum(i,k)*dt
              ! Add nucleated mass to first bin of sectional scheme:
  !            q(i,k,chemistryIndex(secConstIndex(1,1))) =  q(i,k,chemistryIndex(secConstIndex(1,1)))       &
  !                        + gasLost(i,k)*fracNucl(i,k)
@@ -742,20 +737,24 @@ contains
 ! Helper routine to move mass between bins from growth
 !==========================================================================================
 
-   subroutine sec_moveMass(massDistrib, numberConc_old, leave_sec, rhoAir, decrease_dt, aero_props)
+   subroutine sec_moveMass(massDistrib, numberConc_old, leave_sec, rhoAir, decrease_dt, aero_props, aero_state, rho_aer, numconc_new)
+
+! TODO: add move mass for species
+! TODO: add move number for bins
     ! Moves tracer mass from on bin to the other based on condensational/coagulation growth.
     ! Based on Jacobson Fundamentals of Atmospheric Modeling, second edition (2005),
     ! Chapter   13.5
-!    use aerosoldef, only : chemistryIndex
     class(sectional_aerosol_properties), intent(in) :: aero_props
+    class(sectional_aerosol_state), intent(in) :: aero_state
 
     real(r8), intent(in)    :: numberConc_old(:)    ! numbr concentration before growth
+    real(r8), intent(in)    :: rho_aer(:)           ! Density of particle)
+    real(r8), intent(out)   :: numconc_new(:)
     real(r8), intent(inout) :: massDistrib(:)       ! mass in each tracer
     real(r8), intent(out)   :: leave_sec(:)         ! the mass that leaves sectional scheme
     logical,  intent(out)   :: decrease_dt          ! if set to True, time step is divided
                                                     ! and the procedure is re run
 
-    real(r8), allocatable   :: numberConc_new(:)    ! number concentration after growth  dimension(secNrSpec, secNrBins)
     real(r8), allocatable   :: volume(:)            ! volume of particle in bin dimension(secNrBins)
     real(r8), allocatable   :: volume_new(:)        ! volume after growth dimension(secNrBins)
     real(r8), allocatable   :: volfrac(:)           ! dimension(secNrSpec,secNrBins)
@@ -764,104 +763,104 @@ contains
     real(r8), parameter     :: pi = 3.141592654_r8
     real(r8)                :: rhoAir               ! Density of air
     integer                 :: ibin
-
+    integer, allocatable    :: chem_ndx(:)
     !-----------------------------------------------------------------------------------
 
-    allocate(numberConc_new(aero_props%nbins()))
     allocate(volume(aero_props%nbins()))
     allocate(volume_new(aero_props%nbins()))
     allocate(volfrac(aero_props%nbins()))
+    allocate(chem_ndx(aero_props%nbins()))
 
-    return
- !   decrease_dt=.FALSE.
+    decrease_dt=.FALSE.
     !compute volume in each bin with condensation (by mass) and by
     !numberconcentration
-!    do ibin = 1, aero_props%nbins()
-!            volume_new(ibin) = 0.0_r8
-!            volfrac(ibin) = 0.0_r8
-       !     do indSpec = 1, secNrSpec! calculate volume in each bin by mass/density! m3
-!                    if (numberConc_old(ibin)<1.e-30_r8) then
-!                            volume_new(ibin)=0.0_r8
-!                    else
-!                        volume_new(ibin) = volume_new(ibin) + massDistrib(chemistryIndex(secConstIndex(ibin)))/&
-!                                rhopart_sec * rhoAir/&
-!                                (numberConc_old(ibin))
-!                    end if
+    do ibin = 1, aero_props%nbins()
+       volume_new(ibin) = 0.0_r8
+       volfrac(ibin) = 0.0_r8
 
-!                    volfrac(ibin)=massDistrib(chemistryIndex(secConstIndex(ibin)))/&
-!                            rhopart_sec*rhoAir
+       ! find chem index for num_ibin
+       chem_ndx(ibin) = aero_state%num_transport_ndx(ibin) - imozart
+
+       if (numberConc_old(ibin)<1.e-30_r8) then
+          volume_new(ibin)=0.0_r8
+       else
+          volume_new(ibin) = volume_new(ibin) + massDistrib(chem_ndx(ibin)) / &
+                           rho_aer(ibin) * rhoAir / numberConc_old(ibin)
+
+       end if
+
+       volfrac(ibin) = massDistrib(chem_ndx(ibin))/&
+                            rho_aer(ibin)*rhoAir
                             !kg/kg(air)*[kg(air)/m3(air)][kg/m3]--> m3/m3(air)
-        !    end do ! calculate volume in each bin by numberconcentration (volume from before condenstion)
-!            volfrac(ibin)=volfrac(ibin)/(sum(volfrac(ibin))+1.E-50_r8)
-!            if (volfrac(ibin)<1.e-50_r8) then
-!                    volfrac(ibin)=0.0_r8
-!            end if
-            ! calculate volume in each bin by mass/density! m3
-!            volume(ibin) =  pi * secMeanD(ibin)**3/6._r8
+   !    volfrac(ibin)=volfrac(ibin)/(sum(volfrac(ibin))+1.E-50_r8)
+
+       if (volfrac(ibin)<1.e-50_r8) then
+          volfrac(ibin)=0.0_r8
+       end if
+
+       ! calculate volume in each bin by mass/density! m3
+       volume(ibin) =  pi * bin_centers(ibin)**3/6._r8
             ! calculate volume in each bin by numberconcentration (volume from before condenstion)
-!    end do
-!    numberConc_new(:) = 0._r8
-!    do ibin =  1, aero_props%nbins()-1
-            ! fraction to stay in bin
-!            xfrac=(volume(ibin+1)-volume_new(ibin)) &
-!                            /(volume(ibin+1)-volume(ibin))
-!            if (numberConc_old(ibin)<1.e-30) then
-!                    xfrac=1.0_r8
-!            end if
-!            if (xfrac .le. 0._r8) then      ! if the fraction to stay is equal to
+    end do
+
+    numconc_new(:) = 0._r8
+
+    do ibin =  1, aero_props%nbins()-1
+       ! fraction to stay in bin
+       xfrac=(volume(ibin+1)-volume_new(ibin)) &
+                            /(volume(ibin+1)-volume(ibin))
+          if (numberConc_old(ibin)<1.e-30) then
+             xfrac=1.0_r8
+          end if
+
+          if (xfrac .le. 0._r8) then        ! if the fraction to stay is equal to
                                             ! less than zero, then the
                                             ! aerosols have grown too large
                                             ! for the next bin and we will
                                             ! want to decrease the time step
                                             ! to avoid this.
-!                    decrease_dt=.TRUE.
-!            end if
+             decrease_dt=.TRUE.
+          end if
 
-!            if (xfrac .le. 0._r8) then
-!                    decrease_dt=.TRUE.
-!            end if
-!            xfrac=max(0._r8, min(1._r8,xfrac))
-      !      do indSpec= 1, secNrSpec
-!                    numberConc_new(ibin) = numberConc_new(ibin) + &
-!                                    xfrac*numberConc_old(ibin) &
-!                                    *volfrac(ibin)
-!                    numberConc_new(ibin+1) = numberConc_new(ibin+1) + &
-!                                    (1-xfrac)*numberConc_old(ibin)   &
-!                                    *volfrac(ibin)
+          if (xfrac .le. 0._r8) then
+             decrease_dt=.TRUE.
+          end if
 
+          xfrac=max(0._r8, min(1._r8,xfrac))
+          numconc_new(ibin) = numconc_new(ibin) + &
+                                    xfrac*numberConc_old(ibin) &
+                                    *volfrac(ibin)
+          numconc_new(ibin+1) = numconc_new(ibin+1) + &
+                                    (1-xfrac)*numberConc_old(ibin)   &
+                                    *volfrac(ibin)
+    end do
 
-!            end do
-
-!    end do
-
-!    xfrac = (max_diameter**3 * pi/6.0_r8 - volume_new(aero_props%nbins())) &
-!                            /(max_diameter**3*pi/6.0_r8-volume(aero_props%nbins()))
+    xfrac = ( (bin_centers(aero_props%nbins())*2._r8)**3 * pi/6.0_r8 &
+            - volume_new(aero_props%nbins())) &
+            / ( (bin_centers(aero_props%nbins())*2._r8)**3 * pi/6.0_r8 &
+            - volume(aero_props%nbins()))
 
     ! if less than or 0 % stays in bin, we must decrease timestep
-!    if (xfrac .le. 0._r8) then
-!            decrease_dt=.TRUE.
-!    end if
+    if (xfrac .le. 0._r8) then
+            decrease_dt=.TRUE.
+    end if
 
-!    xfrac=max(0._r8, min(1._r8,xfrac))
+    xfrac=max(0._r8, min(1._r8,xfrac))
 
    ! do indSpec=1, secNrSpec
-!            numberConc_new(aero_props%nbins()) = numberConc_new(aero_props%nbins()) + &
-!                                            xfrac * numberConc_old(aero_props%nbins()) &
-!                                            * volfrac(aero_props%nbins())
-!            leave_sec = & !massDistrib(chemistryIndex(secConstIndex(indSpec, aero_props%nbins())))*(1-xfrac)
-!                    pi * max_diameter**3 / 6.0_r8 * rhopart_sec/rhoAir &   ! [m3_aer/#]*[kg_aer/m3_aer]/[kg_air/m3_air]--> [kg_aer/kg_air/#][m3_air]
-!                                            * (1-xfrac) * numberConc_old(aero_props%nbins()) &          ! *[#/m3_air] --> kg_aer/kg_air
-!                                            * volfrac(aero_props%nbins())
+            numconc_new(aero_props%nbins()) = numconc_new(aero_props%nbins()) + &
+                                            xfrac * numberConc_old(aero_props%nbins()) &
+                                            * volfrac(aero_props%nbins())
+! TODO: treat "leave_sec" differently, e.g. largest bin doesn't grow?
+! rho_aer of last bin correct here?
+            leave_sec = pi * ( bin_centers(aero_props%nbins())*2._r8 )**3 / 6.0_r8 * rho_aer(aero_props%nbins())/rhoAir &   ! [m3_aer/#]*[kg_aer/m3_aer]/[kg_air/m3_air]--> [kg_aer/kg_air/#][m3_air]
+                                            * (1-xfrac) * numberConc_old(aero_props%nbins()) &              ! *[#/m3_air] --> kg_aer/kg_air
+                                            * volfrac(aero_props%nbins())
    ! end do
-!    do ibin=1,aero_props%nbins()
-           ! do indSpec=1,secNrSpec !Assume
-!                    massDistrib(chemistryIndex(secConstIndex,ibin)) = &! &!massDistrib(secConstIndex(indSpec,ibin))+&
-!                            rhopart_sec/rhoAir &!* massfrac(indSpec,ibin)* numberConc_new(ibin)! &
-!                            * numberConc_new(ibin) * pi * secMeanD(ibin)**3/6.0_r8 !&
-           ! end do
-!    end do
-
-
+    do ibin=1,aero_props%nbins()
+        massDistrib(chem_ndx(ibin)) = rho_aer(ibin)/rhoAir &
+                            * numconc_new(ibin) * pi * bin_centers(ibin)**3/6.0_r8
+    end do
 
    end subroutine sec_moveMass
 
