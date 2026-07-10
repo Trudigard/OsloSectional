@@ -818,29 +818,6 @@ call endrun(subname//":: is not yet implemented")
     ! Get height of boundary layer (needed for boundary layer nucleation)
    ! call pbuf_get_field(pbuf, pblh_idx, pblh)
 
-    ! calculate tendency due to gas phase chemistry and processes
-    dvmrdt(:ncol,:,:) = (vmr(:ncol,:,:) - vmr0(:ncol,:,:)) / delt
-    do icnst = 1, gas_pcnst
-       wrk(:) = 0._r8
-       do ilev = 1,pver
-          wrk(:ncol) = wrk(:ncol) + dvmrdt(:ncol,ilev,icnst)*adv_mass(icnst)/mbar(:ncol,ilev)*pdel(:ncol,ilev)/gravit
-       end do
-
-       call cnst_get_ind(trim(solsym(icnst)), l_aero, abort=.false.)
-
-! TODO: check that there are not multiple species contributing to one output field
-       if ( l_aero == l_h2so4 .or. l_aero == l_dms .or. l_aero == l_so2 ) then
-           call outfld( 'GS_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
-       end if
-
-       if ( l_aero == l_dms) then ! .or. l_aero == l_isoprene .or. l_aero == l_monoterp) then
-          call outfld( 'sink_'//trim(solsym(icnst)), wrk(:ncol), ncol, lchnk )
-          if ( l_aero == l_dms ) then
-             call outfld( 'sink_'//trim(solsym(icnst))//'_S', ( wrk(:ncol) * sulfurMassFraction(l_aero) ) , ncol, lchnk )
-          endif
-       endif
-    enddo
-
 
   end subroutine aero_model_gasaerexch
 
@@ -907,12 +884,9 @@ call endrun(subname//":: is not yet implemented")
         call seasalt_emis(u10cubed, cam_in%sst, cam_in%ocnfrac, ncol, cam_in%cflx, aero_props)
 
         do irange = 1, aero_props%spec_nrange(seasalt_specprop_ndx)
-         !   if (masterproc) then
-         !       write(iulog,*) "DEBUG: range index for seasalt: ", irange
-         !   end if
 
             sflx(:ncol)=sflx(:ncol)+cam_in%cflx(:ncol,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange))
-!            call outfld(trim(aero_props%spec_tracernames(seasalt_specprop_ndx, irange))//'SF',cam_in%cflx(:,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange)),pcols, lchnk))
+            call outfld( trim( aero_props%spec_tracernames(seasalt_specprop_ndx, irange) )//'SF',cam_in%cflx( :,aero_props%spec_mmr_q_ndx(seasalt_specprop_ndx,irange) ),pcols, lchnk )
         end do
     end if
 
