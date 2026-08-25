@@ -12,6 +12,7 @@ module sectional_aerosol_state_mod
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
   use ppgrid,         only: pver
+    use string_utils, only: int2str
 
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
@@ -32,8 +33,8 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mmr(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), pointer     :: mmr(:, :, :)            ! (ncol, pver, range_nspecies) interstitial, transported
-     real(r8), pointer     :: mmr_cw(:, :, :)         ! cloud borne stuff, not transported
+     real(r8), pointer     :: mmr(:, :, :) => null()            ! (ncol, pver, range_nspecies) interstitial, transported
+     real(r8), pointer     :: mmr_cw(:, :, :) => null()         ! cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -45,10 +46,10 @@ module sectional_aerosol_state_mod
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
-     real(r8), pointer :: bin_numconc(:,:,:)
-     real(r8), pointer :: bin_numconc_cw(:,:,:)
-     real(r8), pointer :: wet_radius(:,:,:)           ! wet radius at bin center -> wet_radius*2 = dgnumwet
-     real(r8), pointer :: qaerwat(:,:,:)              ! aerosol water concentration (g/g)
+     real(r8), pointer :: bin_numconc(:,:,:) => null()
+     real(r8), pointer :: bin_numconc_cw(:,:,:) => null()
+     real(r8), pointer :: wet_radius(:,:,:) => null()           ! wet radius at bin center -> wet_radius*2 = dgnumwet
+     real(r8), pointer :: qaerwat(:,:,:) => null()              ! aerosol water concentration (g/g)
      integer, allocatable  :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
@@ -121,164 +122,163 @@ contains
         newobj => master_aero_state(lchnk)%ptr
     else
 
-    allocate(newobj,stat=ierr)
-    if( ierr /= 0 ) then
-       nullify(newobj)
-       return
-    end if
-
-    newobj%state => state
-    newobj%pbuf => pbuf
-    newobj%sec_aero_props => sectional_aerosol_properties()
-
-    newobj%ncol = state%ncol
-
-    allocate(newobj%bin_numconc(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    allocate(newobj%bin_numconc_cw(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    allocate(newobj%wet_radius(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    allocate(newobj%qaerwat(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    allocate(newobj%num_transport_ndx(newobj%sec_aero_props%nbins()), stat=ierr)
-    if( ierr /= 0 ) then
-        nullify(newobj)
-        return
-    end if
-
-    newobj%bin_numconc = 0._r8
-    newobj%bin_numconc_cw = 0._r8
-    newobj%num_transport_ndx = 0
-
-    do irange = 1, newobj%sec_aero_props%nranges()
-        allocate(newobj%aero_range_state(irange)%mmr(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%mmr_cw(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%massfrac(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%dry_density(newobj%ncol, pver), stat=ierr)
-        if( ierr /= 0 )then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%hygroscopicity(newobj%ncol, pver), stat=ierr)
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%range_name(newobj%sec_aero_props%range_nspecies(irange)))
-        if( ierr /= 0 ) then
-            nullify(newobj)
-            return
-        end if
-        allocate(newobj%aero_range_state(irange)%transport_ndx(newobj%sec_aero_props%range_nspecies(irange)))
+        allocate(newobj,stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
         end if
 
-        allocate(newobj%aero_range_state(irange)%spec_ndx(newobj%sec_aero_props%range_nspecies(irange)))
+        newobj%state => state
+        newobj%pbuf => pbuf
+        newobj%sec_aero_props => sectional_aerosol_properties()
+
+        newobj%ncol = state%ncol
+
+        allocate(newobj%bin_numconc(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
         if( ierr /= 0 ) then
             nullify(newobj)
             return
         end if
 
-        newobj%aero_range_state(irange)%dry_density = 0._r8
-        newobj%aero_range_state(irange)%hygroscopicity = 0._r8
-        newobj%aero_range_state(irange)%mmr = 0._r8
-        newobj%aero_range_state(irange)%mmr_cw = 0._r8
-        newobj%aero_range_state(irange)%massfrac = 0._r8
-        newobj%aero_range_state(irange)%range_name = ''
-        newobj%aero_range_state(irange)%transport_ndx = 0
-        newobj%aero_range_state(irange)%spec_ndx = 0
+        allocate(newobj%bin_numconc_cw(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-        ispec=0
-        do solsym_ndx = 1, size(solsym)
+        allocate(newobj%wet_radius(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-            ubar_ndx = index(solsym(solsym_ndx), '_R'//int2str(irange))
+        allocate(newobj%qaerwat(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-            if ( ubar_ndx > 0 ) then
-                ispec = ispec + 1
+        allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-                if ( ispec > newobj%sec_aero_props%range_nspecies(irange) ) then
-                    call endrun(subname//':: ERROR : number of species is larger than number of species in range')
-                end if
+        allocate(newobj%num_transport_ndx(newobj%sec_aero_props%nbins()), stat=ierr)
+        if( ierr /= 0 ) then
+            nullify(newobj)
+            return
+        end if
 
-                newobj%aero_range_state(irange)%range_name(ispec) = solsym(solsym_ndx)
-                call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state(irange)%transport_ndx(ispec), abort=.false.)
-                if ( newobj%aero_range_state(irange)%transport_ndx(ispec) < 0 ) then
-                    call endrun(subname//":: ERROR: transport array index for"//trim(solsym(solsym_ndx))//" not found")
-                end if
+        newobj%bin_numconc = 0._r8
+        newobj%bin_numconc_cw = 0._r8
+        newobj%num_transport_ndx = 0
 
-                ! add index to connect to the species objects in aero_props
-                speciesname = solsym(solsym_ndx)
+        do irange = 1, newobj%sec_aero_props%nranges()
+            allocate(newobj%aero_range_state(irange)%mmr(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%mmr_cw(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%massfrac(newobj%ncol, pver, newobj%sec_aero_props%range_nspecies(irange) ), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%dry_density(newobj%ncol, pver), stat=ierr)
+            if( ierr /= 0 )then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%hygroscopicity(newobj%ncol, pver), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%range_name(newobj%sec_aero_props%range_nspecies(irange)), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%transport_ndx(newobj%sec_aero_props%range_nspecies(irange)), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
+            allocate(newobj%aero_range_state(irange)%spec_ndx(newobj%sec_aero_props%range_nspecies(irange)), stat=ierr)
+            if( ierr /= 0 ) then
+                nullify(newobj)
+                return
+            end if
 
-                do ispecprops = 1, newobj%sec_aero_props%range_nspecies(irange)
-                    ! translate irange to ibin
-                    ibin = newobj%sec_aero_props%range_bounds(irange, 1)
-                    call newobj%sec_aero_props%get(bin_ndx=ibin,species_ndx=ispecprops, specname=speciesname_props)
-                    if ( speciesname(1:ubar_ndx-1) == trim( speciesname_props ) ) then ! before ubar_ndx -> species name
-                        newobj%aero_range_state(irange)%spec_ndx(ispec) = ispecprops
+            newobj%aero_range_state(irange)%dry_density = 0._r8
+            newobj%aero_range_state(irange)%hygroscopicity = 0._r8
+            newobj%aero_range_state(irange)%mmr = 0._r8
+            newobj%aero_range_state(irange)%mmr_cw = 0._r8
+            newobj%aero_range_state(irange)%massfrac = 0._r8
+            newobj%aero_range_state(irange)%range_name = ''
+            newobj%aero_range_state(irange)%transport_ndx = 0
+            newobj%aero_range_state(irange)%spec_ndx = 0
+
+            ispec=0
+            do solsym_ndx = 1, size(solsym)
+
+                ubar_ndx = index(solsym(solsym_ndx), '_R'//int2str(irange))
+
+                if ( ubar_ndx > 0 ) then
+                    ispec = ispec + 1
+
+                    if ( ispec > newobj%sec_aero_props%range_nspecies(irange) ) then
+                        call endrun(subname//':: ERROR : number of species is larger than number of species in range')
                     end if
-                end do
 
-            end if
+                    newobj%aero_range_state(irange)%range_name(ispec) = solsym(solsym_ndx)
+                    call cnst_get_ind(solsym(solsym_ndx), newobj%aero_range_state(irange)%transport_ndx(ispec), abort=.false.)
+                    if ( newobj%aero_range_state(irange)%transport_ndx(ispec) < 0 ) then
+                        call endrun(subname//":: ERROR: transport array index for"//trim(solsym(solsym_ndx))//" not found")
+                    end if
+
+                    ! add index to connect to the species objects in aero_props
+                    speciesname = solsym(solsym_ndx)
+
+                    do ispecprops = 1, newobj%sec_aero_props%range_nspecies(irange)
+                        ! translate irange to ibin
+                        ibin = newobj%sec_aero_props%range_bounds(irange, 1)
+                        call newobj%sec_aero_props%get(bin_ndx=ibin,species_ndx=ispecprops, specname=speciesname_props)
+                        if ( speciesname(1:ubar_ndx-1) == trim( speciesname_props ) ) then ! before ubar_ndx -> species name
+                            newobj%aero_range_state(irange)%spec_ndx(ispec) = ispecprops
+                        end if
+                    end do
+
+                end if
+            end do
+
         end do
 
-    end do
-
-    do ibin = 1, newobj%sec_aero_props%nbins()
-        num_name = 'num_'//int2str(ibin)
-        solsym_found = .false.
-        do solsym_ndx = 1, size(solsym)
-            if ( trim(solsym(solsym_ndx)) == trim(num_name) ) then
-                solsym_found = .true.
-                exit
+        do ibin = 1, newobj%sec_aero_props%nbins()
+            num_name = 'num_'//int2str(ibin)
+            solsym_found = .false.
+            do solsym_ndx = 1, size(solsym)
+                if ( trim(solsym(solsym_ndx)) == trim(num_name) ) then
+                    solsym_found = .true.
+                    exit
+                end if
+            end do
+            if ( .not. solsym_found ) then
+                call endrun(subname//':: ERROR: bin '//trim(num_name)//' not found')
+            end if
+            call cnst_get_ind(num_name, newobj%num_transport_ndx(ibin), abort = .false.)
+            if ( newobj%num_transport_ndx(ibin) < 0 ) then
+                call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
             end if
         end do
-        if ( .not. solsym_found ) then
-            call endrun(subname//':: ERROR: bin '//trim(num_name)//' not found')
-        end if
-        call cnst_get_ind(num_name, newobj%num_transport_ndx(ibin), abort = .false.)
-        if ( newobj%num_transport_ndx(ibin) < 0 ) then
-            call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
-        end if
-    end do
-
-end if
+        master_aero_state(lchnk)%ptr => newobj
+    end if
   end function constructor
 
   !------------------------------------------------------------------------------

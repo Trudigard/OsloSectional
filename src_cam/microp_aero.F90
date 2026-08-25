@@ -59,6 +59,7 @@ use carma_aerosol_state_mod, only: carma_aerosol_state
 use sectional_aerosol_state_mod, only: sectional_aerosol_state
 
 use aero_model,     only: aero_modelname
+use aero_model, only: aero_model_get_state
 
 implicit none
 private
@@ -608,7 +609,8 @@ subroutine microp_aero_run ( &
    end if
 
    if (aero_modelname =='oslo_sectional') then
-       aero_state1_obj => sectional_aerosol_state(state1, pbuf)
+      aero_state1_obj => aero_model_get_state(state1%lchnk)
+      call aero_state1_obj%set_transported(state1%q)
    end if
 
    if (clim_modal_aero.or.clim_carma_aero .or. (aero_modelname=='oslo_sectional')) then
@@ -908,11 +910,12 @@ subroutine microp_aero_run ( &
       deallocate(factnum)
    end if
 
-   if (associated(aero_state1_obj)) then
-      ! destroy the aerosol state object
-      deallocate(aero_state1_obj)
-      nullify(aero_state1_obj)
-   endif
+if (associated(aero_state1_obj)) then
+    if (clim_modal_aero .or. clim_carma_aero) then
+        deallocate(aero_state1_obj)
+    end if
+    nullify(aero_state1_obj)
+end if
 
  end subroutine microp_aero_run
 

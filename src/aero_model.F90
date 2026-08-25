@@ -26,6 +26,7 @@ module aero_model
   implicit none
   private
 
+  public :: aero_model_get_state
   public :: aero_model_readnl
   public :: aero_model_register
   public :: aero_model_init
@@ -292,6 +293,13 @@ contains
 
   !=============================================================================
   !=============================================================================
+function aero_model_get_state(lchnk) result(state_ptr)
+    use aerosol_state_mod, only: aerosol_state
+    integer, intent(in) :: lchnk
+    class(aerosol_state), pointer :: state_ptr
+    state_ptr => master_aero_state(lchnk)%ptr
+end function aero_model_get_state
+
   subroutine aero_model_drydep  ( state, pbuf, obklen, ustar, cam_in, dt, cam_out, ptend )
 
     use dust_sediment_mod, only: dust_sediment_tend
