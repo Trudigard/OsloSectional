@@ -60,11 +60,12 @@ module seasalt_model
 
   !=============================================================================
   !=============================================================================
-  subroutine seasalt_emis( u10cubed,  srf_temp, ocnfrc, ncol, cflx, aero_props )
+  subroutine seasalt_emis( u10cubed, u10in, srf_temp, ocnfrc, ncol, cflx, aero_props )
 ! TODO: https://acp.copernicus.org/articles/11/4587/2011/acp-11-4587-2011.pdf
 
     ! dummy arguments
     real(r8), intent(in)    :: u10cubed(:)
+    real(r8), intent(in)    :: u10in(:)
     real(r8), intent(in)    :: srf_temp(:)
     real(r8), intent(in)    :: ocnfrc(:)
     integer,  intent(in)    :: ncol
@@ -192,10 +193,10 @@ module seasalt_model
             !        Hoppel correction factor
             !        Smith drag coefficients and etc
             !****************************************
-            if (u10cubed(icol) .le. (10._r8)**3.41_r8) then
+            if (u10in(icol) .le. 10._r8) then
                 cd_smith = 1.14e-3_r8
             else
-                cd_smith = (0.49_r8 + 0.065_r8 * u10cubed(icol)) * 1.e-3_r8
+                cd_smith = (0.49_r8 + 0.065_r8 * u10in(icol)) * 1.e-3_r8
             end if
 
 ! TODO: replaced rdry with rpdry here
@@ -217,7 +218,7 @@ module seasalt_model
                  (1._r8 + 0.057_r8 * r80**1.05_r8) * 10._r8 ** (1.19_r8 * exp(- B_Mona **2))
 
             !Smith
-            u14 = u10cubed(icol) ** (1._r8/3.41_r8) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
+            u14 = u10in(icol) ** (1._r8/3.41_r8) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
             A1A92 = 10._r8 ** (0.0676_r8 * u14 + 2.430_r8)
             A2A92 = 10._r8 ** (0.9590_r8 * u14**0.5_r8 - 1.476_r8)
             Smith = A1A92*exp(-f1 *(log(r80 / r1))**2) + A2A92*exp(-f2 * (log(r80 / r2))**2)     ! dF/dr   [#/m2/s/um]
@@ -232,7 +233,7 @@ module seasalt_model
   !          if (rdry .lt. 2._r8) then    ! cut at 2.0 um
                 ncflx = Clarke
             else
-                if (u10cubed(icol)**(1._r8/3.41_r8) .lt. 9._r8) then
+                if (u10in(icol) .lt. 9._r8) then
                     ncflx = Monahan
                 else
                     if (Monahan .gt. Smith) then
