@@ -387,6 +387,8 @@ end function aero_model_get_state
 
     character(len=*), parameter :: subname = 'aero_model_drydep'
 
+    nbins = aero_props%nbins()
+
     allocate(bin_num_tend(pcols, pver, aero_props%nbins()), stat=ierr)
     if( ierr /= 0 ) then
         call endrun(subname// ": ERROR "//int2str(ierr)//" allocating bin_num_tend")
@@ -441,7 +443,6 @@ end function aero_model_get_state
 !    sg_drop(:,:) = 1.46_r8
 !
     dens_aer(:,:) = 0._r8
-    nbins = aero_props%nbins()
     bin_centers = aero_props%bin_centers(nbins)
 
     do irange = 1, aero_props%nranges()
@@ -540,11 +541,11 @@ end function aero_model_get_state
 
             ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
             do icol = 1, ncol
-                do ilev = 1, pver
+!                do ilev = 1, pver
                     if (massfrac(icol, pver) > 0._r8) then
                         sflx_range_species(icol) = sflx_range(icol,irange) * massfrac(icol, pver)
                     end if
-                end do
+!                end do
             end do
 
             species_tracername = master_aero_state(lchnk)%ptr%aero_range_state(irange)%range_name(ispec)

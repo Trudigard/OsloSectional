@@ -654,7 +654,7 @@ subroutine microp_aero_run ( &
          call rad_cnst_get_aer_mmr(0, mode_coarse_idx, coarse_so4_idx, 'a', state1, pbuf, coarse_so4)
       endif
 
-   else
+   else if (.not. aero_modelname == 'oslo_sectional') then                                          ! TODO: check if we need replacement for oslo_sectional
       ! init number/mass arrays for bulk aerosols
       allocate( &
          naer2(pcols,pver,naer_all), &
@@ -793,7 +793,7 @@ subroutine microp_aero_run ( &
 
       npccn(:ncol,:) = npccn(:ncol,:) * npccn_scale
 
-   else
+   else if (.not. aero_modelname == 'oslo_sectional') then                  ! TODO: do we need something for oslo_sectional?
 
       ! for bulk aerosol
 
@@ -906,7 +906,7 @@ subroutine microp_aero_run ( &
 
    end if
 
-   if (clim_modal_aero.or.clim_carma_aero) then
+   if (clim_modal_aero.or.clim_carma_aero .or. aero_modelname == 'oslo_sectional') then
       deallocate(factnum)
    end if
 

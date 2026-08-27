@@ -218,7 +218,7 @@ module seasalt_model
                  (1._r8 + 0.057_r8 * r80**1.05_r8) * 10._r8 ** (1.19_r8 * exp(- B_Mona **2))
 
             !Smith
-            u14 = u10in(icol) ** (1._r8/3.41_r8) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
+            u14 = u10in(icol) * (1._r8 + cd_smith**0.5_r8 / xkar*log(14._r8 / 10._r8))  ! 14 meter wind
             A1A92 = 10._r8 ** (0.0676_r8 * u14 + 2.430_r8)
             A2A92 = 10._r8 ** (0.9590_r8 * u14**0.5_r8 - 1.476_r8)
             Smith = A1A92*exp(-f1 *(log(r80 / r1))**2) + A2A92*exp(-f2 * (log(r80 / r2))**2)     ! dF/dr   [#/m2/s/um]
