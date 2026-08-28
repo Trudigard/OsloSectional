@@ -23,6 +23,9 @@ module sectional_aerosol_state_mod
   public :: sectional_aerosol_state
   public :: aero_state_ptr
 
+
+  integer :: nr_copies = 1 ! internal count of state object copies
+
   type aero_state_ptr
     type(sectional_aerosol_state), pointer :: ptr => null()
   end type aero_state_ptr
@@ -96,31 +99,40 @@ contains
 
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
-  function constructor(state,pbuf) result(newobj)
+  function constructor(state, pbuf, copy) result(newobj)
     use mo_tracname, only: solsym
     use constituents, only: cnst_get_ind
     use string_utils, only: int2str
-      use ppgrid,               only: begchunk, endchunk, pcols, pver
+    use ppgrid,               only: begchunk, endchunk, pcols, pver
 
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
 
     type(sectional_aerosol_state), pointer :: newobj
     type(sectional_aerosol_properties), target :: aero_props
+    logical, intent(in), optional :: copy
+    logical :: make_copy
     integer :: ierr, irange, solsym_ndx, ispec, ubar_ndx, ibin, ispecprops, lchnk
     character(len=:), allocatable :: num_name
     character(len=10)             :: speciesname, speciesname_props
     logical :: solsym_found
     character(len=*), parameter :: subname = 'constructor'
 
+    make_copy = .false.
+
+    if ( present(copy) ) then
+        make_copy = copy
+    end if
+
     if ( .not. allocated(master_aero_state) ) then
         allocate(master_aero_state(begchunk:endchunk))
     end if
 
     lchnk = state%lchnk
-    if ( associated(master_aero_state(lchnk)%ptr) ) then
+    if ( associated(master_aero_state(lchnk)%ptr) .and. .not. make_copy ) then
         newobj => master_aero_state(lchnk)%ptr
     else
+        nr_copies = nr_copies + 1
 
         allocate(newobj,stat=ierr)
         if( ierr /= 0 ) then
@@ -309,6 +321,13 @@ contains
         deallocate(self%qaerwat)
         nullify(self%qaerwat)
     end if
+
+    if (masterproc) then
+        write(iulog,*) 'destructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies
+    end if
+
+    nr_copies = nr_copies - 1
+
 end subroutine destructor
 
   !------------------------------------------------------------------------------
