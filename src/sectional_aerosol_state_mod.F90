@@ -328,7 +328,7 @@ contains
 
     nr_copies = nr_copies - 1
 
-end subroutine destructor
+  end subroutine destructor
 
   !------------------------------------------------------------------------------
   ! sets transported components
