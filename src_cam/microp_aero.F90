@@ -242,12 +242,13 @@ subroutine microp_aero_init(phys_state,pbuf2d)
       aero_props_obj => sectional_aerosol_properties()
       cldo_idx = pbuf_get_index('CLDO')
        ! TODO: implement mmr_names in sectional_aerosol_properties_mod to make this work
-        call ndrop_init(aero_props_obj)
+      call ndrop_init(aero_props_obj)
 
       allocate(aero_state(begchunk:endchunk))
       do c = begchunk, endchunk
          pbuf => pbuf_get_chunk(pbuf2d, c)
          aero_state(c)%obj => sectional_aerosol_state(phys_state(c), pbuf )
+
       end do
    end if
 
@@ -608,12 +609,12 @@ subroutine microp_aero_run ( &
       end if
    end if
 
-   if (aero_modelname =='oslo_sectional') then
+   if (aero_props%model_is('oslo_sectional')) then
       aero_state1_obj => aero_model_get_state(state1%lchnk)
       call aero_state1_obj%set_transported(state1%q)
    end if
 
-   if (clim_modal_aero.or.clim_carma_aero .or. (aero_modelname=='oslo_sectional')) then
+   if (clim_modal_aero.or.clim_carma_aero .or. aero_props%model_is('oslo_sectional')) then
 
       itim_old = pbuf_old_tim_idx()
 
@@ -654,7 +655,7 @@ subroutine microp_aero_run ( &
          call rad_cnst_get_aer_mmr(0, mode_coarse_idx, coarse_so4_idx, 'a', state1, pbuf, coarse_so4)
       endif
 
-   else if (.not. aero_modelname == 'oslo_sectional') then                                          ! TODO: check if we need replacement for oslo_sectional
+   else if (.not. aero_props%model_is('oslo_sectional')) then                                          ! TODO: check if we need replacement for oslo_sectional
       ! init number/mass arrays for bulk aerosols
       allocate( &
          naer2(pcols,pver,naer_all), &
@@ -750,7 +751,7 @@ subroutine microp_aero_run ( &
    !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    ! Droplet Activation
 
-   if (clim_modal_aero .or. clim_carma_aero .or. aero_modelname == 'oslo_sectional') then
+   if (clim_modal_aero .or. clim_carma_aero .or. aero_props%model_is('oslo_sectional')) then
 
       ! for modal or carma aerosol
 
@@ -793,7 +794,7 @@ subroutine microp_aero_run ( &
 
       npccn(:ncol,:) = npccn(:ncol,:) * npccn_scale
 
-   else if (.not. aero_modelname == 'oslo_sectional') then                  ! TODO: do we need something for oslo_sectional?
+   else if (.not. aero_props%model_is('oslo_sectional')) then                  ! TODO: do we need something for oslo_sectional?
 
       ! for bulk aerosol
 
@@ -888,7 +889,7 @@ subroutine microp_aero_run ( &
    !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    !bulk aerosol ccn concentration (modal does it in ndrop, from dropmixnuc)
 
-   if ((.not. clim_modal_aero) .and. (.not.clim_carma_aero) .and. (.not. aero_modelname == 'oslo_sectional')) then
+   if ((.not. clim_modal_aero) .and. (.not.clim_carma_aero) .and. (.not. aero_props%model_is('oslo_sectional'))) then
 
       ! ccn concentration as diagnostic
       call ndrop_bam_ccn(lchnk, ncol, maerosol, naer2)
@@ -906,7 +907,7 @@ subroutine microp_aero_run ( &
 
    end if
 
-   if (clim_modal_aero.or.clim_carma_aero .or. aero_modelname == 'oslo_sectional') then
+   if (clim_modal_aero.or.clim_carma_aero .or. aero_props%model_is('oslo_sectional')) then
       deallocate(factnum)
    end if
 
