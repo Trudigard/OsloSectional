@@ -609,7 +609,7 @@ subroutine microp_aero_run ( &
    end if
 
    if (aero_props_obj%model_is('oslo_sectional')) then
-      aero_state1_obj => aero_model_get_state(state1%lchnk)
+      aero_state1_obj => sectional_aerosol_state( state1, pbuf,  copy=.true.)
       call aero_state1_obj%set_transported(state1%q)
    end if
 
