@@ -11,8 +11,9 @@ module sectional_aerosol_state_mod
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use cam_logfile,    only: iulog
-  use ppgrid,         only: pver
-    use string_utils, only: int2str
+  use ppgrid,         only: pver, pcols
+  use string_utils,   only: int2str
+  use ppgrid,         only: begchunk, endchunk
 
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
@@ -24,7 +25,7 @@ module sectional_aerosol_state_mod
   public :: aero_state_ptr
 
 
-  integer :: nr_copies = 1 ! internal count of state object copies
+  integer :: nr_copies = 0 ! internal count of state object copies
 
   type aero_state_ptr
     type(sectional_aerosol_state), pointer :: ptr => null()
@@ -103,7 +104,6 @@ contains
     use mo_tracname, only: solsym
     use constituents, only: cnst_get_ind
     use string_utils, only: int2str
-    use ppgrid,               only: begchunk, endchunk, pcols, pver
 
     type(physics_state), target :: state
     type(physics_buffer_desc), pointer :: pbuf(:)
@@ -132,7 +132,6 @@ contains
     if ( associated(master_aero_state(lchnk)%ptr) .and. .not. make_copy ) then
         newobj => master_aero_state(lchnk)%ptr
     else
-        nr_copies = nr_copies + 1
 
         allocate(newobj,stat=ierr)
         if( ierr /= 0 ) then
@@ -289,7 +288,14 @@ contains
                 call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
             end if
         end do
-        master_aero_state(lchnk)%ptr => newobj
+        if (.not. associated(master_aero_state(lchnk)%ptr)) then
+            master_aero_state(lchnk)%ptr => newobj
+            if (nr_copies > 0) then
+                call endrun(subname//':: ERROR: master_aero_state already nr_copies > 0')
+            end if
+        end if
+        nr_copies = nr_copies + 1
+
     end if
   end function constructor
 
