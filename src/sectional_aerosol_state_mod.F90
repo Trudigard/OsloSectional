@@ -25,7 +25,7 @@ module sectional_aerosol_state_mod
   public :: aero_state_ptr
 
 
-  integer :: nr_copies = 0 ! internal count of state object copies
+  integer, allocatable :: nr_copies(:) ! internal count of state object copies
 
   type aero_state_ptr
     type(sectional_aerosol_state), pointer :: ptr => null()
@@ -57,6 +57,7 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: num_transport_ndx(:)
      type(aerosol_range_state), allocatable :: aero_range_state(:)
      integer :: ncol
+     integer :: lchnk
 
    contains
 
@@ -128,6 +129,11 @@ contains
         allocate(master_aero_state(begchunk:endchunk))
     end if
 
+    if ( .not. allocated(nr_copies) ) then
+        allocate(nr_copies(begchunk:endchunk))
+        nr_copies = 0
+    end if
+
     lchnk = state%lchnk
     if ( associated(master_aero_state(lchnk)%ptr) .and. .not. make_copy ) then
         newobj => master_aero_state(lchnk)%ptr
@@ -144,6 +150,7 @@ contains
         newobj%sec_aero_props => sectional_aerosol_properties()
 
         newobj%ncol = state%ncol
+        newobj%lchnk = state%lchnk
 
         allocate(newobj%bin_numconc(newobj%ncol, pver, newobj%sec_aero_props%nbins()), stat=ierr)
         if( ierr /= 0 ) then
@@ -290,12 +297,12 @@ contains
         end do
         if (.not. associated(master_aero_state(lchnk)%ptr)) then
             master_aero_state(lchnk)%ptr => newobj
-            if (nr_copies > 0) then
-                write(iulog,*) 'constructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies
-!                call endrun(subname//':: ERROR: master_aero_state already nr_copies > 0')
+            if (nr_copies(lchnk) > 2) then
+ !               write(iulog,*) 'constructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies(lchnk)
+                call endrun(subname//':: ERROR: master_aero_state already nr_copies > 2')
             end if
         end if
-        nr_copies = nr_copies + 1
+        nr_copies(lchnk) = nr_copies(lchnk) + 1
 
     end if
   end function constructor
@@ -330,10 +337,10 @@ contains
     end if
 
     if (masterproc) then
-        write(iulog,*) 'destructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies
+        write(iulog,*) 'destructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies(self%lchnk)
     end if
 
-    nr_copies = nr_copies - 1
+    nr_copies(self%lchnk) = nr_copies(self%lchnk) - 1
 
   end subroutine destructor
 
