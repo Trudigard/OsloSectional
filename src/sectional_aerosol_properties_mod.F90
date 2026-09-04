@@ -737,7 +737,7 @@ contains
     end do
 
     if (present(list_ndx)) then
-        call endrun(subname//' list_ndx in sectional_aerosol_state is not yet implemented')
+        call endrun(subname//' list_ndx in sectional_aerosol_properties is not yet implemented')
     end if
 
     if (present(density)) then
@@ -749,7 +749,7 @@ contains
     end if
 
     if (present(hygro)) then
-!        call endrun(subname//' hygro in sectional_aerosol_state is not yet implemented')
+!        call endrun(subname//' hygro in sectional_aerosol_properties is not yet implemented')
 ! TODO: this is the hygroscopicity for each species.. should be mixed?
         if (specprop_ndx /= 0) then
             hygro = self%aer_spec_prop(specprop_ndx)%kappa
@@ -776,15 +776,15 @@ contains
     end if
 
     if (present(specmorph)) then
-        call endrun(subname//' specmorph in sectional_aerosol_state is not yet implemented')
+        call endrun(subname//' specmorph in sectional_aerosol_properties is not yet implemented')
     end if
 
     if (present(refindex_sw)) then
-        call endrun(subname//' refindex_sw in sectional_aerosol_state is not yet implemented')
+        call endrun(subname//' refindex_sw in sectional_aerosol_properties is not yet implemented')
     end if
 
     if (present(refindex_lw)) then
-        call endrun(subname//' refindex_lw in sectional_aerosol_state is not yet implemented')
+        call endrun(subname//' refindex_lw in sectional_aerosol_properties is not yet implemented')
     end if
 
   end subroutine get
@@ -960,7 +960,11 @@ contains
     character(len=10) :: specname
     character(len=*), parameter :: subname = 'mmr_names'
 
+
+    ! TODO: only for for first bin in range
     range_ndx = self%bins2ranges(bin_ndx)
+    if (self%range_bounds(range_ndx,1) == bin_ndx) then
+
 ! TODO: make this into a function!
     spec_counter = 0
     do ispec = 1, self%nspecies_tot()                                           ! loop through the species properties
@@ -975,8 +979,11 @@ contains
         end if
     end do
 
+else
+    name_a = ''
+    name_c = ''
 
-
+end if
   end subroutine mmr_names
 
   !------------------------------------------------------------------------
@@ -1380,9 +1387,20 @@ contains
     integer, intent(in) :: bin_ndx  ! bin number
 
     real(r8) :: diam
+
+    real(r8) :: mass   ! the bin mass (g)
+    real(r8) :: rho    ! density (kg/m3)
+
     character(len=*), parameter :: subname = 'scav_diam'
 
     call endrun(subname//' is not yet implemented')
+
+!    rho = self%  ! kg/m3
+!    mass = self%particle_volume(bin_ndx) * rho * 1000._r8  ! g ???TODO!!
+! TODO: this is copied from CARMA, check if correct
+! specdens kg/m3 to g/cm3, convert from radius to diameter
+
+!    diam = 2._r8 * (0.75* mass / pi / (1.0e-3_r8* rho))**1._r8/3._r8
 
   end function scav_diam
 

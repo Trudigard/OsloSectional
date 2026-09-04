@@ -37,8 +37,8 @@ module sectional_aerosol_state_mod
      integer, allocatable  :: spec_ndx(:)             ! same length as transport_ndx or third dimension of mmr(:,:,range_nspecies), indices corresponding to species properties object
      real(r8), allocatable :: dry_density(:,:)        ! density of the species mixture in a range without water, ncol, pver
      real(r8), allocatable :: hygroscopicity(:,:)     ! hygroscopicity of the species mixture
-     real(r8), pointer     :: mmr(:, :, :) => null()            ! (ncol, pver, range_nspecies) interstitial, transported
-     real(r8), pointer     :: mmr_cw(:, :, :) => null()         ! cloud borne stuff, not transported
+     real(r8), pointer     :: mmr(:, :, :) => null()            ! (kg/kg) (ncol, pver, range_nspecies) interstitial, transported
+     real(r8), pointer     :: mmr_cw(:, :, :) => null()         ! (kg/kg) (ncol, pver, range_nspecies) cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
      ! ...
 
@@ -50,7 +50,7 @@ module sectional_aerosol_state_mod
      type(physics_state), pointer :: state => null()
      type(physics_buffer_desc), pointer :: pbuf(:) => null()
      type(sectional_aerosol_properties), pointer :: sec_aero_props => null()
-     real(r8), pointer :: bin_numconc(:,:,:) => null()
+     real(r8), pointer :: bin_numconc(:,:,:) => null()          ! #/kg
      real(r8), pointer :: bin_numconc_cw(:,:,:) => null()
      real(r8), pointer :: wet_radius(:,:,:) => null()           ! wet radius at bin center -> wet_radius*2 = dgnumwet
      real(r8), pointer :: qaerwat(:,:,:) => null()              ! aerosol water concentration (g/g)
@@ -291,7 +291,8 @@ contains
         if (.not. associated(master_aero_state(lchnk)%ptr)) then
             master_aero_state(lchnk)%ptr => newobj
             if (nr_copies > 0) then
-                call endrun(subname//':: ERROR: master_aero_state already nr_copies > 0')
+                write(iulog,*) 'constructor: oslo_sectional_aerosol_state_mod: number of copies = ', nr_copies
+!                call endrun(subname//':: ERROR: master_aero_state already nr_copies > 0')
             end if
         end if
         nr_copies = nr_copies + 1

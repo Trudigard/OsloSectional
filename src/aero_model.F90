@@ -76,7 +76,7 @@ contains
     use dust_model,      only: dust_readnl
 
     use oslo_aero_control, only: oslo_aero_ctl_readnl ! TODO: use the file in oslo_aero directly? currently this is a copy in the local chemistry.F90
-
+    use aero_wetdep_cam, only: aero_wetdep_readnl
     ! filepath for file containing namelist input
     character(len=*), intent(in) :: nlfile
 
@@ -90,6 +90,8 @@ contains
     ! oslo aero: read aerosol_nl: sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial
 
     call oslo_aero_ctl_readnl(nlfile)
+
+    call aero_wetdep_readnl(nlfile)
 
     call dust_readnl(nlfile)
 
@@ -133,6 +135,7 @@ contains
   use ppgrid,               only: begchunk, endchunk, pcols, pver
     use aero_deposition_cam, only: aero_deposition_cam_init
     use aer_drydep_mod,  only: inidrydep
+    use aero_wetdep_cam, only: aero_wetdep_init
 
     use oslo_aero_ocean, only: oslo_aero_ocean_init ! TODO: DMS, add to build-namelist and chemistry.F90 and as well
 
@@ -147,7 +150,7 @@ contains
     logical           :: history_dust    ! Output dust
     logical           :: history_chemistry ! Output Chemistry
     character(len=2)  :: unit_basename ! Units 'kg' or '1'
-    character(len=10) :: aerosol_names(500)
+    character(len=10) :: aerosol_names(500), aerosol_cw_names(500)
     character(len=20) :: dummy
     type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
 
@@ -234,23 +237,26 @@ contains
     endif
 
     aerosol_names = ''
+    aerosol_cw_names = ''
     ind = 0
     do ispec = 1, aero_props%nspecies_tot()
         do irange = 1, aero_props%spec_nrange(ispec)
             ind = ind+1
             aerosol_names(ind) = aero_props%spec_tracernames(ispec, irange)
+            aerosol_cw_names(ind) = trim(aero_props%spec_tracernames(ispec, irange))//'_cw'
         end do
     end do
 
     do ibin = 1, aero_props%nbins()
         aerosol_names(ind + ibin) = "num_"//int2str(ibin)
+        aerosol_cw_names(ind + ibin) = "num_"//trim(int2str(ibin))//'_cw'
     end do
 
-    do m = 1,ibin+ind
+    do m = 1,ibin+ind-1
 
        ! units
        if (aerosol_names(m)(1:3) == 'num') then
-          unit_basename = '1'
+          unit_basename = '#'
        else
           unit_basename = 'kg'
        endif
@@ -266,16 +272,29 @@ contains
        call addfld (trim(aerosol_names(m))//'DDV', (/ 'lev' /), 'A','m/s',                   &
             trim(aerosol_names(m))//' deposition velocity')
 
+       call addfld (trim(aerosol_cw_names(m)), (/ 'lev' /), 'A', unit_basename//'/kg ', &
+           trim(aerosol_cw_names(m))//' in cloud water')
+       call addfld (trim(aerosol_cw_names(m))//'DDF', horiz_only,  'A',unit_basename//'/m2/s ', &
+           trim(aerosol_cw_names(m))//' dry deposition flux at bottom (grav + turb)')
+       call addfld (trim(aerosol_cw_names(m))//'TBF', horiz_only,  'A',unit_basename//'/m2/s',  &
+           trim(aerosol_cw_names(m))//' turbulent dry deposition flux')
+       call addfld (trim(aerosol_cw_names(m))//'GVF', horiz_only,  'A',unit_basename//'/m2/s ', &
+           trim(aerosol_cw_names(m))//' gravitational dry deposition flux')
+
        if ( history_aerosol.or.history_chemistry ) then
           call add_default (trim(aerosol_names(m))//'DDF', 1, ' ')
+          call add_default (trim(aerosol_cw_names(m)), 1, ' ')
        endif
        if ( history_aerosol ) then
           call add_default (trim(aerosol_names(m))//'TBF', 1, ' ')
           call add_default (trim(aerosol_names(m))//'GVF', 1, ' ')
+          call add_default (trim(aerosol_cw_names(m))//'TBF', 1, ' ')
+          call add_default (trim(aerosol_cw_names(m))//'GVF', 1, ' ')
+          call add_default (trim(aerosol_cw_names(m))//'DDF', 1, ' ')
        endif
     enddo
 
-    ! TODO: call aero_wetdep_init()
+    call aero_wetdep_init()
 
     if(aero_props%is_active('sulfate')) then
         do icnst = 1, gas_pcnst
@@ -514,7 +533,6 @@ end function aero_model_get_state
                 call outfld( 'num_'//trim(int2str(ibin))//'GVF', dep_grv, pcols, lchnk)
                 call outfld( 'num_'//trim(int2str(ibin))//'DTQ', bin_num_tend(:ncol,:,ibin), pcols, lchnk)
                 mm = aero_props%indexer(ibin, 0)
-                ! TODO: unit??
                 aerdepdryis(:ncol, mm) = sflx(:ncol)
           !      write(6,*)"DEBUG: maxval for number: ", maxval(aerdepdryis(:ncol,mm))
             end if
