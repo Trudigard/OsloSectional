@@ -1388,19 +1388,9 @@ end if
 
     real(r8) :: diam
 
-    real(r8) :: mass   ! the bin mass (g)
-    real(r8) :: rho    ! density (kg/m3)
-
     character(len=*), parameter :: subname = 'scav_diam'
 
-    call endrun(subname//' is not yet implemented')
-
-!    rho = self%  ! kg/m3
-!    mass = self%particle_volume(bin_ndx) * rho * 1000._r8  ! g ???TODO!!
-! TODO: this is copied from CARMA, check if correct
-! specdens kg/m3 to g/cm3, convert from radius to diameter
-
-!    diam = 2._r8 * (0.75* mass / pi / (1.0e-3_r8* rho))**1._r8/3._r8
+    diam = self%bin_centers_(bin_ndx) * 100._r8 * 2._r8  ! convert to cm
 
   end function scav_diam
 
