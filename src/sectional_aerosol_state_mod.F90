@@ -14,7 +14,7 @@ module sectional_aerosol_state_mod
   use ppgrid,         only: pver, pcols
   use string_utils,   only: int2str
   use ppgrid,         only: begchunk, endchunk
-
+  use constituents, only: cnst_get_ind, qmin
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field, pbuf_get_index
 
   implicit none
@@ -40,6 +40,7 @@ module sectional_aerosol_state_mod
      real(r8), pointer     :: mmr(:, :, :) => null()            ! (kg/kg) (ncol, pver, range_nspecies) interstitial, transported
      real(r8), pointer     :: mmr_cw(:, :, :) => null()         ! (kg/kg) (ncol, pver, range_nspecies) cloud borne stuff, not transported
      real(r8), allocatable :: massfrac(:,:,:)         ! mass fraction of each species
+     real(r8)              :: dryvol_min = 0._r8   ! m3_aer/kg_air; range_dry_volume at/below this => no aerosol
      ! ...
 
   end type aerosol_range_state
@@ -94,6 +95,7 @@ module sectional_aerosol_state_mod
      procedure :: constructor
   end interface sectional_aerosol_state
 
+  real(r8), parameter :: rho_aer_fallback = 1000._r8   ! kg/m3; only used where a range holds no aerosol
   real(r8), parameter :: rh2odens = 1._r8/rhoh2o
   type(aero_state_ptr), allocatable :: master_aero_state(:)
 
@@ -175,6 +177,12 @@ contains
             nullify(newobj)
             return
         end if
+        ! temporary fix: no hygroscopic growth yet -> wet size = dry size.
+        ! scav_diam is the dry centre DIAMETER in cm; convert to radius in m.
+        do ibin = 1, newobj%sec_aero_props%nbins()
+            newobj%wet_radius(:,:,ibin) = 0.5_r8 * newobj%sec_aero_props%scav_diam(ibin) * 1.0e-2_r8
+        end do
+        newobj%qaerwat = 0._r8
 
         allocate(newobj%aero_range_state(newobj%sec_aero_props%nranges()), stat=ierr)
         if( ierr /= 0 ) then
@@ -295,6 +303,21 @@ contains
                 call endrun(subname//" :: ERROR: transport array index for "//trim(num_name)//' not found')
             end if
         end do
+        ! per-range dry-volume floor: Sum over the range's bins of (number qmin) x (particle volume).
+        ! range_dry_volume at or below this means every bin is at its constituent minimum (no aerosol),
+        ! so dry_density is undefined and must not be computed. 100x margin above the pure floor.
+        do irange = 1, newobj%sec_aero_props%nranges()
+            newobj%aero_range_state(irange)%dryvol_min = 0._r8
+            do ibin = newobj%sec_aero_props%range_bounds(irange, 1), newobj%sec_aero_props%range_bounds(irange, 2)
+                newobj%aero_range_state(irange)%dryvol_min =                          &
+                            newobj%aero_range_state(irange)%dryvol_min +              &
+                            qmin(newobj%num_transport_ndx(ibin)) *                    &
+                            newobj%sec_aero_props%particle_volume(ibin)
+            end do
+            newobj%aero_range_state(irange)%dryvol_min =                      &
+                    100._r8 * newobj%aero_range_state(irange)%dryvol_min
+        end do
+
         if (.not. associated(master_aero_state(lchnk)%ptr)) then
             master_aero_state(lchnk)%ptr => newobj
             if (nr_copies(lchnk) > 2) then
@@ -363,6 +386,7 @@ contains
             self%aero_range_state(irange)%mmr(:self%ncol,:,ispec) = self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec))
         end do
     end do
+    write(*,*) 'smb: set_transp : mmr=', self%aero_range_state(3)%mmr(1,pver,1)
 
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
@@ -372,7 +396,12 @@ contains
     do irange = 1, self%sec_aero_props%nranges()
         call self%update_range(irange=irange, ncol=self%ncol)
     end do
-
+    ! TODO add something like:
+    !do ibin=1, self%sec_aero_props%nbins()
+    !   call self%water_uptake(self%sec_aero_props, 0, ibin, self%ncol, pver, gnumwet, qaerwat)
+    !   self%wet_radius(:,:,ibin) = 0.5_r8 * dgnumwet
+    !   self%qaerwat(:,:,ibin)    = qaerwat
+    ! end do
   end subroutine set_transported
 
   !------------------------------------------------------------------------------
@@ -389,10 +418,14 @@ contains
 
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
+            write(*,*) 'smb: get_transp : q=', &
+                    self%state%q(1,pver,self%aero_range_state(irange)%transport_ndx(ispec)), &
+                    ' mmr=', self%aero_range_state(irange)%mmr(1,pver,ispec)
             self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
+
+
         end do
     end do
-
     do ibin = 1, self%sec_aero_props%nbins()
 
         self%state%q(:self%ncol,:,self%num_transport_ndx(ibin)) = self%bin_numconc(:self%ncol,:,ibin)
@@ -697,6 +730,9 @@ contains
     character(len=*), parameter :: subname = 'dry_volume'
 
     vol = self%bin_numconc(:, :, bin_ndx) * self%sec_aero_props%particle_volume(bin_ndx)
+    !write(*,*) 'smb: dry_volume in fundtion',vol
+    !write(*,*) 'smb: self%sec_aero_props%particle_volume(bin_ndx)',self%sec_aero_props%particle_volume(bin_ndx)
+    !write(*,*) 'smb: self%bin_numconc(:, :, bin_ndx)',self%bin_numconc(:, :, bin_ndx)
 
   end function dry_volume
 
@@ -769,8 +805,7 @@ contains
 
     character(len=*), parameter :: subname = 'wet_diameter'
 
-    diam = 2._r8 * self%wet_radius(ncol, nlev, bin_ndx)
-
+    diam(:ncol,:nlev) = 2._r8 * self%wet_radius(:ncol, :nlev, bin_ndx)
   end function wet_diameter
 
   !------------------------------------------------------------------------------
@@ -788,7 +823,12 @@ contains
 
     character(len=*), parameter :: subname = 'convcld_actfrac'
 
-    call endrun(subname//' is not yet implemented')
+    !TODO make these into namelist options and make it more nuanced...
+    ! Ideally we would make a fraction per range maybe? Or I don't see why it could not call the activation code for a
+    ! fixed (and high) supersaturation? Maybe expensive?
+
+    frac=0.8
+    !call endrun(subname//' is not yet implemented')
 
   end function convcld_actfrac
 
@@ -839,7 +879,7 @@ contains
     ! reset density and hygroscopicity
     self%aero_range_state(irange)%dry_density = 0._r8
     self%aero_range_state(irange)%hygroscopicity = 0._r8
-    range_total_mmr = 0._r8
+    !range_total_mmr = 0._r8
     self%aero_range_state(irange)%massfrac = 0._r8
 
     range_total_mmr = sum(self%aero_range_state(irange)%mmr, dim=3) ! sum over species (kg/kg)
@@ -856,21 +896,29 @@ contains
         range_dry_volume = range_dry_volume + self%dry_volume(self%sec_aero_props, 1, ibin, self%state%ncol, pver) !TODO: change input parameters
     end do
 
-    where (range_dry_volume /= 0._r8)
+    !where (range_dry_volume /= 0._r8)
+    where (range_dry_volume > self%aero_range_state(irange)%dryvol_min)
         self%aero_range_state(irange)%dry_density = range_total_mmr / range_dry_volume
     elsewhere
-        self%aero_range_state(irange)%dry_density = 0._r8  ! or some safe default
+        self%aero_range_state(irange)%dry_density = rho_aer_fallback  ! fall back value, set at top.
     end where
-
+    !WRITE(*,*) 'smb: range_total_mmr',range_total_mmr
+    !WRITE(*,*) 'smb: range_dry_volume',range_dry_volume
+    !WRITE(*,*) 'smb: dryvol_min',self%aero_range_state(irange)%dryvol_min
+    !WRITE(*,*) 'smb: dry_density',self%aero_range_state(irange)%dry_density
     !self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
     if ( self%sec_aero_props%range_nspecies(irange) /= 0 ) then
         do ispec = 1,self%sec_aero_props%range_nspecies(irange)
             ispecprop = self%aero_range_state(irange)%spec_ndx(ispec)
 ! TODO: source, total hygroscopicity parameter kappa_tot = SUM_OVER_ALL_SPECIES(volume_i/volume_tot * kappa_i)
-            where(range_dry_volume /= 0._r8)
-            self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
-                + self%aero_range_state(irange)%mmr(:,:,ispec) / range_dry_volume / &
-                self%sec_aero_props%density(ispecprop) * self%sec_aero_props%kappa(ispecprop) ! TODO: probably not the least ugly way to do this
+            !where(range_dry_volume /= 0._r8)
+            where (range_dry_volume > self%aero_range_state(irange)%dryvol_min)
+
+                ! volume weighted avg kappa for range:
+                self%aero_range_state(irange)%hygroscopicity = self%aero_range_state(irange)%hygroscopicity &
+                    + self%aero_range_state(irange)%mmr(:,:,ispec) / self%sec_aero_props%density(ispecprop) & ! aerosol species specific volume (kg_aero/kg_air*m3_aer/kg_aer=m3_aer/kg_air)
+                    / range_dry_volume * self%sec_aero_props%kappa(ispecprop)                                 ! divide by total specific volume and multiply by kappa
+            !TODO: probably not the least ugly way to do this
             end where
         end do
     end if
