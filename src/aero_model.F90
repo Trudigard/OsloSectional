@@ -438,6 +438,7 @@ end function aero_model_get_state
     aerdepdrycw = 0._r8
     bin_num_tend = 0._r8
     range_mmr_tend = 0._r8
+    sflx_range  = 0._r8
     !write(iulog,*) 'smb: aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
     !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
             !state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)
