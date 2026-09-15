@@ -401,7 +401,6 @@ contains
         end do
         self%aero_range_state(irange)%mmr_ref(:self%ncol,:,:) = self%aero_range_state(irange)%mmr(:self%ncol,:,:)
     end do
-    write(*,*) 'smb: set_transp : mmr=', self%aero_range_state(3)%mmr(1,pver,1)
 
     do ibin = 1, self%sec_aero_props%nbins()
         self%bin_numconc(:,:,ibin) = self%state%q(:self%ncol,:,self%num_transport_ndx(ibin))
@@ -433,9 +432,6 @@ contains
 
     do irange = 1, self%sec_aero_props%nranges()
         do ispec = 1, self%sec_aero_props%range_nspecies(irange)
-            write(*,*) 'smb: get_transp : q=', &
-                    self%state%q(1,pver,self%aero_range_state(irange)%transport_ndx(ispec)), &
-                    ' mmr=', self%aero_range_state(irange)%mmr(1,pver,ispec)
             !self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = self%aero_range_state(irange)%mmr(:self%ncol,:,ispec)
             self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) = &
                     self%state%q(:self%ncol,:,self%aero_range_state(irange)%transport_ndx(ispec)) &
@@ -751,9 +747,6 @@ contains
     character(len=*), parameter :: subname = 'dry_volume'
 
     vol = self%bin_numconc(:, :, bin_ndx) * self%sec_aero_props%particle_volume(bin_ndx)
-    !write(*,*) 'smb: dry_volume in fundtion',vol
-    !write(*,*) 'smb: self%sec_aero_props%particle_volume(bin_ndx)',self%sec_aero_props%particle_volume(bin_ndx)
-    !write(*,*) 'smb: self%bin_numconc(:, :, bin_ndx)',self%bin_numconc(:, :, bin_ndx)
 
   end function dry_volume
 
@@ -923,10 +916,6 @@ contains
     elsewhere
         self%aero_range_state(irange)%dry_density = rho_aer_fallback  ! fall back value, set at top.
     end where
-    !WRITE(*,*) 'smb: range_total_mmr',range_total_mmr
-    !WRITE(*,*) 'smb: range_dry_volume',range_dry_volume
-    !WRITE(*,*) 'smb: dryvol_min',self%aero_range_state(irange)%dryvol_min
-    !WRITE(*,*) 'smb: dry_density',self%aero_range_state(irange)%dry_density
     !self%aero_range_state(irange)%dry_density = range_total_mmr/range_dry_volume
     if ( self%sec_aero_props%range_nspecies(irange) /= 0 ) then
         do ispec = 1,self%sec_aero_props%range_nspecies(irange)

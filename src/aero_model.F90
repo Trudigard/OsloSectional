@@ -439,9 +439,6 @@ end function aero_model_get_state
     bin_num_tend = 0._r8
     range_mmr_tend = 0._r8
     sflx_range  = 0._r8
-    !write(iulog,*) 'smb: aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
-            !state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)
 ! TODO MAKE AERDEPDRYIS and AERDEPDRYCW
 
     ! calc ram and fv over ocean and sea ice ...
@@ -473,8 +470,6 @@ end function aero_model_get_state
     end do
 
     irange = 1
-    !write(iulog,*) 'smb: l474 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
     !state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)
     do ibin = 1, nbins  ! main loop over aerosol size bins aero
         irange = aero_props%bins2ranges(ibin)
@@ -502,16 +497,12 @@ end function aero_model_get_state
     ! jvlc = 2
     ! jvlc = 3
     ! jvlc = 4
-                !write(iulog,*) 'smb: l503 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-                !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
                 ! get total mass mixing ratio in a bin with #/kg and total density
                 do icol = 1, ncol
                     do ilev = 1, pver
                         bin_mmr_tot(icol, ilev) = master_aero_state(lchnk)%ptr%ambient_total_bin_mmr(aero_props, ibin, icol, ilev)
                     end do
                 end do
-                !write(iulog,*) 'smb: l474 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-                !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
                 ! convert velocity to Pa/s
                 pvmzaer(:ncol,1)=0._r8
                 pvmzaer(:ncol,2:pverp) = vlc_dry(:ncol,:,jvlc)
@@ -523,8 +514,6 @@ end function aero_model_get_state
 
                 call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, master_aero_state(lchnk)%ptr%bin_numconc(:,:, ibin), pvmzaer, bin_num_tend(:,:, ibin), sflx_num )
                 call dust_sediment_tend(ncol, dt, state%pint(:,:), state%pmid, state%pdel, state%t, bin_mmr_tot(:,:), pvmzaer, bin_mmr_tend(:,:), sflx )
-                !write(iulog,*) 'smb: l527 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-                !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
                 ! calculate #/kg tendency and put tendency to state
                 master_aero_state(lchnk)%ptr%bin_numconc(:ncol,:,ibin) = master_aero_state(lchnk)%ptr%bin_numconc(:ncol,:,ibin) &
                                 + bin_num_tend(:ncol,:, ibin)
@@ -548,33 +537,22 @@ end function aero_model_get_state
           !      write(6,*)"DEBUG: maxval for number: ", maxval(aerdepdryis(:ncol,mm))
             end if
         end do
-        !write(iulog,*) 'smb: range_mmr_tend l549', &
-        !        range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
         ! add up mass in a range
         range_mmr_tend(:ncol,:,irange) = range_mmr_tend(:ncol,:,irange) + bin_mmr_tend(:ncol,:)
         sflx_range(:,irange) = sflx_range(:,irange) + sflx
     end do
-    !write(iulog,*) 'smb: l557 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
         ! calculate the tendency for each species/range
     do irange = 1, aero_props%nranges()
         do ispec = 1, aero_props%range_nspecies(irange)
             sflx_range_species = 0._r8
             species_tracername = ''
-            !write(iulog,*) 'smb: Between here l564 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-            !        master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(1, pver,ispec)!, &
             ! mass fraction of each species
             massfrac(:ncol,:) = master_aero_state(lchnk)%ptr%aero_range_state(irange)%massfrac(:,:,ispec)
-            !write(iulog,*) 'smb: range_mmr_tend', &
-            !        range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :), &
-            !        'massfrac(:ncol,:)', massfrac(:ncol, :)
 
             ! move tendency into aero range state
             master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:ncol, :, ispec) = &
                     master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(:ncol, :, ispec) &
                     + range_mmr_tend(:ncol,:,irange)*massfrac(:ncol, :)
-            !write(iulog,*) 'smb: and here l573 aero_model_drydep start mmr(r3,s1,bot) (master, state)=', &
-            !        master_aero_state(lchnk)%ptr%aero_range_state(irange)%mmr(1, pver,ispec)!, &
 
             ! use mass fractions at lowest level to get surface flux TODO: sedimentation out of higher layers?
             do icol = 1, ncol
@@ -608,8 +586,6 @@ end function aero_model_get_state
     if (.not.aerodep_flx_prescribed()) then
        call aero_deposition_cam_setdry(aerdepdryis, aerdepdrycw, cam_out)
     endif
-    !write(iulog,*) 'smb: aero_model_drydep end mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
 
   end subroutine aero_model_drydep
 
@@ -630,10 +606,7 @@ end function aero_model_get_state
       lchnk = state%lchnk
 
       ! smb: TODO REMOVE THIS.
-      !write(iulog,*) 'smb: aero_model_wetdep mmr(r3,s1,bot) (master, state)=', &
-      !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
-              !state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)
-      if (nwetdep<1) return
+      !if (nwetdep<1) return
       call aero_wetdep_tend(state, dt, dlf, cam_out, ptend, pbuf)
 
   end subroutine aero_model_wetdep
@@ -872,8 +845,6 @@ end function aero_model_get_state
 
     integer :: l_h2so4, l_dms, l_so2
     character(len=*), parameter :: subname = 'aero_model_gasaerexch'
-    !write(iulog,*) 'smb: aero_model_gasaerexch start mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)
 
     nstep = get_nstep()
 
@@ -887,8 +858,6 @@ end function aero_model_get_state
 
     ! Get height of boundary layer (needed for boundary layer nucleation)
    ! call pbuf_get_field(pbuf, pblh_idx, pblh)
-    !write(iulog,*) 'smb: aero_model_gasaerexch end mmr(r3,s1,bot) (master, state)=', &
-    !        master_aero_state(lchnk)%ptr%aero_range_state(3)%mmr(1, pver,1)!, &
 
 
   end subroutine aero_model_gasaerexch

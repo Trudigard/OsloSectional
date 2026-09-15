@@ -552,12 +552,10 @@ contains
         newobj%nspecies_tot_ = oslo_sectional_nspecies_tot
         newobj%range_nspecies_ = oslo_sectional_nspecies(:oslo_sectional_nranges)
         newobj%bin_centers_ = bin_centers(:oslo_sectional_nbins) * 1.e-9_r8             ! nm to m
-        !WRITE(*,*) 'smb: bin_centers_',newobj%bin_centers_
         newobj%bin_bounds_ = bin_bounds(:oslo_sectional_nbins, :) * 1.e-9_r8            ! nm to m
         newobj%range_bounds_ = range_bounds(:oslo_sectional_nranges, :)
         newobj%aer_spec_prop = oslo_sectional_species_properties(:oslo_sectional_nspecies_tot)
         newobj%particle_volume_ = 4/3*pi*(newobj%bin_centers_**3)
-        !WRITE(*,*) 'smb: particle_volume',newobj%particle_volume_
 
         ! deallocate local variables
         if (allocated(bin_centers)) deallocate(bin_centers)
