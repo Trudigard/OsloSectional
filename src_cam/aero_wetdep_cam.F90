@@ -1065,17 +1065,23 @@ if (masterproc) then
       ag0 = dg0/2._r8
       sx = logsig
       xg0 = log( ag0 )
-      xg3 = xg0 + 3._r8*sx*sx
+      if (sx<=0._r8) then
+          na=1
+      else
 
-      xlo = xg3 - 4._r8*sx
-      xhi = xg3 + 4._r8*sx
-      dx = 0.2_r8*sx
+        xg3 = xg0 + 3._r8*sx*sx
 
-      dx = max( 0.2_r8*sx, 0.01_r8 )
-      xlo = xg3 - max( 4._r8*sx, 2._r8*dx )
-      xhi = xg3 + max( 4._r8*sx, 2._r8*dx )
+        xlo = xg3 - 4._r8*sx
+        xhi = xg3 + 4._r8*sx
+        dx = 0.2_r8*sx
 
-      na = 1 + nint( (xhi-xlo)/dx )
+        dx = max( 0.2_r8*sx, 0.01_r8 )
+        xlo = xg3 - max( 4._r8*sx, 2._r8*dx )
+        xhi = xg3 + max( 4._r8*sx, 2._r8*dx )
+
+        na = 1 + nint( (xhi-xlo)/dx )
+      end if
+
       if (na > naerosvmax) then
          write(lunerr,9120)
          call endrun(subname//' : na > naerosvmax')
@@ -1144,11 +1150,18 @@ if (masterproc) then
       anumsum = 0._r8
       avolsum = 0._r8
       do i = 1, na
-         x = xlo + (i-1)*dx
-         a = exp( x )
+          if (sx <=0._r8) then
+              ! Assume just one mean value and one bin:
+              a = ag0 ! radius of bin center.
+              ynumaerosv(i) = 1._r8 !all in one
+          else
+            x = xlo + (i-1)*dx
+            a = exp( x )
+            dum = (x - xg0)/sx
+            ynumaerosv(i) = exp( -0.5_r8*dum*dum )
+          end if
          aaerosv(i) = a
-         dum = (x - xg0)/sx
-         ynumaerosv(i) = exp( -0.5_r8*dum*dum )
+
          yvolaerosv(i) = ynumaerosv(i)*1.3333_r8*pi*a*a*a
          anumsum = anumsum + ynumaerosv(i)
          avolsum = avolsum + yvolaerosv(i)
@@ -1158,7 +1171,6 @@ if (masterproc) then
          ynumaerosv(i) = ynumaerosv(i)/anumsum
          yvolaerosv(i) = yvolaerosv(i)/avolsum
       end do
-
       !
       !   compute scavenging
       !
